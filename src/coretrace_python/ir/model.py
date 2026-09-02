@@ -118,7 +118,7 @@ class StoreLocal:
     value: Value
 
 
-Instruction: TypeAlias = (
+ValueInstruction: TypeAlias = (
     Constant
     | Global
     | Symbol
@@ -129,9 +129,9 @@ Instruction: TypeAlias = (
     | GetAttr
     | GetItem
     | LoadLocal
-    | StoreLocal
-    | Return
 )
+EffectInstruction: TypeAlias = StoreLocal | Return
+Instruction: TypeAlias = ValueInstruction | EffectInstruction
 
 
 @dataclass(frozen=True)
