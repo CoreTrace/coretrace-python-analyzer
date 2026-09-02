@@ -1,10 +1,12 @@
+"""Lower parser-independent PyHIR into analysis-oriented PyIR."""
+
 from __future__ import annotations
 
-import ast
 from dataclasses import dataclass, field
+from typing import NoReturn
 
 from coretrace_python.frontend.imports import ImportBindings, collect_imports
-from coretrace_python.frontend.symbols import SymbolId
+from coretrace_python.hir import nodes
 from coretrace_python.ir.model import (
     BasicBlock,
     BinaryOp,
@@ -18,73 +20,34 @@ from coretrace_python.ir.model import (
     LoadLocal,
     ModuleIR,
     Return,
-    SourceLocation,
     StoreLocal,
     Symbol,
     UnaryOp,
     Value,
     ValueInstruction,
 )
+from coretrace_python.ir.symbol import SymbolId
 
 
 class LoweringError(Exception):
-    """Raised when source uses syntax outside the current PyIR subset."""
-
-
-_BINARY_OPERATORS = {
-    ast.Add: "add",
-    ast.Sub: "sub",
-    ast.Mult: "mul",
-    ast.Div: "div",
-    ast.FloorDiv: "floor_div",
-    ast.Mod: "mod",
-    ast.Pow: "pow",
-    ast.LShift: "lshift",
-    ast.RShift: "rshift",
-    ast.BitOr: "bit_or",
-    ast.BitXor: "bit_xor",
-    ast.BitAnd: "bit_and",
-    ast.MatMult: "matmul",
-}
-_UNARY_OPERATORS = {ast.Invert: "invert", ast.Not: "not", ast.UAdd: "pos", ast.USub: "neg"}
-_COMPARE_OPERATORS = {
-    ast.Eq: "eq",
-    ast.NotEq: "not_eq",
-    ast.Lt: "lt",
-    ast.LtE: "lt_eq",
-    ast.Gt: "gt",
-    ast.GtE: "gt_eq",
-    ast.Is: "is",
-    ast.IsNot: "is_not",
-    ast.In: "in",
-    ast.NotIn: "not_in",
-}
+    """Raised when PyHIR uses constructs outside the current PyIR subset."""
 
 
 @dataclass
 class _FunctionLowerer:
-    filename: str
     imports: ImportBindings
     next_value_id: int = 0
-    locals: dict[str, Value] = field(default_factory=dict)
-    block: BasicBlock = field(default_factory=lambda: BasicBlock("entry"))
+    locals: set[str] = field(default_factory=set)
     parameters: dict[str, Value] = field(default_factory=dict)
+    block: BasicBlock = field(default_factory=lambda: BasicBlock("entry"))
 
-    def location(self, node: ast.AST) -> SourceLocation:
-        return SourceLocation(
-            filename=self.filename,
-            line=getattr(node, "lineno", 1),
-            column=getattr(node, "col_offset", 0) + 1,
-            end_line=getattr(node, "end_lineno", None),
-            end_column=(getattr(node, "end_col_offset", 0) + 1)
-            if getattr(node, "end_col_offset", None) is not None
-            else None,
-        )
-
-    def fail(self, node: ast.AST, message: str | None = None) -> None:
-        location = self.location(node)
+    def fail(
+        self,
+        node: nodes.Statement | nodes.Expression,
+        message: str | None = None,
+    ) -> NoReturn:
         detail = message or f"unsupported syntax: {type(node).__name__}"
-        raise LoweringError(f"{location.filename}:{location.line}:{location.column}: {detail}")
+        raise LoweringError(f"{node.span.display()}: {detail}")
 
     def new_value(self) -> Value:
         value = Value(self.next_value_id)
@@ -98,133 +61,98 @@ class _FunctionLowerer:
     def emit_effect(self, instruction: StoreLocal | Return) -> None:
         self.block.instructions.append(instruction)
 
-    def imported_symbol(self, node: ast.expr) -> SymbolId | None:
-        if isinstance(node, ast.Name):
-            if node.id in self.locals or node.id in self.parameters:
+    def imported_symbol(self, node: nodes.Expression) -> SymbolId | None:
+        if isinstance(node, nodes.Name):
+            if node.identifier in self.locals or node.identifier in self.parameters:
                 return None
-            return self.imports.resolve(node.id)
-        if isinstance(node, ast.Attribute):
+            return self.imports.resolve(node.identifier)
+        if isinstance(node, nodes.Attribute):
             parent = self.imported_symbol(node.value)
-            return parent.attribute(node.attr) if parent is not None else None
+            return parent.attribute(node.name) if parent is not None else None
         return None
 
-    def expression(self, node: ast.expr) -> Value:
-        location = self.location(node)
+    def expression(self, node: nodes.Expression) -> Value:
         imported_symbol = self.imported_symbol(node)
         if imported_symbol is not None:
-            return self.emit(Symbol(self.new_value(), location, imported_symbol))
-        if isinstance(node, ast.Name):
-            if node.id in self.locals:
-                return self.emit(LoadLocal(self.new_value(), location, node.id))
-            if node.id in self.parameters:
-                return self.parameters[node.id]
-            return self.emit(Global(self.new_value(), location, node.id))
-        if isinstance(node, ast.Constant):
-            return self.emit(Constant(self.new_value(), location, node.value))
-        if isinstance(node, ast.BinOp):
-            operator = _BINARY_OPERATORS.get(type(node.op))
-            if operator is None:
-                self.fail(node.op)
+            return self.emit(Symbol(self.new_value(), node.span, imported_symbol))
+        if isinstance(node, nodes.Name):
+            if node.identifier in self.locals:
+                return self.emit(LoadLocal(self.new_value(), node.span, node.identifier))
+            if node.identifier in self.parameters:
+                return self.parameters[node.identifier]
+            return self.emit(Global(self.new_value(), node.span, node.identifier))
+        if isinstance(node, nodes.Constant):
+            return self.emit(Constant(self.new_value(), node.span, node.value))
+        if isinstance(node, nodes.BinaryOp):
             left = self.expression(node.left)
             right = self.expression(node.right)
-            return self.emit(
-                BinaryOp(
-                    self.new_value(),
-                    location,
-                    operator,
-                    left,
-                    right,
-                )
-            )
-        if isinstance(node, ast.UnaryOp):
-            operator = _UNARY_OPERATORS.get(type(node.op))
-            if operator is None:
-                self.fail(node.op)
+            return self.emit(BinaryOp(self.new_value(), node.span, node.operator, left, right))
+        if isinstance(node, nodes.UnaryOp):
             operand = self.expression(node.operand)
-            return self.emit(UnaryOp(self.new_value(), location, operator, operand))
-        if isinstance(node, ast.Compare):
-            if len(node.ops) != 1 or len(node.comparators) != 1:
-                self.fail(node, "chained comparisons are not supported yet")
-            operator = _COMPARE_OPERATORS.get(type(node.ops[0]))
-            if operator is None:
-                self.fail(node.ops[0])
+            return self.emit(UnaryOp(self.new_value(), node.span, node.operator, operand))
+        if isinstance(node, nodes.Compare):
             left = self.expression(node.left)
-            right = self.expression(node.comparators[0])
-            return self.emit(
-                Compare(
-                    self.new_value(),
-                    location,
-                    operator,
-                    left,
-                    right,
-                )
-            )
-        if isinstance(node, ast.Call):
+            right = self.expression(node.right)
+            return self.emit(Compare(self.new_value(), node.span, node.operator, left, right))
+        if isinstance(node, nodes.Call):
             if node.keywords:
                 self.fail(node, "keyword arguments are not supported yet")
-            callee = self.expression(node.func)
-            arguments = tuple(self.expression(argument) for argument in node.args)
-            return self.emit(Call(self.new_value(), location, callee, arguments))
-        if isinstance(node, ast.Attribute):
+            callee = self.expression(node.callee)
+            arguments = tuple(self.expression(argument) for argument in node.arguments)
+            return self.emit(Call(self.new_value(), node.span, callee, arguments))
+        if isinstance(node, nodes.Attribute):
             object_value = self.expression(node.value)
-            return self.emit(GetAttr(self.new_value(), location, object_value, node.attr))
-        if isinstance(node, ast.Subscript):
+            return self.emit(GetAttr(self.new_value(), node.span, object_value, node.name))
+        if isinstance(node, nodes.Subscript):
             object_value = self.expression(node.value)
-            key = self.expression(node.slice)
-            return self.emit(GetItem(self.new_value(), location, object_value, key))
+            key = self.expression(node.key)
+            return self.emit(GetItem(self.new_value(), node.span, object_value, key))
         self.fail(node)
 
-    def statement(self, node: ast.stmt) -> None:
-        if isinstance(node, ast.Assign):
-            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
-                self.fail(node, "only assignment to one local name is supported")
-            name = node.targets[0].id
+    def statement(self, node: nodes.Statement) -> None:
+        if isinstance(node, nodes.Assign):
             value = self.expression(node.value)
-            self.emit_effect(StoreLocal(None, self.location(node), name, value))
-            self.locals[name] = value
+            self.emit_effect(StoreLocal(None, node.span, node.target.identifier, value))
+            self.locals.add(node.target.identifier)
             return
-        if isinstance(node, ast.Return):
-            value = self.expression(node.value) if node.value is not None else None
-            self.emit_effect(Return(None, self.location(node), value))
+        if isinstance(node, nodes.Return):
+            return_value = self.expression(node.value) if node.value is not None else None
+            self.emit_effect(Return(None, node.span, return_value))
             return
-        if isinstance(node, ast.Expr):
-            self.expression(node.value)
+        if isinstance(node, nodes.ExpressionStatement):
+            self.expression(node.expression)
             return
-        if isinstance(node, ast.Pass):
+        if isinstance(node, nodes.Pass):
             return
         self.fail(node)
 
-    def function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> FunctionIR:
-        if node.decorator_list:
-            self.fail(node, "decorated functions are not supported yet")
-        has_advanced_arguments = (
-            node.args.posonlyargs or node.args.kwonlyargs or node.args.vararg or node.args.kwarg
-        )
-        if has_advanced_arguments:
-            self.fail(node.args, "only positional arguments are supported")
-        parameters = tuple(self.new_value() for _ in node.args.args)
-        argument_names = (argument.arg for argument in node.args.args)
-        self.parameters.update(zip(argument_names, parameters, strict=True))
+    def function(self, node: nodes.Function) -> FunctionIR:
+        parameters = tuple(self.new_value() for _ in node.parameters)
+        parameter_names = (parameter.name for parameter in node.parameters)
+        self.parameters.update(zip(parameter_names, parameters, strict=True))
         for statement in node.body:
             self.statement(statement)
-        return FunctionIR(node.name, parameters, (self.block,), self.location(node))
+        return FunctionIR(node.name, parameters, (self.block,), node.span)
 
 
-def lower_module(tree: ast.Module, filename: str = "<unknown>") -> ModuleIR:
-    imports = collect_imports(tree, filename)
+def lower_module(module: nodes.Module) -> ModuleIR:
+    imports = collect_imports(module)
     functions: list[FunctionIR] = []
-    for statement in tree.body:
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            functions.append(_FunctionLowerer(filename, imports).function(statement))
-        elif isinstance(statement, (ast.Import, ast.ImportFrom)):
+    for statement in module.body:
+        if isinstance(statement, nodes.Function):
+            functions.append(_FunctionLowerer(imports).function(statement))
+        elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
             continue
-        elif isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
+        elif (
+            isinstance(statement, nodes.ExpressionStatement)
+            and isinstance(statement.expression, nodes.Constant)
+            and isinstance(statement.expression.value, str)
+        ):
             # Permit module docstrings.
             continue
         else:
-            location = SourceLocation.from_ast(filename, statement)
             raise LoweringError(
-                f"{filename}:{location.line}:{location.column}: "
+                f"{statement.span.display()}: "
                 f"unsupported module syntax: {type(statement).__name__}"
             )
     return ModuleIR(tuple(functions))

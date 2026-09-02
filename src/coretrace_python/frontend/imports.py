@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import ast
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
+from coretrace_python.hir import nodes
 from coretrace_python.ir.symbol import SymbolId
 
 
@@ -32,35 +32,33 @@ class ImportBindings(Mapping[str, SymbolId]):
         return self._bindings.get(name)
 
 
-def _error(filename: str, node: ast.AST, message: str) -> ImportResolutionError:
-    line = getattr(node, "lineno", 1)
-    column = getattr(node, "col_offset", 0) + 1
-    return ImportResolutionError(f"{filename}:{line}:{column}: {message}")
+def _error(node: nodes.ImportFrom, message: str) -> ImportResolutionError:
+    return ImportResolutionError(f"{node.span.display()}: {message}")
 
 
-def collect_imports(tree: ast.Module, filename: str = "<unknown>") -> ImportBindings:
+def collect_imports(module: nodes.Module) -> ImportBindings:
     """Collect supported top-level imports without importing any modules."""
 
     bindings: dict[str, SymbolId] = {}
-    for statement in tree.body:
-        if isinstance(statement, ast.Import):
+    for statement in module.body:
+        if isinstance(statement, nodes.Import):
             for alias in statement.names:
-                if alias.asname is None:
+                if alias.as_name is None:
                     local_name = alias.name.partition(".")[0]
                     canonical_path = local_name
                 else:
-                    local_name = alias.asname
+                    local_name = alias.as_name
                     canonical_path = alias.name
                 bindings[local_name] = SymbolId.from_python_path(canonical_path)
-        elif isinstance(statement, ast.ImportFrom):
+        elif isinstance(statement, nodes.ImportFrom):
             if statement.level:
-                raise _error(filename, statement, "relative imports are not supported yet")
+                raise _error(statement, "relative imports are not supported yet")
             if statement.module is None:
-                raise _error(filename, statement, "import module is missing")
+                raise _error(statement, "import module is missing")
             for alias in statement.names:
                 if alias.name == "*":
-                    raise _error(filename, statement, "wildcard imports are not supported")
-                local_name = alias.asname or alias.name
+                    raise _error(statement, "wildcard imports are not supported")
+                local_name = alias.as_name or alias.name
                 canonical_path = f"{statement.module}.{alias.name}"
                 bindings[local_name] = SymbolId.from_python_path(canonical_path)
     return ImportBindings(bindings)
