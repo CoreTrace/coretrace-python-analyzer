@@ -13,9 +13,11 @@ from coretrace_python.ir.model import (
     GetAttr,
     GetItem,
     Global,
+    LoadLocal,
     ModuleIR,
     Return,
     SourceLocation,
+    StoreLocal,
     UnaryOp,
     Value,
 )
@@ -61,6 +63,7 @@ class _FunctionLowerer:
     next_value_id: int = 0
     locals: dict[str, Value] = field(default_factory=dict)
     block: BasicBlock = field(default_factory=lambda: BasicBlock("entry"))
+    parameters: dict[str, Value] = field(default_factory=dict)
 
     def location(self, node: ast.AST) -> SourceLocation:
         return SourceLocation(
@@ -91,7 +94,9 @@ class _FunctionLowerer:
         location = self.location(node)
         if isinstance(node, ast.Name):
             if node.id in self.locals:
-                return self.locals[node.id]
+                return self.emit(LoadLocal(self.new_value(), location, node.id))
+            if node.id in self.parameters:
+                return self.parameters[node.id]
             return self.emit(Global(self.new_value(), location, node.id))
         if isinstance(node, ast.Constant):
             return self.emit(Constant(self.new_value(), location, node.value))
@@ -152,7 +157,10 @@ class _FunctionLowerer:
         if isinstance(node, ast.Assign):
             if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
                 self.fail(node, "only assignment to one local name is supported")
-            self.locals[node.targets[0].id] = self.expression(node.value)
+            name = node.targets[0].id
+            value = self.expression(node.value)
+            self.emit(StoreLocal(None, self.location(node), name, value))
+            self.locals[name] = value
             return
         if isinstance(node, ast.Return):
             value = self.expression(node.value) if node.value is not None else None
@@ -175,7 +183,7 @@ class _FunctionLowerer:
             self.fail(node.args, "only positional arguments are supported")
         parameters = tuple(self.new_value() for _ in node.args.args)
         argument_names = (argument.arg for argument in node.args.args)
-        self.locals.update(zip(argument_names, parameters, strict=True))
+        self.parameters.update(zip(argument_names, parameters, strict=True))
         for statement in node.body:
             self.statement(statement)
         return FunctionIR(node.name, parameters, (self.block,), self.location(node))

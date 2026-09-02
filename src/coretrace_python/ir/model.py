@@ -94,8 +94,33 @@ class Return:
     value: Value | None
 
 
+@dataclass(frozen=True)
+class LoadLocal:
+    result: Value
+    location: SourceLocation
+    name: str
+
+
+@dataclass(frozen=True)
+class StoreLocal:
+    result: None
+    location: SourceLocation
+    name: str
+    value: Value
+
+
 Instruction: TypeAlias = (
-    Constant | Global | BinaryOp | UnaryOp | Compare | Call | GetAttr | GetItem | Return
+    Constant
+    | Global
+    | BinaryOp
+    | UnaryOp
+    | Compare
+    | Call
+    | GetAttr
+    | GetItem
+    | LoadLocal
+    | StoreLocal
+    | Return
 )
 
 
