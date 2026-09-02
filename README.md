@@ -2,16 +2,26 @@
 
 A standalone, Python-specific static analysis frontend for CoreTrace.
 
-The first milestone parses Python and lowers a deliberately small language subset to a
-deterministic, Python-aware intermediate representation (PyIR). CFG construction, SSA,
-data-flow, and security rules are intentionally deferred.
+The analyzer loads source through a source manager, adapts parsed Python into a
+parser-independent high-level representation (PyHIR), and lowers a deliberately small
+language subset to deterministic PyIR. CFG construction, SSA, data-flow, and security rules
+are intentionally deferred.
+
+```text
+Python source -> SourceManager -> parser -> PyHIR -> semantic imports -> PyIR
+```
+
+The long-term engine architecture and incremental migration plan are recorded in
+[`docs/architecture.md`](docs/architecture.md).
 
 ## Development
 
 ```bash
 python -m venv .venv
 python -m pip install -e ".[dev]"
-pytest
+python -m mypy
+python -m pytest
+python -m ruff check .
 ```
 
 ## Emit PyIR
