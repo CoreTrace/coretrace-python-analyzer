@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from coretrace_python.frontend.imports import ImportResolutionError
 from coretrace_python.frontend.lowering import LoweringError, lower_module
 from coretrace_python.frontend.parser import ParseError, parse_file
 from coretrace_python.ir.printer import format_module
@@ -32,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         tree = parse_file(args.path)
         module = lower_module(tree, filename=str(args.path))
-    except (OSError, ParseError, LoweringError) as error:
+    except (OSError, ParseError, ImportResolutionError, LoweringError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
@@ -42,4 +43,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
