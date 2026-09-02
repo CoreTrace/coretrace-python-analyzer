@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from coretrace_python.source import SourceFile, SourceManager
+
 
 class ParseError(Exception):
     """A source-located Python parsing failure."""
@@ -19,7 +21,9 @@ def parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
 
 
 def parse_file(path: str | Path) -> ast.Module:
-    source_path = Path(path)
-    source = source_path.read_text(encoding="utf-8")
-    return parse_source(source, filename=str(source_path))
+    source = SourceManager().load_file(path)
+    return parse_source_file(source)
 
+
+def parse_source_file(source: SourceFile) -> ast.Module:
+    return parse_source(source.text, filename=str(source.source_id))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from typing import NoReturn
 
 from coretrace_python.hir import nodes
 from coretrace_python.source import SourceFile, SourceSpan
@@ -59,7 +60,7 @@ class AstHIRBuilder:
             end_column=end_offset + 1 if end_offset is not None else None,
         )
 
-    def fail(self, node: ast.AST, message: str | None = None) -> None:
+    def fail(self, node: ast.AST, message: str | None = None) -> NoReturn:
         span = self.span(node)
         detail = message or f"unsupported syntax: {type(node).__name__}"
         raise HIRBuildError(f"{span.display()}: {detail}")
@@ -173,4 +174,3 @@ class AstHIRBuilder:
 
 def build_module(source: SourceFile, tree: ast.Module) -> nodes.Module:
     return AstHIRBuilder(source).module(tree)
-
