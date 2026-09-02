@@ -10,7 +10,9 @@ def test_emit_ir_golden(tmp_path, capsys) -> None:
         "func @add(%0, %1) {\n"
         "entry:\n"
         "    %2 = binary.add %0, %1\n"
-        "    return %2\n"
+        '    store_local "x", %2\n'
+        '    %3 = load_local "x"\n'
+        "    return %3\n"
         "}\n"
     )
 
@@ -41,3 +43,24 @@ def test_emit_ir_for_call(tmp_path, capsys) -> None:
     output = capsys.readouterr().out
     assert "%1 = global 'print'" in output
     assert "%2 = call %1(%0)" in output
+
+
+def test_emit_ir_for_local_assignment(tmp_path, capsys) -> None:
+    source = tmp_path / "locals.py"
+    source.write_text(
+        "def calculate(a, b):\n"
+        "    result = a + b\n"
+        "    return result\n",
+        encoding="utf-8",
+    )
+
+    assert main(["--emit-ir", str(source)]) == 0
+    assert capsys.readouterr().out == (
+        "func @calculate(%0, %1) {\n"
+        "entry:\n"
+        "    %2 = binary.add %0, %1\n"
+        '    store_local "result", %2\n'
+        '    %3 = load_local "result"\n'
+        "    return %3\n"
+        "}\n"
+    )
