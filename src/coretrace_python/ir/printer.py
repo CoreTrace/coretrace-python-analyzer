@@ -9,8 +9,10 @@ from coretrace_python.ir.model import (
     GetItem,
     Global,
     Instruction,
+    LoadLocal,
     ModuleIR,
     Return,
+    StoreLocal,
     UnaryOp,
     Value,
 )
@@ -53,6 +55,10 @@ def _instruction(instruction: Instruction) -> str:
             f"{_value(instruction.result)} = get_item {_value(instruction.object)}, "
             f"{_value(instruction.key)}"
         )
+    if isinstance(instruction, LoadLocal):
+        return f'{_value(instruction.result)} = load_local "{instruction.name}"'
+    if isinstance(instruction, StoreLocal):
+        return f'store_local "{instruction.name}", {_value(instruction.value)}'
     if isinstance(instruction, Return):
         return "return" if instruction.value is None else f"return {_value(instruction.value)}"
     raise TypeError(f"unknown instruction: {instruction!r}")
