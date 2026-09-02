@@ -1,0 +1,145 @@
+"""Immutable nodes for the Python high-level intermediate representation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TypeAlias
+
+from coretrace_python.source import SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Parameter:
+    name: str
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Name:
+    identifier: str
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Constant:
+    value: object
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class BinaryOp:
+    operator: str
+    left: Expression
+    right: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class UnaryOp:
+    operator: str
+    operand: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Compare:
+    operator: str
+    left: Expression
+    right: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Attribute:
+    value: Expression
+    name: str
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Subscript:
+    value: Expression
+    key: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Keyword:
+    name: str | None
+    value: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Call:
+    callee: Expression
+    arguments: tuple[Expression, ...]
+    keywords: tuple[Keyword, ...]
+    span: SourceSpan
+
+
+Expression: TypeAlias = Name | Constant | BinaryOp | UnaryOp | Compare | Attribute | Subscript | Call
+
+
+@dataclass(frozen=True, slots=True)
+class Assign:
+    target: Name
+    value: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Return:
+    value: Expression | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class ExpressionStatement:
+    expression: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Pass:
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class ImportAlias:
+    name: str
+    as_name: str | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Import:
+    names: tuple[ImportAlias, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class ImportFrom:
+    module: str | None
+    names: tuple[ImportAlias, ...]
+    level: int
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Function:
+    name: str
+    parameters: tuple[Parameter, ...]
+    body: tuple[Statement, ...]
+    is_async: bool
+    span: SourceSpan
+
+
+Statement: TypeAlias = Assign | Return | ExpressionStatement | Pass | Import | ImportFrom | Function
+
+
+@dataclass(frozen=True, slots=True)
+class Module:
+    body: tuple[Statement, ...]
+    span: SourceSpan
+
