@@ -1,23 +1,10 @@
 from __future__ import annotations
 
-import ast
 from dataclasses import dataclass
 from typing import TypeAlias
 
 from coretrace_python.ir.symbol import SymbolId
-
-
-@dataclass(frozen=True)
-class SourceLocation:
-    filename: str
-    line: int
-    column: int
-    end_line: int | None = None
-    end_column: int | None = None
-
-    @classmethod
-    def from_ast(cls, filename: str, node: ast.AST) -> SourceLocation:
-        return cls(filename, getattr(node, "lineno", 1), getattr(node, "col_offset", 0) + 1)
+from coretrace_python.source import SourceSpan
 
 
 @dataclass(frozen=True)
@@ -28,28 +15,28 @@ class Value:
 @dataclass(frozen=True)
 class Constant:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     value: object
 
 
 @dataclass(frozen=True)
 class Global:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     name: str
 
 
 @dataclass(frozen=True)
 class Symbol:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     symbol_id: SymbolId
 
 
 @dataclass(frozen=True)
 class BinaryOp:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     operator: str
     left: Value
     right: Value
@@ -58,7 +45,7 @@ class BinaryOp:
 @dataclass(frozen=True)
 class UnaryOp:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     operator: str
     operand: Value
 
@@ -66,7 +53,7 @@ class UnaryOp:
 @dataclass(frozen=True)
 class Compare:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     operator: str
     left: Value
     right: Value
@@ -75,7 +62,7 @@ class Compare:
 @dataclass(frozen=True)
 class Call:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     callee: Value
     arguments: tuple[Value, ...]
 
@@ -83,7 +70,7 @@ class Call:
 @dataclass(frozen=True)
 class GetAttr:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     object: Value
     attribute: str
 
@@ -91,7 +78,7 @@ class GetAttr:
 @dataclass(frozen=True)
 class GetItem:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     object: Value
     key: Value
 
@@ -99,21 +86,21 @@ class GetItem:
 @dataclass(frozen=True)
 class Return:
     result: None
-    location: SourceLocation
+    location: SourceSpan
     value: Value | None
 
 
 @dataclass(frozen=True)
 class LoadLocal:
     result: Value
-    location: SourceLocation
+    location: SourceSpan
     name: str
 
 
 @dataclass(frozen=True)
 class StoreLocal:
     result: None
-    location: SourceLocation
+    location: SourceSpan
     name: str
     value: Value
 
@@ -149,7 +136,7 @@ class FunctionIR:
     name: str
     parameters: tuple[Value, ...]
     blocks: tuple[BasicBlock, ...]
-    location: SourceLocation
+    location: SourceSpan
 
 
 @dataclass(frozen=True)
