@@ -1,8 +1,4 @@
-"""Acceptance tests for imports and canonical symbol resolution.
-
-This module describes the next milestone's public behavior. It is expected to
-remain red until import collection and the PyIR ``symbol`` instruction exist.
-"""
+"""Acceptance tests for imports and canonical symbol resolution."""
 
 from __future__ import annotations
 
