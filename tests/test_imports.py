@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from coretrace_python.frontend.ast_adapter import build_module
 from coretrace_python.frontend.imports import (
     ImportBindings,
     ImportResolutionError,
@@ -9,10 +10,13 @@ from coretrace_python.frontend.imports import (
 )
 from coretrace_python.frontend.parser import parse_source
 from coretrace_python.ir.symbol import SymbolId
+from coretrace_python.source import SourceManager
 
 
 def bindings_for(source: str) -> ImportBindings:
-    return collect_imports(parse_source(source, "imports.py"), "imports.py")
+    source_file = SourceManager().add_source("imports.py", source)
+    tree = parse_source(source_file.text, str(source_file.source_id))
+    return collect_imports(build_module(source_file, tree))
 
 
 def test_collects_plain_and_aliased_imports() -> None:
