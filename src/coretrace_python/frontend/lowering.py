@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
+from coretrace_python.frontend.imports import ImportBindings, collect_imports
+from coretrace_python.frontend.symbols import SymbolId
 from coretrace_python.ir.model import (
     BasicBlock,
     BinaryOp,
@@ -18,8 +20,10 @@ from coretrace_python.ir.model import (
     Return,
     SourceLocation,
     StoreLocal,
+    Symbol,
     UnaryOp,
     Value,
+    ValueInstruction,
 )
 
 
@@ -60,6 +64,7 @@ _COMPARE_OPERATORS = {
 @dataclass
 class _FunctionLowerer:
     filename: str
+    imports: ImportBindings
     next_value_id: int = 0
     locals: dict[str, Value] = field(default_factory=dict)
     block: BasicBlock = field(default_factory=lambda: BasicBlock("entry"))
@@ -86,12 +91,28 @@ class _FunctionLowerer:
         self.next_value_id += 1
         return value
 
-    def emit(self, instruction):
+    def emit(self, instruction: ValueInstruction) -> Value:
         self.block.instructions.append(instruction)
         return instruction.result
 
+    def emit_effect(self, instruction: StoreLocal | Return) -> None:
+        self.block.instructions.append(instruction)
+
+    def imported_symbol(self, node: ast.expr) -> SymbolId | None:
+        if isinstance(node, ast.Name):
+            if node.id in self.locals or node.id in self.parameters:
+                return None
+            return self.imports.resolve(node.id)
+        if isinstance(node, ast.Attribute):
+            parent = self.imported_symbol(node.value)
+            return parent.attribute(node.attr) if parent is not None else None
+        return None
+
     def expression(self, node: ast.expr) -> Value:
         location = self.location(node)
+        imported_symbol = self.imported_symbol(node)
+        if imported_symbol is not None:
+            return self.emit(Symbol(self.new_value(), location, imported_symbol))
         if isinstance(node, ast.Name):
             if node.id in self.locals:
                 return self.emit(LoadLocal(self.new_value(), location, node.id))
@@ -159,12 +180,12 @@ class _FunctionLowerer:
                 self.fail(node, "only assignment to one local name is supported")
             name = node.targets[0].id
             value = self.expression(node.value)
-            self.emit(StoreLocal(None, self.location(node), name, value))
+            self.emit_effect(StoreLocal(None, self.location(node), name, value))
             self.locals[name] = value
             return
         if isinstance(node, ast.Return):
             value = self.expression(node.value) if node.value is not None else None
-            self.emit(Return(None, self.location(node), value))
+            self.emit_effect(Return(None, self.location(node), value))
             return
         if isinstance(node, ast.Expr):
             self.expression(node.value)
@@ -190,10 +211,13 @@ class _FunctionLowerer:
 
 
 def lower_module(tree: ast.Module, filename: str = "<unknown>") -> ModuleIR:
+    imports = collect_imports(tree, filename)
     functions: list[FunctionIR] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            functions.append(_FunctionLowerer(filename).function(statement))
+            functions.append(_FunctionLowerer(filename, imports).function(statement))
+        elif isinstance(statement, (ast.Import, ast.ImportFrom)):
+            continue
         elif isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
             # Permit module docstrings.
             continue

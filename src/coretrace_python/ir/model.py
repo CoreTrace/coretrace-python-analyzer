@@ -4,6 +4,8 @@ import ast
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from coretrace_python.ir.symbol import SymbolId
+
 
 @dataclass(frozen=True)
 class SourceLocation:
@@ -35,6 +37,13 @@ class Global:
     result: Value
     location: SourceLocation
     name: str
+
+
+@dataclass(frozen=True)
+class Symbol:
+    result: Value
+    location: SourceLocation
+    symbol_id: SymbolId
 
 
 @dataclass(frozen=True)
@@ -109,9 +118,10 @@ class StoreLocal:
     value: Value
 
 
-Instruction: TypeAlias = (
+ValueInstruction: TypeAlias = (
     Constant
     | Global
+    | Symbol
     | BinaryOp
     | UnaryOp
     | Compare
@@ -119,9 +129,9 @@ Instruction: TypeAlias = (
     | GetAttr
     | GetItem
     | LoadLocal
-    | StoreLocal
-    | Return
 )
+EffectInstruction: TypeAlias = StoreLocal | Return
+Instruction: TypeAlias = ValueInstruction | EffectInstruction
 
 
 @dataclass(frozen=True)

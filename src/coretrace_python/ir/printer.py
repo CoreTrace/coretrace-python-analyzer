@@ -13,6 +13,7 @@ from coretrace_python.ir.model import (
     ModuleIR,
     Return,
     StoreLocal,
+    Symbol,
     UnaryOp,
     Value,
 )
@@ -27,6 +28,8 @@ def _instruction(instruction: Instruction) -> str:
         return f"{_value(instruction.result)} = const {instruction.value!r}"
     if isinstance(instruction, Global):
         return f"{_value(instruction.result)} = global {instruction.name!r}"
+    if isinstance(instruction, Symbol):
+        return f"{_value(instruction.result)} = symbol @{instruction.symbol_id}"
     if isinstance(instruction, BinaryOp):
         return (
             f"{_value(instruction.result)} = binary.{instruction.operator} "
