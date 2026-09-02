@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import ast
 
-from coretrace_python.hir import build_module, nodes
+from coretrace_python.frontend.ast_adapter import build_module
+from coretrace_python.hir import nodes
 from coretrace_python.source import SourceManager
 
 
