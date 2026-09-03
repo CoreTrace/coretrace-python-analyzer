@@ -8,6 +8,7 @@ from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
 from coretrace_python.ir.printer import format_module
 from coretrace_python.semantic.imports import ImportResolutionError
+from coretrace_python.semantic.scopes import ScopeError
 from coretrace_python.source import SourceManager
 
 
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         ParseError,
         HIRBuildError,
         ImportResolutionError,
+        ScopeError,
         LoweringError,
     ) as error:
         print(f"error: {error}", file=sys.stderr)
