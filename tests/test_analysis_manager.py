@@ -40,7 +40,6 @@ try:
         UndeclaredDependencyError,
         UnregisteredAnalysisError,
     )
-
     from coretrace_python.ir.lowering import ModuleIRAnalysis, PyIRAnalysis
     from coretrace_python.semantic import SEMANTIC_ANALYSES
     from coretrace_python.semantic.imports import ImportAnalysis
