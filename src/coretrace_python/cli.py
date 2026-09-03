@@ -4,11 +4,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from coretrace_python.frontend.ast_adapter import HIRBuildError, build_module
-from coretrace_python.frontend.imports import ImportResolutionError
-from coretrace_python.frontend.lowering import LoweringError, lower_module
-from coretrace_python.frontend.parser import ParseError, parse_source_file
+from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
+from coretrace_python.ir.lowering import LoweringError, lower_module
 from coretrace_python.ir.printer import format_module
+from coretrace_python.semantic.imports import ImportResolutionError
+from coretrace_python.semantic.scopes import ScopeError
 from coretrace_python.source import SourceManager
 
 
@@ -34,15 +34,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         source = SourceManager().load_file(args.path)
-        syntax_tree = parse_source_file(source)
-        hir_module = build_module(source, syntax_tree)
-        module = lower_module(hir_module)
+        module = lower_module(build_hir(source))
     except (
         OSError,
         UnicodeError,
         ParseError,
         HIRBuildError,
         ImportResolutionError,
+        ScopeError,
         LoweringError,
     ) as error:
         print(f"error: {error}", file=sys.stderr)

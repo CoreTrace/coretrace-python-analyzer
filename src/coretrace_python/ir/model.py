@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from coretrace_python.ir.symbol import SymbolId
+from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceSpan
 
 

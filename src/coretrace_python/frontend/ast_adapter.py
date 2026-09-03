@@ -29,6 +29,7 @@ _BINARY_OPERATORS = {
     ast.MatMult: "matmul",
 }
 _UNARY_OPERATORS = {ast.Invert: "invert", ast.Not: "not", ast.UAdd: "pos", ast.USub: "neg"}
+_COMPREHENSIONS = {ast.ListComp: "list", ast.SetComp: "set", ast.GeneratorExp: "generator"}
 _COMPARE_OPERATORS = {
     ast.Eq: "eq",
     ast.NotEq: "not_eq",
@@ -104,7 +105,30 @@ class AstHIRBuilder:
                 for keyword in node.keywords
             )
             return nodes.Call(self.expression(node.func), arguments, keywords, span)
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            generators = tuple(self.generator(generator) for generator in node.generators)
+            return nodes.Comprehension(
+                _COMPREHENSIONS[type(node)], self.expression(node.elt), generators, span
+            )
         self.fail(node)
+
+    def generator(self, node: ast.comprehension) -> nodes.ComprehensionGenerator:
+        if node.is_async:
+            self.fail(node.target, "async comprehensions are not supported yet")
+        if not isinstance(node.target, ast.Name):
+            self.fail(node.target, "only a single name is supported as a comprehension target")
+        target = nodes.Name(node.target.id, self.span(node.target))
+        conditions = tuple(self.expression(condition) for condition in node.ifs)
+        # ``ast.comprehension`` carries no location; span it from the target to the last clause.
+        last = self.span(node.ifs[-1] if node.ifs else node.iter)
+        span = SourceSpan(
+            self._source.source_id,
+            target.span.start_line,
+            target.span.start_column,
+            last.end_line,
+            last.end_column,
+        )
+        return nodes.ComprehensionGenerator(target, self.expression(node.iter), conditions, span)
 
     def statement(self, node: ast.stmt) -> nodes.Statement:
         span = self.span(node)
@@ -130,9 +154,24 @@ class AstHIRBuilder:
                 nodes.ImportAlias(alias.name, alias.asname, self.span(alias)) for alias in node.names
             )
             return nodes.ImportFrom(node.module, aliases, node.level, span)
+        if isinstance(node, ast.Global):
+            return nodes.Global(tuple(node.names), span)
+        if isinstance(node, ast.Nonlocal):
+            return nodes.Nonlocal(tuple(node.names), span)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             return self.function(node)
+        if isinstance(node, ast.ClassDef):
+            return self.class_definition(node)
         self.fail(node)
+
+    def class_definition(self, node: ast.ClassDef) -> nodes.Class:
+        if node.decorator_list:
+            self.fail(node, "decorated classes are not supported yet")
+        if node.keywords:
+            self.fail(node, "class keyword arguments are not supported yet")
+        bases = tuple(self.expression(base) for base in node.bases)
+        body = tuple(self.statement(statement) for statement in node.body)
+        return nodes.Class(node.name, bases, body, self.span(node))
 
     def function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> nodes.Function:
         if node.decorator_list:

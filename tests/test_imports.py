@@ -2,21 +2,19 @@ from __future__ import annotations
 
 import pytest
 
-from coretrace_python.frontend.ast_adapter import build_module
-from coretrace_python.frontend.imports import (
+from coretrace_python.frontend import build_hir
+from coretrace_python.semantic.imports import (
     ImportBindings,
     ImportResolutionError,
     collect_imports,
 )
-from coretrace_python.frontend.parser import parse_source
-from coretrace_python.ir.symbol import SymbolId
+from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceManager
 
 
 def bindings_for(source: str) -> ImportBindings:
     source_file = SourceManager().add_source("imports.py", source)
-    tree = parse_source(source_file.text, str(source_file.source_id))
-    return collect_imports(build_module(source_file, tree))
+    return collect_imports(build_hir(source_file))
 
 
 def test_collects_plain_and_aliased_imports() -> None:
