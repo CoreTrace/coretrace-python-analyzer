@@ -32,12 +32,12 @@ LAYERS = {
     "cfg": 4,
     "ir": 5,
     "dataflow": 6,
-    "abstract": 6,
-    "interprocedural": 6,
-    "taint": 7,
-    "findings": 8,
-    "plugins": 9,
-    "reporters": 10,
+    "abstract": 7,
+    "interprocedural": 7,
+    "taint": 8,
+    "findings": 9,
+    "plugins": 10,
+    "reporters": 11,
 }
 
 # Top-level modules that wire the pipeline together and may import any layer.
