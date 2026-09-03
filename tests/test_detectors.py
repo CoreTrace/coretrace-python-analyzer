@@ -122,13 +122,16 @@ def test_taint_detector_reports_flows_of_its_kind_only() -> None:
         "source": "python.web.param",
         "source_label": "http",
         "sink": "python.os.system",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
     }
 
 
-def test_taint_detector_declares_only_the_taint_analysis() -> None:
+def test_taint_detector_declares_taint_and_refutation() -> None:
+    from coretrace_python.findings.refutation import RefutationAnalysis
     from coretrace_python.taint import TaintAnalysis
 
-    assert CommandFlows.requires == frozenset({TaintAnalysis})
+    assert CommandFlows.requires == frozenset({TaintAnalysis, RefutationAnalysis})
 
 
 def test_symbol_call_detector_reports_resolved_calls() -> None:
@@ -172,7 +175,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "xss",
     }
     for rule in ("sql-injection", "command-injection", "path-traversal", "ssrf", "xss"):
-        assert by_name[rule].requires == ("taint.flows",)
+        assert by_name[rule].requires == ("taint.flows", "findings.refutation")
         assert by_name[rule].provides == (f"vulnerability.{rule}",)
     assert by_name["python-stdlib-models"].provides == ("model.python-stdlib",)
     assert by_name["weak-crypto"].provides == ("vulnerability.weak-crypto",)

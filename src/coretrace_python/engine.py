@@ -14,6 +14,7 @@ from coretrace_python.abstract import ConstantPropagation
 from coretrace_python.analysis import AnalysisManager, AnyAnalysis
 from coretrace_python.cfg import CFGAnalysis, CFGError, DominanceAnalysis, PostDominanceAnalysis
 from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.frontend import build_hir
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import CallGraphAnalysis, SummaryAnalysis
@@ -47,6 +48,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     SummaryAnalysis,
     SecurityModelAnalysis,
     TaintAnalysis,
+    RefutationAnalysis,
 )
 
 
