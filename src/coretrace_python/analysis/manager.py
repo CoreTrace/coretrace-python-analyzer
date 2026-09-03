@@ -31,6 +31,10 @@ class CyclicDependencyError(AnalysisError):
     pass
 
 
+class MissingInputError(AnalysisError):
+    """An analysis that must be provided by the engine was requested before being provided."""
+
+
 _CacheKey = tuple[AnyAnalysis, SourceSpan | None]
 
 
@@ -124,6 +128,14 @@ class AnalysisManager:
             self._computing.pop()
         self._cache[key] = result
         return result
+
+    def provide(self, analysis: type[Analysis[R]], result: R) -> None:
+        """Supply the result of a module-level analysis the engine computes elsewhere."""
+
+        self._check_target(analysis, None)
+        if analysis not in self._registry:
+            raise UnregisteredAnalysisError(f"analysis {analysis.name!r} is not registered")
+        self._cache[self._key(analysis, None)] = result
 
     def is_cached(self, analysis: AnyAnalysis, function: nodes.Function | None = None) -> bool:
         self._check_target(analysis, function)
