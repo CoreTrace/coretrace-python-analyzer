@@ -158,7 +158,7 @@ def test_plugins_receive_the_module_and_its_functions() -> None:
 
 
 def test_plugins_consume_declared_analyses() -> None:
-    manager = manager_for("import os\n\ndef run(c):\n    os.system(c)\n\ndef idle():\n    pass\n")
+    manager = manager_for("import os\n\ndef run(c):\n    os.system(c)\n\ndef idle(os):\n    pass\n")
 
     findings = run_plugins(manager, [UsesSymbols()])
 

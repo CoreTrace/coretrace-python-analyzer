@@ -1,0 +1,9 @@
+name = "dangerous-eval"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["semantic.scopes", "semantic.symbols"]
+provides = ["vulnerability.dangerous-eval"]
+
+[entrypoint]
+module = "dangerous_eval"
+class = "DangerousEvalPlugin"
