@@ -78,7 +78,37 @@ class Call:
     span: SourceSpan
 
 
-Expression: TypeAlias = Name | Constant | BinaryOp | UnaryOp | Compare | Attribute | Subscript | Call
+@dataclass(frozen=True, slots=True)
+class ComprehensionGenerator:
+    """One ``for target in iterable if condition...`` clause of a comprehension."""
+
+    target: Name
+    iterable: Expression
+    conditions: tuple[Expression, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Comprehension:
+    """A list, set or generator comprehension; ``kind`` names which one."""
+
+    kind: str
+    element: Expression
+    generators: tuple[ComprehensionGenerator, ...]
+    span: SourceSpan
+
+
+Expression: TypeAlias = (
+    Name
+    | Constant
+    | BinaryOp
+    | UnaryOp
+    | Compare
+    | Attribute
+    | Subscript
+    | Call
+    | Comprehension
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +157,18 @@ class ImportFrom:
 
 
 @dataclass(frozen=True, slots=True)
+class Global:
+    names: tuple[str, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Nonlocal:
+    names: tuple[str, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class Function:
     name: str
     parameters: tuple[Parameter, ...]
@@ -135,7 +177,26 @@ class Function:
     span: SourceSpan
 
 
-Statement: TypeAlias = Assign | Return | ExpressionStatement | Pass | Import | ImportFrom | Function
+@dataclass(frozen=True, slots=True)
+class Class:
+    name: str
+    bases: tuple[Expression, ...]
+    body: tuple[Statement, ...]
+    span: SourceSpan
+
+
+Statement: TypeAlias = (
+    Assign
+    | Return
+    | ExpressionStatement
+    | Pass
+    | Import
+    | ImportFrom
+    | Global
+    | Nonlocal
+    | Function
+    | Class
+)
 
 
 @dataclass(frozen=True, slots=True)
