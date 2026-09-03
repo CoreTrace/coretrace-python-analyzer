@@ -1,65 +1,99 @@
-"""Collection of module-level import bindings."""
+"""Import analysis: per-scope bindings from import statements (architecture §4.2).
+
+No module is ever imported. Each binding maps the local name an import introduces to
+the canonical path of the object it refers to, resolved statically from the statement
+and, for relative imports, from the importing module's dotted name.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
+from types import MappingProxyType
 
 from coretrace_python.hir import nodes
+from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeId
 from coretrace_python.semantic.symbols import SymbolId
+
+_NO_BINDINGS: Mapping[str, SymbolId] = MappingProxyType({})
 
 
 class ImportResolutionError(Exception):
-    """A source-located import that cannot be represented safely."""
+    """A source-located import that cannot be resolved statically."""
 
 
-@dataclass(frozen=True)
-class ImportBindings(Mapping[str, SymbolId]):
-    """Map names visible in a module to their canonical identities."""
+class ImportAnalysis:
+    """Immutable import bindings and wildcard imports, keyed by scope."""
 
-    _bindings: dict[str, SymbolId]
+    def __init__(
+        self,
+        bindings: Mapping[ScopeId, Mapping[str, SymbolId]],
+        wildcards: Mapping[ScopeId, tuple[SymbolId, ...]],
+    ) -> None:
+        self._bindings = MappingProxyType(
+            {scope_id: MappingProxyType(dict(found)) for scope_id, found in bindings.items()}
+        )
+        self._wildcards = MappingProxyType(dict(wildcards))
 
-    def __getitem__(self, name: str) -> SymbolId:
-        return self._bindings[name]
+    def bindings(self, scope_id: ScopeId) -> Mapping[str, SymbolId]:
+        return self._bindings.get(scope_id, _NO_BINDINGS)
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._bindings)
-
-    def __len__(self) -> int:
-        return len(self._bindings)
-
-    def resolve(self, name: str) -> SymbolId | None:
-        return self._bindings.get(name)
-
-
-def _error(node: nodes.ImportFrom, message: str) -> ImportResolutionError:
-    return ImportResolutionError(f"{node.span.display()}: {message}")
+    def wildcards(self, scope_id: ScopeId) -> tuple[SymbolId, ...]:
+        return self._wildcards.get(scope_id, ())
 
 
-def collect_imports(module: nodes.Module) -> ImportBindings:
-    """Collect supported top-level imports without importing any modules."""
+class _Collector:
+    def __init__(self, module: nodes.Module, scopes: ScopeAnalysis) -> None:
+        self.package = module.name.rpartition(".")[0]
+        self.scopes = scopes
+        self.bindings: dict[ScopeId, dict[str, SymbolId]] = {}
+        self.wildcards: dict[ScopeId, list[SymbolId]] = {}
+        self.body(module.body, scopes.module_scope.id)
 
-    bindings: dict[str, SymbolId] = {}
-    for statement in module.body:
-        if isinstance(statement, nodes.Import):
-            for alias in statement.names:
-                if alias.as_name is None:
-                    local_name = alias.name.partition(".")[0]
-                    canonical_path = local_name
-                else:
-                    local_name = alias.as_name
-                    canonical_path = alias.name
-                bindings[local_name] = SymbolId.from_python_path(canonical_path)
-        elif isinstance(statement, nodes.ImportFrom):
-            if statement.level:
-                raise _error(statement, "relative imports are not supported yet")
-            if statement.module is None:
-                raise _error(statement, "import module is missing")
-            for alias in statement.names:
-                if alias.name == "*":
-                    raise _error(statement, "wildcard imports are not supported")
-                local_name = alias.as_name or alias.name
-                canonical_path = f"{statement.module}.{alias.name}"
-                bindings[local_name] = SymbolId.from_python_path(canonical_path)
-    return ImportBindings(bindings)
+    def body(self, statements: tuple[nodes.Statement, ...], scope_id: ScopeId) -> None:
+        for statement in statements:
+            if isinstance(statement, nodes.Import):
+                for alias in statement.names:
+                    # ``import a.b.c`` binds ``a``; ``import a.b.c as d`` binds the full path.
+                    top_level = alias.name.partition(".")[0]
+                    if alias.as_name is None:
+                        self.bind(scope_id, top_level, top_level)
+                    else:
+                        self.bind(scope_id, alias.as_name, alias.name)
+            elif isinstance(statement, nodes.ImportFrom):
+                base = self.base_module(statement)
+                for alias in statement.names:
+                    if alias.name == "*":
+                        self.wildcards.setdefault(scope_id, []).append(
+                            SymbolId.from_python_path(base)
+                        )
+                    else:
+                        self.bind(scope_id, alias.as_name or alias.name, f"{base}.{alias.name}")
+            elif isinstance(statement, (nodes.Function, nodes.Class)):
+                self.body(statement.body, self.scopes.scope_for(statement).id)
 
+    def base_module(self, statement: nodes.ImportFrom) -> str:
+        if not statement.level:
+            assert statement.module is not None, "absolute import without a module"
+            return statement.module
+        parts = self.package.split(".") if self.package else []
+        kept = len(parts) - (statement.level - 1)
+        if kept < 1:
+            raise ImportResolutionError(
+                f"{statement.span.display()}: relative import beyond top-level package"
+            )
+        base = ".".join(parts[:kept])
+        return f"{base}.{statement.module}" if statement.module else base
+
+    def bind(self, scope_id: ScopeId, local_name: str, canonical_path: str) -> None:
+        symbol = SymbolId.from_python_path(canonical_path)
+        self.bindings.setdefault(scope_id, {})[local_name] = symbol
+
+
+def analyze_imports(module: nodes.Module, scopes: ScopeAnalysis) -> ImportAnalysis:
+    """Collect every import binding of ``module`` without importing anything."""
+
+    collector = _Collector(module, scopes)
+    return ImportAnalysis(
+        collector.bindings,
+        {scope_id: tuple(found) for scope_id, found in collector.wildcards.items()},
+    )
