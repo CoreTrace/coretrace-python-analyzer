@@ -1,0 +1,9 @@
+name = "fastapi-models"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["model.http-sources", "model.fastapi-routes"]
+
+[entrypoint]
+module = "fastapi_models"
+class = "FastApiModels"

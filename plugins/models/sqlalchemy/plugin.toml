@@ -1,0 +1,9 @@
+name = "sqlalchemy-models"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["model.sql-sinks"]
+
+[entrypoint]
+module = "sqlalchemy_models"
+class = "SqlAlchemyModels"
