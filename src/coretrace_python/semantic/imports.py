@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import ClassVar
 
+from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
 from coretrace_python.hir import nodes
-from coretrace_python.semantic.scopes import ScopeId, ScopeTable
-from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.semantic.identity import SymbolId
+from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeId, ScopeTable
 
 _NO_BINDINGS: Mapping[str, SymbolId] = MappingProxyType({})
 
@@ -97,3 +99,12 @@ def analyze_imports(module: nodes.Module, scopes: ScopeTable) -> ImportTable:
         collector.bindings,
         {scope_id: tuple(found) for scope_id, found in collector.wildcards.items()},
     )
+
+
+class ImportAnalysis(Analysis[ImportTable]):
+    name: ClassVar[str] = "semantic.imports"
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({ScopeAnalysis})
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> ImportTable:
+        return analyze_imports(ctx.module, ctx.get(ScopeAnalysis))
