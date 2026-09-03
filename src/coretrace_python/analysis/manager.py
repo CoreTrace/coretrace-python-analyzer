@@ -54,6 +54,14 @@ class AnalysisManager:
             self._registry.add(analysis)
             self._check_acyclic(analysis)
 
+    def analysis(self, name: str) -> AnyAnalysis:
+        """Look a registered analysis up by its declared name."""
+
+        for analysis in self._registry:
+            if analysis.name == name:
+                return analysis
+        raise KeyError(name)
+
     def dependencies(self, analysis: AnyAnalysis) -> frozenset[AnyAnalysis]:
         """Transitive closure of ``analysis.requires``."""
 
