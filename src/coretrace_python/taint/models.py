@@ -57,7 +57,16 @@ class Sanitizer:
     kinds: TaintKind
 
 
-Model = Source | Sink | Sanitizer
+@dataclass(frozen=True)
+class EntryPoint:
+    """Functions decorated by ``symbol`` receive attacker-controlled parameters."""
+
+    symbol: SymbolId
+    label: str
+    kinds: TaintKind = TaintKind.ALL
+
+
+Model = Source | Sink | Sanitizer | EntryPoint
 
 
 @dataclass(frozen=True)
@@ -65,6 +74,7 @@ class ModelTable:
     sources: tuple[Source, ...]
     sinks: tuple[Sink, ...]
     sanitizers: tuple[Sanitizer, ...]
+    entry_points: tuple[EntryPoint, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -74,12 +84,28 @@ class ModelTable:
             Source: {m.symbol: m for m in self.sources},
             Sink: {m.symbol: m for m in self.sinks},
             Sanitizer: {m.symbol: m for m in self.sanitizers},
+            EntryPoint: {m.symbol: m for m in self.entry_points},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
+
+    def entry_point(self, symbol: SymbolId) -> EntryPoint | None:
+        found = self._by_symbol[EntryPoint].get(symbol)
+        return found if isinstance(found, EntryPoint) else None
 
     def source(self, symbol: SymbolId) -> Source | None:
         found = self._by_symbol[Source].get(symbol)
         return found if isinstance(found, Source) else None
+
+    def source_covering(self, symbol: SymbolId) -> Source | None:
+        """The source registered for ``symbol`` or for the closest symbol above it, so a
+        source on ``flask.request.args`` also covers ``flask.request.args.get``."""
+
+        parts = symbol.canonical_name.split(".")
+        for length in range(len(parts), 1, -1):
+            found = self.source(SymbolId(".".join(parts[:length])))
+            if found is not None:
+                return found
+        return None
 
     def sink(self, symbol: SymbolId) -> Sink | None:
         found = self._by_symbol[Sink].get(symbol)
@@ -111,6 +137,7 @@ class SecurityModelRegistry:
             sources=tuple(m for m in models if isinstance(m, Source)),
             sinks=tuple(m for m in models if isinstance(m, Sink)),
             sanitizers=tuple(m for m in models if isinstance(m, Sanitizer)),
+            entry_points=tuple(m for m in models if isinstance(m, EntryPoint)),
         )
 
 

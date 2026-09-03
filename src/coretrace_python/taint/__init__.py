@@ -8,6 +8,7 @@ from coretrace_python.taint.engine import (
     propagate_taint,
 )
 from coretrace_python.taint.models import (
+    EntryPoint,
     Model,
     ModelError,
     ModelTable,
@@ -20,6 +21,7 @@ from coretrace_python.taint.models import (
 )
 
 __all__ = [
+    "EntryPoint",
     "Model",
     "ModelError",
     "ModelTable",

@@ -35,6 +35,11 @@ class PythonStdlibModels(ModelPlugin):
         Sink(_sym("os.rmdir"), TaintKind.PATH),
         Sink(_sym("shutil.rmtree"), TaintKind.PATH),
         Sink(_sym("urllib.request.urlopen"), TaintKind.SSRF),
+        *(
+            Sink(_sym(f"sqlite3.connect{cursor}.{method}"), TaintKind.SQL)
+            for cursor in ("", ".cursor")
+            for method in ("execute", "executemany", "executescript")
+        ),
         Sanitizer(_sym("shlex.quote"), TaintKind.COMMAND),
         Sanitizer(_sym("html.escape"), TaintKind.HTML),
         Sanitizer(_sym("os.path.basename"), TaintKind.PATH),

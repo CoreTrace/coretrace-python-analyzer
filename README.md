@@ -32,10 +32,12 @@ coretrace-python-analyzer --check app.py --plugins plugins/ --format sarif > rep
 ```
 
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
-repeated. The repository ships a first set under `plugins/`: standard-library security
-models (`models/python_stdlib`), taint detectors for SQL injection, command injection,
-path traversal, SSRF and XSS (`security/`), and syntactic detectors for `eval`/`exec`
-and weak hashes (`syntax/`). Model plugins contribute sources, sinks and sanitizers;
+repeated. The repository ships a first set under `plugins/`: security models for the
+standard library, Flask, FastAPI and SQLAlchemy (`models/`), taint detectors for SQL
+injection, command injection, path traversal, SSRF and XSS (`security/`), and syntactic
+detectors for `eval`/`exec` and weak hashes (`syntax/`). Route handlers of Flask and
+FastAPI receive their parameters as HTTP input; `request.args` and its siblings are HTTP
+sources. Model plugins contribute sources, sinks and sanitizers;
 detectors consume the shared taint result, so adding a framework model makes every
 detector aware of it. Taint follows calls between functions of the same module through
 function summaries: a tainted argument passed to a helper that reaches a sink is reported
@@ -64,6 +66,9 @@ instructions and unassigned paths read an explicit `undefined` value.
 Unsupported syntax produces a source-located diagnostic and a non-zero exit status.
 
 Names are resolved to canonical symbols through lexical scopes, imports and builtins.
+Calling a symbol denotes that symbol, so `app = Flask(__name__)` makes `app.route` resolve
+to `python.flask.Flask.route` and `sqlite3.connect(p).cursor().execute` resolves to
+`python.sqlite3.connect.cursor.execute`; model plugins register those chains.
 Import aliases do not change an API's identity, so all of the following resolve to
 `python.os.system`:
 

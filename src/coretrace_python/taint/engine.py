@@ -40,9 +40,11 @@ from coretrace_python.ir.model import (
     Value,
 )
 from coretrace_python.ir.ssa import SSAAnalysis
-from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeTable
+from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolTable
 from coretrace_python.source import SourceSpan
 from coretrace_python.taint.models import (
+    EntryPoint,
     ModelTable,
     SecurityModelAnalysis,
     Sink,
@@ -107,22 +109,23 @@ class _TaintProblem(DataflowProblem[State]):
         models: ModelTable,
         graph: CallGraph,
         summaries: SummaryTable,
+        entry: EntryPoint | None = None,
     ) -> None:
         self.name = name
         self.function = function
         self.models = models
         self.graph = graph
         self.summaries = summaries
+        self.entry = entry
         self.blocks = {block.id: block for block in function.blocks}
-        self.symbols: dict[Value, SymbolId] = {
-            i.result: i.symbol_id
-            for block in function.blocks
-            for i in block.instructions
-            if isinstance(i, Symbol)
-        }
+        self.symbols = graph.symbols(name)
 
     def initial(self) -> State:
-        return MappingProxyType({})
+        if self.entry is None:
+            return MappingProxyType({})
+        source = Source(self.entry.symbol, self.entry.label, self.entry.kinds)
+        seed = Taint(self.entry.kinds, frozenset({source}))
+        return MappingProxyType({p: seed for p in self.function.parameters})
 
     def join(self, a: State, b: State) -> State:
         merged = dict(a)
@@ -171,12 +174,14 @@ class _TaintProblem(DataflowProblem[State]):
     # ------------------------------------------------------------------ transfer
 
     def instruction(self, instruction: Instruction, state: Mapping[Value, Taint]) -> Taint:
-        if isinstance(instruction, Symbol):
-            source = self.models.source(instruction.symbol_id)
-            return Taint(source.kinds, frozenset({source})) if source else Taint.none()
-        if isinstance(instruction, Compare):
-            return Taint.none()
         taint = Taint.none()
+        symbol = self.symbols.get(instruction.result) if instruction.result else None
+        if symbol is not None:
+            source = self.models.source_covering(symbol)
+            if source is not None:
+                taint = Taint(source.kinds, frozenset({source}))
+        if isinstance(instruction, Symbol | Compare):
+            return taint
         for operand in instruction.operands():
             taint = taint.join(state.get(operand, Taint.none()))
         return taint
@@ -199,7 +204,9 @@ class _TaintProblem(DataflowProblem[State]):
             sanitizer = self.models.sanitizer(target.symbol)
             if sanitizer is not None:
                 return everything.without(sanitizer.kinds)
-            source = self.models.source(target.symbol)
+            # A method on a tainted object returns tainted data (``request.args.get``).
+            everything = everything.join(state.get(call.callee, Taint.none()))
+            source = self.models.source_covering(target.symbol)
             if source is not None:
                 return everything.join(Taint(source.kinds, frozenset({source})))
             return everything
@@ -262,10 +269,32 @@ class _TaintProblem(DataflowProblem[State]):
             )
 
 
+def entry_point_of(
+    function: nodes.Function, models: ModelTable, scopes: ScopeTable, symbols: SymbolTable
+) -> EntryPoint | None:
+    """The entry-point model matching one of the function's decorators, if any."""
+
+    scope = scopes.scope_for(function)
+    enclosing = scope.parent if scope.parent is not None else scope.id
+    for decorator in function.decorators:
+        symbol = symbols.resolve_expression(enclosing, decorator)
+        if symbol is not None:
+            entry = models.entry_point(symbol)
+            if entry is not None:
+                return entry
+    return None
+
+
 def propagate_taint(
-    name: str, function: FunctionIR, cfg: CFG, models: ModelTable, graph: CallGraph, summaries: SummaryTable
+    name: str,
+    function: FunctionIR,
+    cfg: CFG,
+    models: ModelTable,
+    graph: CallGraph,
+    summaries: SummaryTable,
+    entry: EntryPoint | None = None,
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries)
+    problem = _TaintProblem(name, function, models, graph, summaries, entry)
     solution = solve(problem, cfg)
     taints: dict[Value, Taint] = {}
     flows: list[TaintFlow] = []
@@ -282,17 +311,27 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
 
     name: ClassVar[str] = "taint.flows"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {SSAAnalysis, CFGAnalysis, SecurityModelAnalysis, CallGraphAnalysis, SummaryAnalysis}
+        {
+            SSAAnalysis,
+            CFGAnalysis,
+            SecurityModelAnalysis,
+            CallGraphAnalysis,
+            SummaryAnalysis,
+            ScopeAnalysis,
+            SymbolAnalysis,
+        }
     )
 
     @classmethod
     def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> TaintFacts:
         graph = ctx.get(CallGraphAnalysis)
+        models = ctx.get(SecurityModelAnalysis)
         return propagate_taint(
             graph.name_of(function),
             ctx.get(SSAAnalysis, function),
             ctx.get(CFGAnalysis, function),
-            ctx.get(SecurityModelAnalysis),
+            models,
             graph,
             ctx.get(SummaryAnalysis),
+            entry_point_of(function, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)),
         )
