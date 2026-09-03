@@ -14,7 +14,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
+from typing import ClassVar
 
+from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.hir import nodes
 from coretrace_python.source import SourceSpan
 
@@ -86,7 +88,7 @@ class Resolution:
     scope: ScopeId | None
 
 
-class ScopeAnalysis:
+class ScopeTable:
     """Immutable scope tree with Python name resolution."""
 
     def __init__(self, scopes: tuple[Scope, ...], spans: Mapping[SourceSpan, ScopeId]) -> None:
@@ -311,11 +313,11 @@ class _Collector:
         return builder
 
 
-def analyze_scopes(module: nodes.Module) -> ScopeAnalysis:
+def analyze_scopes(module: nodes.Module) -> ScopeTable:
     """Build the scope tree of ``module`` and validate its declarations."""
 
     collector = _Collector(module)
-    analysis = ScopeAnalysis(
+    analysis = ScopeTable(
         tuple(builder.freeze() for builder in collector.builders), collector.spans
     )
     for builder in collector.builders:
@@ -326,3 +328,11 @@ def analyze_scopes(module: nodes.Module) -> ScopeAnalysis:
                     f"{declaration.span.display()}: no binding for nonlocal {name!r}"
                 )
     return analysis
+
+
+class ScopeAnalysis(Analysis[ScopeTable]):
+    name: ClassVar[str] = "semantic.scopes"
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> ScopeTable:
+        return analyze_scopes(ctx.module)

@@ -1,12 +1,12 @@
 """Acceptance tests for lexical scope analysis (``docs/architecture.md`` §4.1).
 
-This module describes the public behavior of the Phase 2 ``ScopeAnalysis``. It is
+This module describes the public behavior of the Phase 2 ``ScopeTable``. It is
 expected to remain red until ``coretrace_python.semantic.scopes`` exists.
 
 Contract under test:
 
-- ``analyze_scopes(module: hir.Module) -> ScopeAnalysis`` is a pure function over PyHIR.
-- ``ScopeAnalysis`` exposes ``module_scope``, ``scope(id)``, ``children(id)`` and
+- ``analyze_scopes(module: hir.Module) -> ScopeTable`` is a pure function over PyHIR.
+- ``ScopeTable`` exposes ``module_scope``, ``scope(id)``, ``children(id)`` and
   ``resolve(id, name)``.
 - ``Scope`` and ``Binding`` are immutable and keyed by a stable ``ScopeId``.
 - Resolution follows Python rules: an assignment anywhere in a function makes the name
@@ -28,9 +28,9 @@ try:
         BindingKind,
         ResolutionKind,
         Scope,
-        ScopeAnalysis,
         ScopeError,
         ScopeKind,
+        ScopeTable,
         analyze_scopes,
     )
 except ImportError as error:  # pragma: no cover - red until the semantic layer lands
@@ -45,12 +45,12 @@ def require_semantic_layer() -> None:
         pytest.fail(f"semantic scope analysis is not implemented yet: {MISSING}")
 
 
-def analyze(source_text: str) -> ScopeAnalysis:
+def analyze(source_text: str) -> ScopeTable:
     source = SourceManager().add_source("scopes.py", source_text)
     return analyze_scopes(build_hir(source))
 
 
-def child(analysis: ScopeAnalysis, parent: Scope, name: str) -> Scope:
+def child(analysis: ScopeTable, parent: Scope, name: str) -> Scope:
     matches = [scope for scope in analysis.children(parent.id) if scope.name == name]
     assert len(matches) == 1, f"expected one child scope named {name!r}, found {matches}"
     return matches[0]
