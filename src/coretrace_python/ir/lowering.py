@@ -278,16 +278,20 @@ class _FunctionLowerer:
             terminator = self.terminator(cfg_block)
             blocks.append(BasicBlock(cfg_block.id, tuple(self.instructions), terminator))
         return FunctionIR(
-            self.qualified_name(node), parameter_values, self.cfg.entry, tuple(blocks), node.span
+            qualified_name(self.scopes, node), parameter_values, self.cfg.entry, tuple(blocks), node.span
         )
 
-    def qualified_name(self, node: nodes.Function) -> str:
-        names = [node.name]
-        parent = self.scopes.scope(self.scope.parent) if self.scope.parent else None
-        while parent is not None and parent.kind is not ScopeKind.MODULE:
-            names.append(parent.name)
-            parent = self.scopes.scope(parent.parent) if parent.parent else None
-        return ".".join(reversed(names))
+
+def qualified_name(scopes: ScopeTable, function: nodes.Function) -> str:
+    """``Class.method`` for methods, the bare name for module-level functions."""
+
+    names = [function.name]
+    scope = scopes.scope_for(function)
+    parent = scopes.scope(scope.parent) if scope.parent else None
+    while parent is not None and parent.kind is not ScopeKind.MODULE:
+        names.append(parent.name)
+        parent = scopes.scope(parent.parent) if parent.parent else None
+    return ".".join(reversed(names))
 
 
 def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:

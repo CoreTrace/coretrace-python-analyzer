@@ -16,6 +16,7 @@ from coretrace_python.cfg import CFGAnalysis, CFGError, DominanceAnalysis, PostD
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.frontend import build_hir
 from coretrace_python.hir import nodes
+from coretrace_python.interprocedural import CallGraphAnalysis, SummaryAnalysis
 from coretrace_python.ir.defuse import DefUseAnalysis
 from coretrace_python.ir.lowering import (
     LoweringError,
@@ -42,6 +43,8 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     SSAAnalysis,
     DefUseAnalysis,
     ConstantPropagation,
+    CallGraphAnalysis,
+    SummaryAnalysis,
     SecurityModelAnalysis,
     TaintAnalysis,
 )
