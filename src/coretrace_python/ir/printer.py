@@ -15,12 +15,14 @@ from coretrace_python.ir.model import (
     Jump,
     LoadLocal,
     ModuleIR,
+    Phi,
     Raise,
     Return,
     StoreLocal,
     Symbol,
     Terminator,
     UnaryOp,
+    Undefined,
     Value,
 )
 
@@ -70,6 +72,11 @@ def _instruction(instruction: Instruction) -> str:
         return f'{_value(instruction.result)} = load_local "{instruction.name}"'
     if isinstance(instruction, StoreLocal):
         return f'store_local "{instruction.name}", {_value(instruction.value)}'
+    if isinstance(instruction, Phi):
+        incoming = ", ".join(f"[{_value(v)}, {b}]" for v, b in instruction.incoming)
+        return f'{_value(instruction.result)} = phi "{instruction.name}", {incoming}'
+    if isinstance(instruction, Undefined):
+        return f'{_value(instruction.result)} = undefined "{instruction.name}"'
     raise TypeError(f"unknown instruction: {instruction!r}")
 
 
@@ -86,8 +93,9 @@ def _terminator(terminator: Terminator) -> str:
     if isinstance(terminator, Raise):
         return "raise" if terminator.exception is None else f"raise {_value(terminator.exception)}"
     if isinstance(terminator, ForNext):
+        prefix = "" if terminator.result is None else f"{_value(terminator.result)} = "
         return (
-            f'for_next {_value(terminator.iterator)} -> "{terminator.target}", '
+            f'{prefix}for_next {_value(terminator.iterator)} -> "{terminator.target}", '
             f"{terminator.body}, {terminator.exit}"
         )
     raise TypeError(f"unknown terminator: {terminator!r}")
