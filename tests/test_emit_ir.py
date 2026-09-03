@@ -222,3 +222,94 @@ def test_emit_ir_keeps_unreachable_code(tmp_path, capsys) -> None:
     assert main(["--emit-ir", str(source)]) == 0
     output = capsys.readouterr().out
     assert "dead_1:\n    %1 = const 2\n" in output
+
+
+# --------------------------------------------------------------------------- SSA
+# ``--emit-ir --ssa`` prints the SSA form derived from the CFG (docs/architecture.md §7).
+# Expected to remain red until SSA construction lands.
+
+
+def test_emit_ssa_for_the_doc_example(tmp_path, capsys) -> None:
+    # The example of §7: ``x = a; if cond: x = b; use(x)``.
+    source = tmp_path / "phi.py"
+    source.write_text(
+        "def f(a, b, cond):\n"
+        "    x = a\n"
+        "    if cond:\n"
+        "        x = b\n"
+        "    use(x)\n",
+        encoding="utf-8",
+    )
+
+    assert main(["--emit-ir", "--ssa", str(source)]) == 0
+    assert capsys.readouterr().out == (
+        "func @f(%0, %1, %2) {\n"
+        "entry:\n"
+        "    branch %2, then_1, merge_1\n"
+        "then_1:\n"
+        "    jump merge_1\n"
+        "merge_1:\n"
+        '    %3 = phi "x", [%0, entry], [%1, then_1]\n'
+        "    %4 = global 'use'\n"
+        "    %5 = call %4(%3)\n"
+        "    return\n"
+        "}\n"
+    )
+
+
+def test_emit_ssa_for_a_for_loop(tmp_path, capsys) -> None:
+    source = tmp_path / "sum.py"
+    source.write_text(
+        "def f(items):\n"
+        "    total = 0\n"
+        "    for item in items:\n"
+        "        total = total + item\n"
+        "    return total\n",
+        encoding="utf-8",
+    )
+
+    assert main(["--emit-ir", "--ssa", str(source)]) == 0
+    assert capsys.readouterr().out == (
+        "func @f(%0) {\n"
+        "entry:\n"
+        "    %1 = const 0\n"
+        "    %2 = get_iter %0\n"
+        "    jump loop_1\n"
+        "loop_1:\n"
+        '    %3 = phi "total", [%1, entry], [%5, body_1]\n'
+        '    %4 = for_next %2 -> "item", body_1, exit_1\n'
+        "body_1:\n"
+        "    %5 = binary.add %3, %4\n"
+        "    jump loop_1\n"
+        "exit_1:\n"
+        "    return %3\n"
+        "}\n"
+    )
+
+
+def test_emit_ssa_shows_undefined_reads(tmp_path, capsys) -> None:
+    source = tmp_path / "maybe.py"
+    source.write_text("def f(c):\n    if c:\n        x = 1\n    return x\n", encoding="utf-8")
+
+    assert main(["--emit-ir", "--ssa", str(source)]) == 0
+    assert capsys.readouterr().out == (
+        "func @f(%0) {\n"
+        "entry:\n"
+        '    %1 = undefined "x"\n'
+        "    branch %0, then_1, merge_1\n"
+        "then_1:\n"
+        "    %2 = const 1\n"
+        "    jump merge_1\n"
+        "merge_1:\n"
+        '    %3 = phi "x", [%1, entry], [%2, then_1]\n'
+        "    return %3\n"
+        "}\n"
+    )
+
+
+def test_ssa_flag_requires_emit_ir(tmp_path, capsys) -> None:
+    source = tmp_path / "x.py"
+    source.write_text("", encoding="utf-8")
+
+    assert main(["--ssa", str(source)]) == 2
+    assert "no action selected" in capsys.readouterr().err
