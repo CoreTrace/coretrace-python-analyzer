@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from coretrace_python.ir.model import (
+    Assert,
     BinaryOp,
+    BoolOp,
     Branch,
+    BuildDict,
+    BuildList,
+    BuildTuple,
     Call,
     Compare,
     Constant,
@@ -18,12 +23,16 @@ from coretrace_python.ir.model import (
     Phi,
     Raise,
     Return,
+    SetAttr,
+    SetItem,
     StoreLocal,
     Symbol,
     Terminator,
     UnaryOp,
     Undefined,
     Value,
+    WithEnter,
+    WithExit,
 )
 
 
@@ -54,8 +63,34 @@ def _instruction(instruction: Instruction) -> str:
             f"{_value(instruction.left)}, {_value(instruction.right)}"
         )
     if isinstance(instruction, Call):
-        arguments = ", ".join(_value(argument) for argument in instruction.arguments)
-        return f"{_value(instruction.result)} = call {_value(instruction.callee)}({arguments})"
+        parts = [_value(argument) for argument in instruction.arguments]
+        for name, value in instruction.keywords:
+            parts.append(f"{name}={_value(value)}" if name is not None else f"**{_value(value)}")
+        return f"{_value(instruction.result)} = call {_value(instruction.callee)}({', '.join(parts)})"
+    if isinstance(instruction, BoolOp):
+        values = ", ".join(_value(v) for v in instruction.values)
+        return f"{_value(instruction.result)} = bool_op.{instruction.operator} {values}"
+    if isinstance(instruction, BuildList | BuildTuple):
+        kind = "build_list" if isinstance(instruction, BuildList) else "build_tuple"
+        elements = ", ".join(_value(v) for v in instruction.elements)
+        return f"{_value(instruction.result)} = {kind} {elements}".rstrip()
+    if isinstance(instruction, BuildDict):
+        items = ", ".join(f"{_value(k)}: {_value(v)}" for k, v in instruction.items)
+        return f"{_value(instruction.result)} = build_dict {items}".rstrip()
+    if isinstance(instruction, WithEnter):
+        return f"{_value(instruction.result)} = with_enter {_value(instruction.context)}"
+    if isinstance(instruction, WithExit):
+        return f"with_exit {_value(instruction.context)}"
+    if isinstance(instruction, SetAttr):
+        return f"set_attr {_value(instruction.object)}, {instruction.attribute!r}, {_value(instruction.value)}"
+    if isinstance(instruction, SetItem):
+        return (
+            f"set_item {_value(instruction.object)}, {_value(instruction.key)}, "
+            f"{_value(instruction.value)}"
+        )
+    if isinstance(instruction, Assert):
+        message = "" if instruction.message is None else f", {_value(instruction.message)}"
+        return f"assert {_value(instruction.test)}{message}"
     if isinstance(instruction, GetAttr):
         return (
             f"{_value(instruction.result)} = get_attr {_value(instruction.object)}, "

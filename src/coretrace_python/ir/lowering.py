@@ -17,12 +17,18 @@ from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.ir.model import (
+    Assert,
     BasicBlock,
     BinaryOp,
+    BoolOp,
     Branch,
+    BuildDict,
+    BuildList,
+    BuildTuple,
     Call,
     Compare,
     Constant,
+    EffectInstruction,
     ForNext,
     FunctionIR,
     GetAttr,
@@ -35,12 +41,16 @@ from coretrace_python.ir.model import (
     ModuleIR,
     Raise,
     Return,
+    SetAttr,
+    SetItem,
     StoreLocal,
     Symbol,
     Terminator,
     UnaryOp,
     Value,
     ValueInstruction,
+    WithEnter,
+    WithExit,
 )
 from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.scopes import (
@@ -48,9 +58,11 @@ from coretrace_python.semantic.scopes import (
     ResolutionKind,
     Scope,
     ScopeAnalysis,
+    ScopeKind,
     ScopeTable,
 )
 from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
+from coretrace_python.source import SourceSpan
 
 
 class LoweringError(Exception):
@@ -67,6 +79,7 @@ class _FunctionLowerer:
     parameters: dict[str, Value] = field(default_factory=dict)
     instructions: list[Instruction] = field(default_factory=list)
     iterators: dict[BlockId, Value] = field(default_factory=dict)
+    contexts: dict[SourceSpan, Value] = field(default_factory=dict)
 
     def fail(
         self,
@@ -85,7 +98,7 @@ class _FunctionLowerer:
         self.instructions.append(instruction)
         return instruction.result
 
-    def emit_effect(self, instruction: StoreLocal) -> None:
+    def emit_effect(self, instruction: EffectInstruction) -> None:
         self.instructions.append(instruction)
 
     def resolve(self, name: str) -> Resolution:
@@ -128,11 +141,22 @@ class _FunctionLowerer:
             right = self.expression(node.right)
             return self.emit(Compare(self.new_value(), node.span, node.operator, left, right))
         if isinstance(node, nodes.Call):
-            if node.keywords:
-                self.fail(node, "keyword arguments are not supported yet")
             callee = self.expression(node.callee)
             arguments = tuple(self.expression(argument) for argument in node.arguments)
-            return self.emit(Call(self.new_value(), node.span, callee, arguments))
+            keywords = tuple((k.name, self.expression(k.value)) for k in node.keywords)
+            return self.emit(Call(self.new_value(), node.span, callee, arguments, keywords))
+        if isinstance(node, nodes.BoolOp):
+            values = tuple(self.expression(value) for value in node.values)
+            return self.emit(BoolOp(self.new_value(), node.span, node.operator, values))
+        if isinstance(node, nodes.List):
+            elements = tuple(self.expression(element) for element in node.elements)
+            return self.emit(BuildList(self.new_value(), node.span, elements))
+        if isinstance(node, nodes.Tuple):
+            elements = tuple(self.expression(element) for element in node.elements)
+            return self.emit(BuildTuple(self.new_value(), node.span, elements))
+        if isinstance(node, nodes.Dict):
+            items = tuple((self.expression(k), self.expression(v)) for k, v in node.items)
+            return self.emit(BuildDict(self.new_value(), node.span, items))
         if isinstance(node, nodes.Attribute):
             object_value = self.expression(node.value)
             return self.emit(GetAttr(self.new_value(), node.span, object_value, node.name))
@@ -144,14 +168,49 @@ class _FunctionLowerer:
 
     # ------------------------------------------------------------------ statements
 
-    def store(self, target: nodes.Name, value: Value) -> None:
-        if self.resolve(target.identifier).kind is not ResolutionKind.LOCAL:
-            self.fail(target, "assignment to a global or nonlocal name is not supported yet")
-        self.emit_effect(StoreLocal(None, target.span, target.identifier, value))
+    def store(self, target: nodes.Target, value: Value) -> None:
+        if isinstance(target, nodes.Name):
+            if self.resolve(target.identifier).kind is not ResolutionKind.LOCAL:
+                self.fail(target, "assignment to a global or nonlocal name is not supported yet")
+            self.emit_effect(StoreLocal(None, target.span, target.identifier, value))
+        elif isinstance(target, nodes.Attribute):
+            object_value = self.expression(target.value)
+            self.emit_effect(SetAttr(None, target.span, object_value, target.name, value))
+        elif isinstance(target, nodes.Subscript):
+            object_value = self.expression(target.value)
+            key = self.expression(target.key)
+            self.emit_effect(SetItem(None, target.span, object_value, key, value))
+        else:
+            for index, element in enumerate(target.elements):
+                position = self.emit(Constant(self.new_value(), element.span, index))
+                item = self.emit(GetItem(self.new_value(), element.span, value, position))
+                assert isinstance(element, nodes.Name | nodes.Attribute | nodes.Subscript | nodes.Tuple)
+                self.store(element, item)
 
     def statement(self, node: nodes.Statement) -> None:
         if isinstance(node, nodes.Assign):
             self.store(node.target, self.expression(node.value))
+            return
+        if isinstance(node, nodes.AugAssign):
+            current = self.expression(node.target)
+            operand = self.expression(node.value)
+            result = self.emit(BinaryOp(self.new_value(), node.span, node.operator, current, operand))
+            self.store(node.target, result)
+            return
+        if isinstance(node, nodes.Assert):
+            test = self.expression(node.test)
+            message = self.expression(node.message) if node.message is not None else None
+            self.emit_effect(Assert(None, node.span, test, message))
+            return
+        if isinstance(node, nodes.EnterWith):
+            context = self.expression(node.item.context)
+            self.contexts[node.item.span] = context
+            entered = self.emit(WithEnter(self.new_value(), node.item.span, context))
+            if node.item.target is not None:
+                self.store(node.item.target, entered)
+            return
+        if isinstance(node, nodes.ExitWith):
+            self.emit_effect(WithExit(None, node.item.span, self.contexts[node.item.span]))
             return
         if isinstance(node, nodes.ExpressionStatement):
             self.expression(node.expression)
@@ -218,7 +277,17 @@ class _FunctionLowerer:
                 self.statement(statement)
             terminator = self.terminator(cfg_block)
             blocks.append(BasicBlock(cfg_block.id, tuple(self.instructions), terminator))
-        return FunctionIR(node.name, parameter_values, self.cfg.entry, tuple(blocks), node.span)
+        return FunctionIR(
+            self.qualified_name(node), parameter_values, self.cfg.entry, tuple(blocks), node.span
+        )
+
+    def qualified_name(self, node: nodes.Function) -> str:
+        names = [node.name]
+        parent = self.scopes.scope(self.scope.parent) if self.scope.parent else None
+        while parent is not None and parent.kind is not ScopeKind.MODULE:
+            names.append(parent.name)
+            parent = self.scopes.scope(parent.parent) if parent.parent else None
+        return ".".join(reversed(names))
 
 
 def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:
@@ -226,9 +295,16 @@ def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:
 
     assigned: set[str] = set()
 
+    def names(target: nodes.Target | None) -> None:
+        if isinstance(target, nodes.Name):
+            assigned.add(target.identifier)
+        elif isinstance(target, nodes.Tuple):
+            for element in target.elements:
+                names(element)  # type: ignore[arg-type]
+
     def walk(node: Node) -> None:
-        if isinstance(node, nodes.Assign | nodes.For):
-            assigned.add(node.target.identifier)
+        if isinstance(node, nodes.Assign | nodes.AugAssign | nodes.For | nodes.WithItem):
+            names(node.target)
         if isinstance(node, nodes.Function | nodes.Class | nodes.Comprehension):
             return
         for child in children(node):
@@ -259,27 +335,15 @@ class PyIRAnalysis(FunctionAnalysis[FunctionIR]):
         return lowerer.function(function)
 
 
-def top_level_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
-    """The functions a module lowers to, rejecting module syntax outside the subset."""
+def analyzable_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
+    """Top-level functions and the methods of top-level classes, in source order."""
 
     functions: list[nodes.Function] = []
     for statement in module.body:
         if isinstance(statement, nodes.Function):
             functions.append(statement)
-        elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
-            continue
-        elif (
-            isinstance(statement, nodes.ExpressionStatement)
-            and isinstance(statement.expression, nodes.Constant)
-            and isinstance(statement.expression.value, str)
-        ):
-            # Permit module docstrings.
-            continue
-        else:
-            raise LoweringError(
-                f"{statement.span.display()}: "
-                f"unsupported module syntax: {type(statement).__name__}"
-            )
+        elif isinstance(statement, nodes.Class):
+            functions.extend(s for s in statement.body if isinstance(s, nodes.Function))
     return tuple(functions)
 
 
@@ -292,7 +356,7 @@ class ModuleIRAnalysis(Analysis[ModuleIR]):
     @classmethod
     def compute(cls, ctx: AnalysisContext) -> ModuleIR:
         return ModuleIR(
-            tuple(ctx.get(PyIRAnalysis, function) for function in top_level_functions(ctx.module))
+            tuple(ctx.get(PyIRAnalysis, function) for function in analyzable_functions(ctx.module))
         )
 
 
@@ -309,5 +373,5 @@ def lower_module(module: nodes.Module, *, ssa: bool = False) -> ModuleIR:
 
     manager.register(DominanceAnalysis, SSAAnalysis)
     return ModuleIR(
-        tuple(manager.get(SSAAnalysis, function) for function in top_level_functions(module))
+        tuple(manager.get(SSAAnalysis, function) for function in analyzable_functions(module))
     )

@@ -102,8 +102,22 @@ class _Builder:
             return self.conditional(node, block, continuation)
         if isinstance(node, nodes.While | nodes.For):
             return self.loop_statement(node, block, continuation)
+        if isinstance(node, nodes.With):
+            return self.with_statement(node, block)
         block.statements.append(node)
         return block
+
+    def with_statement(self, node: nodes.With, block: _Open) -> _Open | None:
+        """Lay the body out inline; an early exit skips the ``ExitWith`` statements."""
+
+        for item in node.items:
+            block.statements.append(nodes.EnterWith(item, node.span))
+        current = self.sequence(node.body, block, None, node.span)
+        if current is None:
+            return None
+        for item in reversed(node.items):
+            current.statements.append(nodes.ExitWith(item, node.span))
+        return current
 
     def conditional(
         self, node: nodes.If, block: _Open, continuation: BlockId | None

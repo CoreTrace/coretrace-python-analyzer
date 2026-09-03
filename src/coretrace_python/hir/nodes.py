@@ -7,11 +7,7 @@ from typing import TypeAlias
 
 from coretrace_python.source import SourceSpan
 
-
-@dataclass(frozen=True, slots=True)
-class Parameter:
-    name: str
-    span: SourceSpan
+HIR_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +38,15 @@ class UnaryOp:
 
 
 @dataclass(frozen=True, slots=True)
+class BoolOp:
+    """``and`` / ``or`` over two or more values; chained comparisons lower to ``and``."""
+
+    operator: str
+    values: tuple[Expression, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class Compare:
     operator: str
     left: Expression
@@ -65,6 +70,8 @@ class Subscript:
 
 @dataclass(frozen=True, slots=True)
 class Keyword:
+    """A keyword argument; ``name`` is ``None`` for ``**mapping`` unpacking."""
+
     name: str | None
     value: Expression
     span: SourceSpan
@@ -75,6 +82,24 @@ class Call:
     callee: Expression
     arguments: tuple[Expression, ...]
     keywords: tuple[Keyword, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Tuple:
+    elements: tuple[Expression, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class List:
+    elements: tuple[Expression, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Dict:
+    items: tuple[tuple[Expression, Expression], ...]
     span: SourceSpan
 
 
@@ -103,17 +128,41 @@ Expression: TypeAlias = (
     | Constant
     | BinaryOp
     | UnaryOp
+    | BoolOp
     | Compare
     | Attribute
     | Subscript
     | Call
+    | Tuple
+    | List
+    | Dict
     | Comprehension
 )
+
+Target: TypeAlias = Name | Attribute | Subscript | Tuple
+
+
+@dataclass(frozen=True, slots=True)
+class Parameter:
+    """``kind`` is ``positional``, ``keyword``, ``var_positional`` or ``var_keyword``."""
+
+    name: str
+    span: SourceSpan
+    default: Expression | None = None
+    kind: str = "positional"
 
 
 @dataclass(frozen=True, slots=True)
 class Assign:
-    target: Name
+    target: Target
+    value: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class AugAssign:
+    target: Name | Attribute | Subscript
+    operator: str
     value: Expression
     span: SourceSpan
 
@@ -136,23 +185,9 @@ class Pass:
 
 
 @dataclass(frozen=True, slots=True)
-class ImportAlias:
-    name: str
-    as_name: str | None
-    span: SourceSpan
-
-
-@dataclass(frozen=True, slots=True)
-class Import:
-    names: tuple[ImportAlias, ...]
-    span: SourceSpan
-
-
-@dataclass(frozen=True, slots=True)
-class ImportFrom:
-    module: str | None
-    names: tuple[ImportAlias, ...]
-    level: int
+class Assert:
+    test: Expression
+    message: Expression | None
     span: SourceSpan
 
 
@@ -197,6 +232,58 @@ class Raise:
 
 
 @dataclass(frozen=True, slots=True)
+class WithItem:
+    context: Expression
+    target: Name | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class With:
+    items: tuple[WithItem, ...]
+    body: tuple[Statement, ...]
+    is_async: bool
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class EnterWith:
+    """Synthetic statement the CFG builder emits when a ``with`` body starts."""
+
+    item: WithItem
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class ExitWith:
+    """Synthetic statement the CFG builder emits when a ``with`` body falls through."""
+
+    item: WithItem
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class ImportAlias:
+    name: str
+    as_name: str | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Import:
+    names: tuple[ImportAlias, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class ImportFrom:
+    module: str | None
+    names: tuple[ImportAlias, ...]
+    level: int
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class Global:
     names: tuple[str, ...]
     span: SourceSpan
@@ -215,6 +302,7 @@ class Function:
     body: tuple[Statement, ...]
     is_async: bool
     span: SourceSpan
+    decorators: tuple[Expression, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,19 +311,25 @@ class Class:
     bases: tuple[Expression, ...]
     body: tuple[Statement, ...]
     span: SourceSpan
+    decorators: tuple[Expression, ...] = ()
 
 
 Statement: TypeAlias = (
     Assign
+    | AugAssign
     | Return
     | ExpressionStatement
     | Pass
+    | Assert
     | If
     | While
     | For
     | Break
     | Continue
     | Raise
+    | With
+    | EnterWith
+    | ExitWith
     | Import
     | ImportFrom
     | Global
@@ -250,4 +344,3 @@ class Module:
     name: str
     body: tuple[Statement, ...]
     span: SourceSpan
-
