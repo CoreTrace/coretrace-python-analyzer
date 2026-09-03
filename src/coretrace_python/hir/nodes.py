@@ -157,6 +157,46 @@ class ImportFrom:
 
 
 @dataclass(frozen=True, slots=True)
+class If:
+    condition: Expression
+    body: tuple[Statement, ...]
+    orelse: tuple[Statement, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class While:
+    condition: Expression
+    body: tuple[Statement, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class For:
+    target: Name
+    iterable: Expression
+    body: tuple[Statement, ...]
+    is_async: bool
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Break:
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Continue:
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Raise:
+    exception: Expression | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class Global:
     names: tuple[str, ...]
     span: SourceSpan
@@ -190,6 +230,12 @@ Statement: TypeAlias = (
     | Return
     | ExpressionStatement
     | Pass
+    | If
+    | While
+    | For
+    | Break
+    | Continue
+    | Raise
     | Import
     | ImportFrom
     | Global

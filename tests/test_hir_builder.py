@@ -144,3 +144,79 @@ def test_represents_list_comprehensions() -> None:
 def test_module_carries_its_dotted_name() -> None:
     source = SourceManager().add_source("db.py", "value = 1\n", module_name="app.services.db")
     assert build_hir(source).name == "app.services.db"
+
+
+# --------------------------------------------------------------------------- control flow
+# PyHIR nodes required by the Phase 3 CFG builder (docs/architecture.md §3.2, §5).
+# Expected to remain red until ``If``, ``While``, ``For``, ``Break``, ``Continue`` and
+# ``Raise`` exist.
+
+
+def test_represents_if_with_else_and_elif() -> None:
+    module = build("def f(a):\n    if a == 1:\n        return 1\n    elif a == 2:\n        return 2\n    else:\n        return 0\n")
+    function = module.body[0]
+    assert isinstance(function, nodes.Function)
+    outer = function.body[0]
+    assert isinstance(outer, nodes.If)
+    assert isinstance(outer.condition, nodes.Compare)
+    assert isinstance(outer.body[0], nodes.Return)
+    inner = outer.orelse[0]
+    assert isinstance(inner, nodes.If)
+    assert isinstance(inner.orelse[0], nodes.Return)
+    assert outer.span.start_line == 2
+    assert inner.span.start_line == 4
+
+
+def test_represents_while_loops_with_break_and_continue() -> None:
+    module = build("def f(n):\n    while n:\n        if n:\n            break\n        continue\n")
+    function = module.body[0]
+    assert isinstance(function, nodes.Function)
+    loop = function.body[0]
+    assert isinstance(loop, nodes.While)
+    assert isinstance(loop.condition, nodes.Name)
+    conditional = loop.body[0]
+    assert isinstance(conditional, nodes.If)
+    assert isinstance(conditional.body[0], nodes.Break)
+    assert isinstance(loop.body[1], nodes.Continue)
+    assert loop.body[1].span.start_line == 5
+
+
+def test_represents_for_loops_over_a_name_target() -> None:
+    module = build("def f(items):\n    for item in items:\n        pass\n")
+    function = module.body[0]
+    assert isinstance(function, nodes.Function)
+    loop = function.body[0]
+    assert isinstance(loop, nodes.For)
+    assert isinstance(loop.target, nodes.Name)
+    assert loop.target.identifier == "item"
+    assert isinstance(loop.iterable, nodes.Name)
+    assert isinstance(loop.body[0], nodes.Pass)
+    assert loop.is_async is False
+
+
+def test_represents_raise_with_and_without_exception() -> None:
+    module = build("def f(a):\n    raise ValueError(a)\n\ndef g():\n    raise\n")
+    first, second = module.body
+    assert isinstance(first, nodes.Function) and isinstance(second, nodes.Function)
+    raising = first.body[0]
+    assert isinstance(raising, nodes.Raise)
+    assert isinstance(raising.exception, nodes.Call)
+    bare = second.body[0]
+    assert isinstance(bare, nodes.Raise)
+    assert bare.exception is None
+
+
+@pytest.mark.parametrize(
+    "source_text, message",
+    [
+        ("while x:\n    pass\nelse:\n    pass\n", "else"),
+        ("for a, b in items:\n    pass\n", "single name"),
+        ("raise Error from cause\n", "from"),
+    ],
+    ids=["loop-else", "tuple-target", "raise-from"],
+)
+def test_unsupported_control_flow_forms_are_reported(source_text: str, message: str) -> None:
+    from coretrace_python.frontend import HIRBuildError
+
+    with pytest.raises(HIRBuildError, match=message):
+        build(source_text)

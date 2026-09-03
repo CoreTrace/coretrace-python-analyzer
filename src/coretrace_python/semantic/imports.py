@@ -72,6 +72,11 @@ class _Collector:
                         self.bind(scope_id, alias.as_name or alias.name, f"{base}.{alias.name}")
             elif isinstance(statement, (nodes.Function, nodes.Class)):
                 self.body(statement.body, self.scopes.scope_for(statement).id)
+            elif isinstance(statement, nodes.If):
+                self.body(statement.body, scope_id)
+                self.body(statement.orelse, scope_id)
+            elif isinstance(statement, (nodes.While, nodes.For)):
+                self.body(statement.body, scope_id)
 
     def base_module(self, statement: nodes.ImportFrom) -> str:
         if not statement.level:
