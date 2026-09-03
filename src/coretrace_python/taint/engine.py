@@ -22,8 +22,11 @@ from coretrace_python.interprocedural import (
     CallGraph,
     CallGraphAnalysis,
     ExternalSymbol,
+    FunctionSummary,
     KnownFunction,
+    ProjectSummaries,
     SummaryAnalysis,
+    SummaryIndex,
     SummaryTable,
 )
 from coretrace_python.ir.model import (
@@ -110,6 +113,7 @@ class _TaintProblem(DataflowProblem[State]):
         graph: CallGraph,
         summaries: SummaryTable,
         entry: EntryPoint | None = None,
+        project: SummaryIndex | None = None,
     ) -> None:
         self.name = name
         self.function = function
@@ -117,6 +121,7 @@ class _TaintProblem(DataflowProblem[State]):
         self.graph = graph
         self.summaries = summaries
         self.entry = entry
+        self.project = project or SummaryIndex()
         self.blocks = {block.id: block for block in function.blocks}
         self.symbols = graph.symbols(name)
 
@@ -197,6 +202,10 @@ class _TaintProblem(DataflowProblem[State]):
 
         target = self.graph.target_at(self.name, call.location)
         if isinstance(target, ExternalSymbol):
+            project = self.project.summary(target.symbol)
+            if project is not None:
+                through = target.symbol.canonical_name.removeprefix("python.")
+                return self.known(project, through, arguments, keywords, everything, call, flows)
             sink = self.models.sink(target.symbol)
             if sink is not None:
                 for argument in call.argument_values():
@@ -212,35 +221,47 @@ class _TaintProblem(DataflowProblem[State]):
             return everything
         if isinstance(target, KnownFunction):
             summary = self.summaries.summary(target.name)
-            if summary.unsupported:
-                return everything
-
-            def mapped(deps: frozenset[int]) -> tuple[Taint, Value | None]:
-                taint, witness = Taint.none(), None
-                for index in sorted(deps):
-                    part = arguments[index] if index < len(arguments) else keywords
-                    if part and witness is None:
-                        witness = (
-                            call.arguments[index] if index < len(arguments) else call.keywords[0][1]
-                        )
-                    taint = taint.join(part)
-                return taint, witness
-
-            for reached in summary.external_calls:
-                sink = self.models.sink(reached.symbol)
-                if sink is None:
-                    continue
-                for deps in (*reached.argument_dependencies, reached.keyword_dependencies):
-                    taint, witness = mapped(deps)
-                    if witness is not None:
-                        self.report(flows, sink, taint, witness, call, target.name, reached.location)
-            result = mapped(summary.return_dependencies)[0]
-            for symbol in sorted(summary.return_externals, key=str):
-                returned_source = self.models.source(symbol)
-                if returned_source is not None:
-                    result = result.join(Taint(returned_source.kinds, frozenset({returned_source})))
-            return result
+            return self.known(summary, target.name, arguments, keywords, everything, call, flows)
         return everything.join(state.get(call.callee, Taint.none()))
+
+    def known(
+        self,
+        summary: FunctionSummary,
+        through: str,
+        arguments: tuple[Taint, ...],
+        keywords: Taint,
+        everything: Taint,
+        call: Call,
+        flows: list[TaintFlow],
+    ) -> Taint:
+        """Flows and result taint of a call to a function whose summary is known."""
+
+        if summary.unsupported:
+            return everything
+
+        def mapped(deps: frozenset[int]) -> tuple[Taint, Value | None]:
+            taint, witness = Taint.none(), None
+            for index in sorted(deps):
+                part = arguments[index] if index < len(arguments) else keywords
+                if part and witness is None:
+                    witness = call.arguments[index] if index < len(arguments) else call.keywords[0][1]
+                taint = taint.join(part)
+            return taint, witness
+
+        for reached in summary.external_calls:
+            sink = self.models.sink(reached.symbol)
+            if sink is None:
+                continue
+            for deps in (*reached.argument_dependencies, reached.keyword_dependencies):
+                taint, witness = mapped(deps)
+                if witness is not None:
+                    self.report(flows, sink, taint, witness, call, through, reached.location)
+        result = mapped(summary.return_dependencies)[0]
+        for symbol in sorted(summary.return_externals, key=str):
+            returned_source = self.models.source(symbol)
+            if returned_source is not None:
+                result = result.join(Taint(returned_source.kinds, frozenset({returned_source})))
+        return result
 
     @staticmethod
     def report(
@@ -293,8 +314,9 @@ def propagate_taint(
     graph: CallGraph,
     summaries: SummaryTable,
     entry: EntryPoint | None = None,
+    project: SummaryIndex | None = None,
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, entry)
+    problem = _TaintProblem(name, function, models, graph, summaries, entry, project)
     solution = solve(problem, cfg)
     taints: dict[Value, Taint] = {}
     flows: list[TaintFlow] = []
@@ -319,6 +341,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             SummaryAnalysis,
             ScopeAnalysis,
             SymbolAnalysis,
+            ProjectSummaries,
         }
     )
 
@@ -334,4 +357,5 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             graph,
             ctx.get(SummaryAnalysis),
             entry_point_of(function, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)),
+            ctx.get(ProjectSummaries),
         )

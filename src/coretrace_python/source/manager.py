@@ -8,14 +8,16 @@ from coretrace_python.source.model import SourceFile, SourceId
 
 
 def module_name_for(path: Path) -> str:
-    """Dotted module name of ``path``, walking up through ``__init__.py`` packages."""
+    """Dotted module name of ``path``, walking up through ``__init__.py`` packages.
 
-    parts = [path.stem]
+    A package's ``__init__.py`` is named after the package itself."""
+
+    parts = [] if path.name == "__init__.py" else [path.stem]
     directory = path.parent
     while (directory / "__init__.py").is_file():
         parts.append(directory.name)
         directory = directory.parent
-    return ".".join(reversed(parts))
+    return ".".join(reversed(parts)) or path.stem
 
 
 class SourceManager:
@@ -54,6 +56,7 @@ class SourceManager:
             text=text,
             module_name=module_name_for(resolved_path),
             path=resolved_path,
+            is_package=resolved_path.name == "__init__.py",
         )
         self._sources[source_id] = source
         return source

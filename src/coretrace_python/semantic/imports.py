@@ -42,10 +42,20 @@ class ImportTable:
     def wildcards(self, scope_id: ScopeId) -> tuple[SymbolId, ...]:
         return self._wildcards.get(scope_id, ())
 
+    def all_symbols(self) -> tuple[SymbolId, ...]:
+        """Every symbol any import in the module refers to, in every scope."""
+
+        found: list[SymbolId] = []
+        for bindings in self._bindings.values():
+            found.extend(bindings.values())
+        for wildcards in self._wildcards.values():
+            found.extend(wildcards)
+        return tuple(found)
+
 
 class _Collector:
     def __init__(self, module: nodes.Module, scopes: ScopeTable) -> None:
-        self.package = module.name.rpartition(".")[0]
+        self.package = module.name if module.is_package else module.name.rpartition(".")[0]
         self.scopes = scopes
         self.bindings: dict[ScopeId, dict[str, SymbolId]] = {}
         self.wildcards: dict[ScopeId, list[SymbolId]] = {}

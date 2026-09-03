@@ -28,8 +28,13 @@ python -m ruff check .
 
 ```bash
 coretrace-python-analyzer --check app.py --plugins plugins/
-coretrace-python-analyzer --check app.py --plugins plugins/ --format sarif > report.sarif
+coretrace-python-analyzer --check src/ --plugins plugins/ --format sarif > report.sarif
 ```
+
+Given a directory, every Python file below it is analysed as one project: modules are
+named after their packages, and taint follows calls into functions defined in other files
+through a project-wide index of function summaries iterated to a fixpoint. Hidden and
+tooling directories (`.venv`, `node_modules`, `__pycache__`, `build`, `dist`) are skipped.
 
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
 repeated. The repository ships a first set under `plugins/`: security models for the

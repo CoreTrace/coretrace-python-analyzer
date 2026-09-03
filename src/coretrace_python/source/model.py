@@ -53,4 +53,5 @@ class SourceFile:
     text: str
     module_name: str
     path: Path | None = None
+    is_package: bool = False
 
