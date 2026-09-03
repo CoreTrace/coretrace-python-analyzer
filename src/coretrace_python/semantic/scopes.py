@@ -264,7 +264,21 @@ class _Collector:
                 self.expression(base, scope)
             scope.bind(node.name, BindingKind.CLASS, node.span)
             self.body(node.body, self.open(scope, ScopeKind.CLASS, node.name, node.span))
-        elif not isinstance(node, nodes.Pass):
+        elif isinstance(node, nodes.If):
+            self.expression(node.condition, scope)
+            self.body(node.body, scope)
+            self.body(node.orelse, scope)
+        elif isinstance(node, nodes.While):
+            self.expression(node.condition, scope)
+            self.body(node.body, scope)
+        elif isinstance(node, nodes.For):
+            self.expression(node.iterable, scope)
+            scope.bind(node.target.identifier, BindingKind.LOCAL, node.target.span)
+            self.body(node.body, scope)
+        elif isinstance(node, nodes.Raise):
+            if node.exception is not None:
+                self.expression(node.exception, scope)
+        elif not isinstance(node, nodes.Pass | nodes.Break | nodes.Continue):
             raise TypeError(f"unknown statement: {node!r}")
 
     def expression(self, node: nodes.Expression, scope: _ScopeBuilder) -> None:
