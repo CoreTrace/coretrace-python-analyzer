@@ -1,0 +1,9 @@
+name = "sql-injection"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows"]
+provides = ["vulnerability.sql-injection"]
+
+[entrypoint]
+module = "sql_injection"
+class = "SqlInjectionPlugin"

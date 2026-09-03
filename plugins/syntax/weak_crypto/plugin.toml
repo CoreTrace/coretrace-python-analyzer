@@ -1,0 +1,9 @@
+name = "weak-crypto"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["ir.ssa"]
+provides = ["vulnerability.weak-crypto"]
+
+[entrypoint]
+module = "weak_crypto"
+class = "WeakCryptoPlugin"

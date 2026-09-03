@@ -67,9 +67,13 @@ DANGEROUS_EVAL = REPO / "plugins" / "syntax" / "dangerous_eval"
 
 
 def manager_for(source_text: str) -> AnalysisManager:
+    from coretrace_python.cfg import CFGAnalysis, DominanceAnalysis
+    from coretrace_python.ir.lowering import PyIRAnalysis
+    from coretrace_python.ir.ssa import SSAAnalysis
+
     module = build_hir(SourceManager().add_source("plugged.py", source_text))
     manager = AnalysisManager(module)
-    manager.register(*SEMANTIC_ANALYSES)
+    manager.register(*SEMANTIC_ANALYSES, CFGAnalysis, DominanceAnalysis, PyIRAnalysis, SSAAnalysis)
     return manager
 
 
@@ -224,7 +228,7 @@ def test_reference_manifest_is_parsed() -> None:
     assert manifest.name == "dangerous-eval"
     assert manifest.version == "1.0.0"
     assert manifest.plugin_api.contains(PLUGIN_API_VERSION)
-    assert manifest.requires == ("semantic.scopes", "semantic.symbols")
+    assert manifest.requires == ("ir.ssa",)
     assert manifest.provides == ("vulnerability.dangerous-eval",)
     assert manifest.entrypoint.module == "dangerous_eval"
     assert manifest.entrypoint.class_name == "DangerousEvalPlugin"
@@ -297,7 +301,9 @@ def test_loads_the_reference_plugin() -> None:
     assert loaded.manifest.name == "dangerous-eval"
     assert isinstance(loaded.plugin, Plugin)
     assert loaded.plugin.name == "dangerous-eval"
-    assert loaded.plugin.requires == frozenset({ScopeAnalysis, SymbolAnalysis})
+    from coretrace_python.ir.ssa import SSAAnalysis
+
+    assert loaded.plugin.requires == frozenset({SSAAnalysis})
 
 
 def test_incompatible_plugin_api_is_rejected(tmp_path: Path) -> None:

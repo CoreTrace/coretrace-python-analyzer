@@ -1,0 +1,9 @@
+name = "xss"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows"]
+provides = ["vulnerability.xss"]
+
+[entrypoint]
+module = "xss"
+class = "XssPlugin"

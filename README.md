@@ -32,7 +32,12 @@ coretrace-python-analyzer --check app.py --plugins plugins/ --format sarif > rep
 ```
 
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
-repeated. `--format` is `text` (default), `json` or `sarif`. Exit status is 0 when nothing
+repeated. The repository ships a first set under `plugins/`: standard-library security
+models (`models/python_stdlib`), taint detectors for SQL injection, command injection,
+path traversal, SSRF and XSS (`security/`), and syntactic detectors for `eval`/`exec`
+and weak hashes (`syntax/`). Model plugins contribute sources, sinks and sanitizers;
+detectors consume the shared taint result, so adding a framework model makes every
+detector aware of it. `--format` is `text` (default), `json` or `sarif`. Exit status is 0 when nothing
 was found, 1 when findings were reported, and 2 on a usage or analysis error.
 
 ## Emit PyIR

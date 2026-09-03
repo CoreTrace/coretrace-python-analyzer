@@ -1,6 +1,13 @@
 """Plugin API, manifests, loader and registry (architecture §13, §14, §32–§34)."""
 
-from coretrace_python.plugins.api import PLUGIN_API_VERSION, Plugin, PluginContext, run_plugins
+from coretrace_python.plugins.api import (
+    PLUGIN_API_VERSION,
+    ModelPlugin,
+    Plugin,
+    PluginContext,
+    run_plugins,
+)
+from coretrace_python.plugins.detectors import SymbolCallDetector, TaintDetector
 from coretrace_python.plugins.loader import (
     IncompatiblePluginError,
     LoadedPlugin,
@@ -22,10 +29,13 @@ __all__ = [
     "IncompatiblePluginError",
     "LoadedPlugin",
     "ManifestError",
+    "ModelPlugin",
     "Plugin",
     "PluginContext",
     "PluginManifest",
     "PluginRegistry",
+    "SymbolCallDetector",
+    "TaintDetector",
     "VersionRange",
     "discover_plugins",
     "load_manifest",

@@ -1,7 +1,7 @@
 name = "dangerous-eval"
 version = "1.0.0"
 plugin_api = ">=1,<2"
-requires = ["semantic.scopes", "semantic.symbols"]
+requires = ["ir.ssa"]
 provides = ["vulnerability.dangerous-eval"]
 
 [entrypoint]

@@ -22,19 +22,29 @@ from coretrace_python.analysis import (
 from coretrace_python.analysis.provider import R
 from coretrace_python.findings import Finding
 from coretrace_python.hir import nodes
+from coretrace_python.taint import Model
 
 PLUGIN_API_VERSION = 1
 
 
 class Plugin(ABC):
-    """A detector: declares ``requires`` and turns analysis results into findings."""
+    """Declares the analyses it needs and the security models it contributes,
+    then turns analysis results into findings."""
 
     name: ClassVar[str]
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset()
+    models: ClassVar[tuple[Model, ...]] = ()
 
     @abstractmethod
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         raise NotImplementedError
+
+
+class ModelPlugin(Plugin):
+    """A plugin that only contributes security models (architecture §15 providers)."""
+
+    def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
+        return ()
 
 
 class PluginContext:

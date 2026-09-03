@@ -42,24 +42,39 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
 )
 
 
-def build_manager(module: nodes.Module, models: SecurityModelRegistry | None = None) -> AnalysisManager:
+def build_manager(
+    module: nodes.Module, models: SecurityModelRegistry | None = None
+) -> AnalysisManager:
     """A manager with every engine analysis registered and the security models provided."""
 
-    manager = AnalysisManager(module)
-    manager.register(*ALL_ANALYSES)
+    manager = _register_all(module)
     manager.provide(SecurityModelAnalysis, (models or SecurityModelRegistry()).freeze())
     return manager
 
 
 def check(source: SourceFile, plugin_roots: Sequence[Path]) -> tuple[Finding, ...]:
-    """Run every plugin found under ``plugin_roots`` against ``source``."""
+    """Run every plugin found under ``plugin_roots`` against ``source``.
 
-    manager = build_manager(build_hir(source))
+    Plugins are loaded first so the models they contribute are all registered before the
+    table is provided; framework models and detectors compose without knowing each other.
+    """
+
+    manager = _register_all(build_hir(source))
     registry = PluginRegistry()
     for root in plugin_roots:
         for loaded in discover_plugins(root, manager):
             registry.add(loaded)
+    models = SecurityModelRegistry()
+    for loaded in registry:
+        models.register(*loaded.plugin.models)
+    manager.provide(SecurityModelAnalysis, models.freeze())
     return run_plugins(manager, [loaded.plugin for loaded in registry])
+
+
+def _register_all(module: nodes.Module) -> AnalysisManager:
+    manager = AnalysisManager(module)
+    manager.register(*ALL_ANALYSES)
+    return manager
 
 
 def report(findings: Sequence[Finding]) -> Report:

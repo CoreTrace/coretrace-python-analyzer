@@ -1,0 +1,9 @@
+name = "ssrf"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows"]
+provides = ["vulnerability.ssrf"]
+
+[entrypoint]
+module = "ssrf"
+class = "SsrfPlugin"
