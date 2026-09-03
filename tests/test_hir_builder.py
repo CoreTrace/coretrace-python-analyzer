@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import ast
+import pytest
 
-from coretrace_python.frontend.ast_adapter import build_module
+from coretrace_python.frontend import ParseError, build_hir
 from coretrace_python.hir import nodes
 from coretrace_python.source import SourceManager
 
 
 def build(source_text: str) -> nodes.Module:
     source = SourceManager().add_source("example.py", source_text)
-    return build_module(source, ast.parse(source.text, filename=str(source.source_id)))
+    return build_hir(source)
 
 
 def test_builds_parser_independent_function_and_expression_nodes() -> None:
@@ -63,31 +63,20 @@ def test_represents_calls_attributes_and_subscripts() -> None:
 # ``Nonlocal``, ``Class`` and ``Comprehension`` nodes exist.
 
 
-def build_via_frontend(source_text: str) -> nodes.Module:
-    from coretrace_python.frontend import build_hir
-
-    source = SourceManager().add_source("example.py", source_text)
-    return build_hir(source)
-
-
 def test_frontend_exposes_one_entry_point_returning_pyhir() -> None:
-    module = build_via_frontend("def answer():\n    return 42\n")
+    module = build("def answer():\n    return 42\n")
 
     assert isinstance(module, nodes.Module)
     assert isinstance(module.body[0], nodes.Function)
 
 
 def test_frontend_entry_point_reports_syntax_errors_with_location() -> None:
-    import pytest
-
-    from coretrace_python.frontend import ParseError
-
     with pytest.raises(ParseError, match=r"example.py:1:12"):
-        build_via_frontend("def broken(:\n")
+        build("def broken(:\n")
 
 
 def test_represents_global_and_nonlocal_declarations() -> None:
-    module = build_via_frontend(
+    module = build(
         "def outer():\n"
         "    global total\n"
         "    def inner():\n"
@@ -108,7 +97,7 @@ def test_represents_global_and_nonlocal_declarations() -> None:
 
 
 def test_represents_nested_functions() -> None:
-    module = build_via_frontend("def outer():\n    def inner():\n        pass\n    return inner\n")
+    module = build("def outer():\n    def inner():\n        pass\n    return inner\n")
     outer = module.body[0]
     assert isinstance(outer, nodes.Function)
     inner = outer.body[0]
@@ -117,7 +106,7 @@ def test_represents_nested_functions() -> None:
 
 
 def test_represents_classes() -> None:
-    module = build_via_frontend(
+    module = build(
         "class Config(Base):\n"
         "    debug = True\n"
         "    def read(self):\n"
@@ -134,7 +123,7 @@ def test_represents_classes() -> None:
 
 
 def test_represents_list_comprehensions() -> None:
-    module = build_via_frontend("def squares(items):\n    return [y * y for y in items if y > 0]\n")
+    module = build("def squares(items):\n    return [y * y for y in items if y > 0]\n")
     function = module.body[0]
     assert isinstance(function, nodes.Function)
     returned = function.body[0]
