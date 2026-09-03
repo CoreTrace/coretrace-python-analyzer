@@ -9,10 +9,18 @@ from coretrace_python.interprocedural.callgraph import (
     Target,
     UnknownTarget,
 )
+from coretrace_python.interprocedural.modulegraph import (
+    ModuleGraph,
+    build_module_graph,
+    discover_sources,
+    project_symbol,
+)
 from coretrace_python.interprocedural.summaries import (
     ExternalCall,
     FunctionSummary,
+    ProjectSummaries,
     SummaryAnalysis,
+    SummaryIndex,
     SummaryTable,
 )
 
@@ -24,8 +32,14 @@ __all__ = [
     "ExternalSymbol",
     "FunctionSummary",
     "KnownFunction",
+    "ModuleGraph",
+    "ProjectSummaries",
     "SummaryAnalysis",
+    "SummaryIndex",
     "SummaryTable",
     "Target",
     "UnknownTarget",
+    "build_module_graph",
+    "discover_sources",
+    "project_symbol",
 ]

@@ -313,7 +313,7 @@ class AstHIRBuilder:
             )
         else:
             span = SourceSpan(self._source.source_id, 1, 1, 1, 1)
-        return nodes.Module(self._source.module_name, body, span)
+        return nodes.Module(self._source.module_name, body, span, self._source.is_package)
 
 
 def build_module(source: SourceFile, tree: ast.Module) -> nodes.Module:

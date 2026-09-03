@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog=engine.TOOL_NAME,
         description="Analyze Python source with CoreTrace.",
     )
-    parser.add_argument("path", type=Path, help="Python source file to analyze")
+    parser.add_argument("path", type=Path, help="Python source file, or a directory for --check")
     parser.add_argument(
         "--emit-ir",
         action="store_true",
@@ -82,12 +82,19 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --format only applies to --check", file=sys.stderr)
         return EXIT_ERROR
 
+    if args.path.is_dir() and args.emit_ir:
+        print(f"error: {args.path} is a directory; --emit-ir needs a file", file=sys.stderr)
+        return EXIT_ERROR
+
     try:
-        source = SourceManager().load_file(args.path)
         if args.emit_ir:
+            source = SourceManager().load_file(args.path)
             print(format_module(lower_module(build_hir(source), ssa=args.ssa)))
         if args.check:
-            findings = engine.check(source, args.plugins)
+            if args.path.is_dir():
+                findings = engine.analyze_project(args.path, args.plugins).findings
+            else:
+                findings = engine.check(SourceManager().load_file(args.path), args.plugins)
             print(render(args.format or "text", engine.report(findings)), end="")
             return EXIT_FINDINGS if findings else EXIT_CLEAN
     except _ANALYSIS_ERRORS as error:

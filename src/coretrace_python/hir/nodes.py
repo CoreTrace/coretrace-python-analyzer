@@ -344,3 +344,4 @@ class Module:
     name: str
     body: tuple[Statement, ...]
     span: SourceSpan
+    is_package: bool = False

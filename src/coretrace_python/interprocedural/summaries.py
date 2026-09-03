@@ -83,6 +83,36 @@ class FunctionSummary:
     return_externals: frozenset[SymbolId] = frozenset()
 
 
+class SummaryIndex:
+    """Summaries of every project function, keyed by project symbol (§21)."""
+
+    def __init__(self, summaries: Mapping[SymbolId, FunctionSummary] | None = None) -> None:
+        self.summaries: Mapping[SymbolId, FunctionSummary] = MappingProxyType(
+            dict(summaries or {})
+        )
+        self.symbols = tuple(sorted(self.summaries, key=str))
+
+    def summary(self, symbol: SymbolId) -> FunctionSummary | None:
+        return self.summaries.get(symbol)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, SummaryIndex) and dict(self.summaries) == dict(other.summaries)
+
+    def __hash__(self) -> int:
+        return hash(self.symbols)
+
+
+class ProjectSummaries(Analysis[SummaryIndex]):
+    """The project-wide summary index. The engine provides it for multi-file analysis;
+    on its own a module sees an empty index, which is the single-file behaviour."""
+
+    name: ClassVar[str] = "interprocedural.project"
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> SummaryIndex:
+        return SummaryIndex()
+
+
 class SummaryTable:
     def __init__(self, summaries: Mapping[str, FunctionSummary]) -> None:
         self._summaries = MappingProxyType(dict(summaries))
@@ -100,12 +130,18 @@ class _DependenceProblem(DataflowProblem[State]):
     direction: ClassVar[Direction] = Direction.FORWARD
 
     def __init__(
-        self, name: str, function: FunctionIR, graph: CallGraph, table: Mapping[str, FunctionSummary]
+        self,
+        name: str,
+        function: FunctionIR,
+        graph: CallGraph,
+        table: Mapping[str, FunctionSummary],
+        project: Mapping[SymbolId, FunctionSummary] | None = None,
     ) -> None:
         self.name = name
         self.function = function
         self.graph = graph
         self.table = table
+        self.project = project or {}
         self.blocks = {block.id: block for block in function.blocks}
         self.external: dict[_CallKey, ExternalCall] = {}
         self.returns: Dep = EMPTY
@@ -180,6 +216,9 @@ class _DependenceProblem(DataflowProblem[State]):
         target = self.graph.target_at(self.name, call.location)
 
         if isinstance(target, ExternalSymbol):
+            project = self.project.get(target.symbol)
+            if project is not None:
+                return self.known(project, arguments, keywords, everything, call)
             self.record(
                 target.symbol,
                 tuple(a.parameters for a in arguments),
@@ -189,27 +228,38 @@ class _DependenceProblem(DataflowProblem[State]):
             )
             return everything | Dep(externals=frozenset({target.symbol}))
         if isinstance(target, KnownFunction):
-            callee = self.table[target.name]
-            if callee.unsupported:
-                return everything
-
-            def mapped(indices: Dependencies) -> Dep:
-                result = EMPTY
-                for index in indices:
-                    result |= arguments[index] if index < len(arguments) else keywords
-                return result
-
-            for reached in callee.external_calls:
-                self.record(
-                    reached.symbol,
-                    tuple(mapped(d).parameters for d in reached.argument_dependencies),
-                    mapped(reached.keyword_dependencies).parameters,
-                    reached.location,
-                    call.location,
-                )
-            return mapped(callee.return_dependencies) | Dep(externals=callee.return_externals)
+            return self.known(self.table[target.name], arguments, keywords, everything, call)
         assert isinstance(target, UnknownTarget)
         return everything | state.get(call.callee, EMPTY)
+
+    def known(
+        self,
+        callee: FunctionSummary,
+        arguments: tuple[Dep, ...],
+        keywords: Dep,
+        everything: Dep,
+        call: Call,
+    ) -> Dep:
+        """Dependencies of a call to a function whose summary is known."""
+
+        if callee.unsupported:
+            return everything
+
+        def mapped(indices: Dependencies) -> Dep:
+            result = EMPTY
+            for index in indices:
+                result |= arguments[index] if index < len(arguments) else keywords
+            return result
+
+        for reached in callee.external_calls:
+            self.record(
+                reached.symbol,
+                tuple(mapped(d).parameters for d in reached.argument_dependencies),
+                mapped(reached.keyword_dependencies).parameters,
+                reached.location,
+                call.location,
+            )
+        return mapped(callee.return_dependencies) | Dep(externals=callee.return_externals)
 
     def record(
         self,
@@ -230,9 +280,14 @@ class _DependenceProblem(DataflowProblem[State]):
 
 
 def summarize(
-    name: str, function: FunctionIR, cfg: CFG, graph: CallGraph, table: Mapping[str, FunctionSummary]
+    name: str,
+    function: FunctionIR,
+    cfg: CFG,
+    graph: CallGraph,
+    table: Mapping[str, FunctionSummary],
+    project: Mapping[SymbolId, FunctionSummary] | None = None,
 ) -> FunctionSummary:
-    problem = _DependenceProblem(name, function, graph, table)
+    problem = _DependenceProblem(name, function, graph, table, project)
     solution = solve(problem, cfg)
     problem.external = {}
     problem.returns = EMPTY
@@ -251,12 +306,13 @@ def summarize(
 class SummaryAnalysis(Analysis[SummaryTable]):
     name: ClassVar[str] = "interprocedural.summaries"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {CallGraphAnalysis, SSAAnalysis, CFGAnalysis}
+        {CallGraphAnalysis, SSAAnalysis, CFGAnalysis, ProjectSummaries}
     )
 
     @classmethod
     def compute(cls, ctx: AnalysisContext) -> SummaryTable:
         graph = ctx.get(CallGraphAnalysis)
+        project = ctx.get(ProjectSummaries).summaries
         table: dict[str, FunctionSummary] = {}
         supported: dict[str, tuple[FunctionIR, CFG]] = {}
         for name, function in graph.definitions.items():
@@ -270,7 +326,7 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         while changed:
             changed = False
             for name, (ssa, cfg) in supported.items():
-                updated = summarize(name, ssa, cfg, graph, table)
+                updated = summarize(name, ssa, cfg, graph, table, project)
                 if updated != table[name]:
                     table[name] = updated
                     changed = True
