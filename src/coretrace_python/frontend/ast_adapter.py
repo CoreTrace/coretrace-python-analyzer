@@ -154,6 +154,36 @@ class AstHIRBuilder:
                 nodes.ImportAlias(alias.name, alias.asname, self.span(alias)) for alias in node.names
             )
             return nodes.ImportFrom(node.module, aliases, node.level, span)
+        if isinstance(node, ast.If):
+            return nodes.If(
+                self.expression(node.test), self.block(node.body), self.block(node.orelse), span
+            )
+        if isinstance(node, ast.While):
+            if node.orelse:
+                self.fail(node.orelse[0], "loop else clauses are not supported yet")
+            return nodes.While(self.expression(node.test), self.block(node.body), span)
+        if isinstance(node, (ast.For, ast.AsyncFor)):
+            if node.orelse:
+                self.fail(node.orelse[0], "loop else clauses are not supported yet")
+            if not isinstance(node.target, ast.Name):
+                self.fail(node.target, "only a single name is supported as a loop target")
+            target = nodes.Name(node.target.id, self.span(node.target))
+            return nodes.For(
+                target,
+                self.expression(node.iter),
+                self.block(node.body),
+                isinstance(node, ast.AsyncFor),
+                span,
+            )
+        if isinstance(node, ast.Break):
+            return nodes.Break(span)
+        if isinstance(node, ast.Continue):
+            return nodes.Continue(span)
+        if isinstance(node, ast.Raise):
+            if node.cause is not None:
+                self.fail(node.cause, "raise from is not supported yet")
+            exception = self.expression(node.exc) if node.exc is not None else None
+            return nodes.Raise(exception, span)
         if isinstance(node, ast.Global):
             return nodes.Global(tuple(node.names), span)
         if isinstance(node, ast.Nonlocal):
@@ -163,6 +193,9 @@ class AstHIRBuilder:
         if isinstance(node, ast.ClassDef):
             return self.class_definition(node)
         self.fail(node)
+
+    def block(self, statements: list[ast.stmt]) -> tuple[nodes.Statement, ...]:
+        return tuple(self.statement(statement) for statement in statements)
 
     def class_definition(self, node: ast.ClassDef) -> nodes.Class:
         if node.decorator_list:
