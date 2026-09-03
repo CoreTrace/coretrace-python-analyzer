@@ -78,56 +78,58 @@ def functions(module: nodes.Module) -> dict[str, nodes.Function]:
 # --------------------------------------------------------------------------- stub analyses
 
 
-class Counting(Analysis[int]):
-    """Module-level analysis that counts how often it is computed."""
+if MISSING is None:  # the stubs subclass the base classes under test
 
-    name: ClassVar[str] = "test.counting"
-    computed: ClassVar[int] = 0
+    class Counting(Analysis[int]):
+        """Module-level analysis that counts how often it is computed."""
 
-    @classmethod
-    def compute(cls, ctx: AnalysisContext) -> int:
-        cls.computed += 1
-        return len(ctx.module.body)
+        name: ClassVar[str] = "test.counting"
+        computed: ClassVar[int] = 0
 
-
-class Doubled(Analysis[int]):
-    name: ClassVar[str] = "test.doubled"
-    requires: ClassVar[frozenset[type[Analysis[object]]]] = frozenset({Counting})
-    computed: ClassVar[int] = 0
-
-    @classmethod
-    def compute(cls, ctx: AnalysisContext) -> int:
-        cls.computed += 1
-        return 2 * ctx.get(Counting)
+        @classmethod
+        def compute(cls, ctx: AnalysisContext) -> int:
+            cls.computed += 1
+            return len(ctx.module.body)
 
 
-class Undeclared(Analysis[int]):
-    """Requests an analysis it did not declare."""
+    class Doubled(Analysis[int]):
+        name: ClassVar[str] = "test.doubled"
+        requires: ClassVar[frozenset[type[Analysis[object]]]] = frozenset({Counting})
+        computed: ClassVar[int] = 0
 
-    name: ClassVar[str] = "test.undeclared"
-
-    @classmethod
-    def compute(cls, ctx: AnalysisContext) -> int:
-        return ctx.get(Counting)
-
-
-class ParameterCount(FunctionAnalysis[int]):
-    name: ClassVar[str] = "test.parameter-count"
-    computed: ClassVar[list[str]] = []
-
-    @classmethod
-    def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> int:
-        cls.computed.append(function.name)
-        return len(function.parameters)
+        @classmethod
+        def compute(cls, ctx: AnalysisContext) -> int:
+            cls.computed += 1
+            return 2 * ctx.get(Counting)
 
 
-class Rewrite(TransformationPass):
-    name: ClassVar[str] = "test.rewrite"
-    preserves: ClassVar[frozenset[type[Analysis[object]]]] = frozenset({Counting})
+    class Undeclared(Analysis[int]):
+        """Requests an analysis it did not declare."""
 
-    @classmethod
-    def run(cls, ctx: AnalysisContext) -> None:
-        pass
+        name: ClassVar[str] = "test.undeclared"
+
+        @classmethod
+        def compute(cls, ctx: AnalysisContext) -> int:
+            return ctx.get(Counting)
+
+
+    class ParameterCount(FunctionAnalysis[int]):
+        name: ClassVar[str] = "test.parameter-count"
+        computed: ClassVar[list[str]] = []
+
+        @classmethod
+        def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> int:
+            cls.computed.append(function.name)
+            return len(function.parameters)
+
+
+    class Rewrite(TransformationPass):
+        name: ClassVar[str] = "test.rewrite"
+        preserves: ClassVar[frozenset[type[Analysis[object]]]] = frozenset({Counting})
+
+        @classmethod
+        def run(cls, ctx: AnalysisContext) -> None:
+            pass
 
 
 @pytest.fixture(autouse=True)
