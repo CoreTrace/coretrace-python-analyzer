@@ -60,6 +60,7 @@ class CallGraph:
     ) -> None:
         self.definitions: Mapping[str, nodes.Function] = MappingProxyType(dict(definitions))
         self.functions = tuple(definitions)
+        self._names = {function.span: name for name, function in definitions.items()}
         self.unsupported = unsupported
         self._sites = MappingProxyType(dict(sites))
         self._targets = {
@@ -71,6 +72,9 @@ class CallGraph:
                 if isinstance(site.target, KnownFunction):
                     callers[site.target.name].add(site.caller)
         self._callers = {name: frozenset(found) for name, found in callers.items()}
+
+    def name_of(self, function: nodes.Function) -> str:
+        return self._names[function.span]
 
     def sites(self, caller: str) -> tuple[CallSite, ...]:
         return self._sites.get(caller, ())

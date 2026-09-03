@@ -196,6 +196,18 @@ def test_external_calls_propagate_transitively_through_known_callees() -> None:
     assert reached.call_site is not None and reached.call_site.start_line == 7
 
 
+def test_return_values_record_the_external_results_they_depend_on() -> None:
+    table = summaries(
+        "def read():\n    return input()\n\n"
+        "def wrap():\n    return 'x' + read()\n\n"
+        "def const():\n    return 1\n"
+    )
+
+    assert table.summary("read").return_externals == frozenset({SymbolId("python.builtins.input")})
+    assert table.summary("wrap").return_externals == frozenset({SymbolId("python.builtins.input")})
+    assert table.summary("const").return_externals == frozenset()
+
+
 def test_keyword_arguments_are_conservatively_merged() -> None:
     table = summaries("import subprocess\n\ndef run(cmd, flag):\n    subprocess.run(cmd, check=flag)\n")
     (call,) = table.summary("run").external_calls

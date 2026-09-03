@@ -18,14 +18,13 @@ import dataclasses
 
 import pytest
 
+from coretrace_python import engine
 from coretrace_python.analysis import AnalysisManager
-from coretrace_python.cfg import BlockId, CFGAnalysis, DominanceAnalysis
+from coretrace_python.cfg import BlockId, CFGAnalysis
 from coretrace_python.frontend import build_hir
 from coretrace_python.hir import nodes
-from coretrace_python.ir.lowering import PyIRAnalysis
 from coretrace_python.ir.model import Call, FunctionIR
 from coretrace_python.ir.ssa import SSAAnalysis
-from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceManager
 
@@ -80,15 +79,7 @@ def default_models() -> ModelTable:
 def analyze(source_text: str, models: ModelTable | None = None) -> tuple[FunctionIR, TaintFacts]:
     module = build_hir(SourceManager().add_source("taint.py", source_text))
     manager = AnalysisManager(module)
-    manager.register(
-        *SEMANTIC_ANALYSES,
-        CFGAnalysis,
-        DominanceAnalysis,
-        PyIRAnalysis,
-        SSAAnalysis,
-        SecurityModelAnalysis,
-        TaintAnalysis,
-    )
+    manager.register(*engine.ALL_ANALYSES)
     manager.provide(SecurityModelAnalysis, default_models() if models is None else models)
     function = next(s for s in module.body if isinstance(s, nodes.Function))
     return manager.get(SSAAnalysis, function), manager.get(TaintAnalysis, function)
