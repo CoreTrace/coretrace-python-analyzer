@@ -4,17 +4,40 @@ import argparse
 import sys
 from pathlib import Path
 
+from coretrace_python import engine
+from coretrace_python.analysis import AnalysisError
+from coretrace_python.cfg import CFGError
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
 from coretrace_python.ir.printer import format_module
+from coretrace_python.plugins import IncompatiblePluginError, ManifestError
+from coretrace_python.reporters import FORMATS, render
 from coretrace_python.semantic.imports import ImportResolutionError
 from coretrace_python.semantic.scopes import ScopeError
 from coretrace_python.source import SourceManager
 
+EXIT_CLEAN = 0
+EXIT_FINDINGS = 1
+EXIT_ERROR = 2
+
+_ANALYSIS_ERRORS = (
+    OSError,
+    UnicodeError,
+    ParseError,
+    HIRBuildError,
+    ImportResolutionError,
+    ScopeError,
+    CFGError,
+    LoweringError,
+    AnalysisError,
+    ManifestError,
+    IncompatiblePluginError,
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="coretrace-python-analyzer",
+        prog=engine.TOOL_NAME,
         description="Analyze Python source with CoreTrace.",
     )
     parser.add_argument("path", type=Path, help="Python source file to analyze")
@@ -28,32 +51,49 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="with --emit-ir, print the static single assignment form",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="run the loaded plugins and report their findings",
+    )
+    parser.add_argument(
+        "--plugins",
+        action="append",
+        type=Path,
+        default=[],
+        metavar="DIR",
+        help="with --check, a directory searched recursively for plugin.toml (repeatable)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=sorted(FORMATS),
+        default=None,
+        help="with --check, the report format (default: text)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if not args.emit_ir:
-        print("error: no action selected; pass --emit-ir", file=sys.stderr)
-        return 2
+    if not (args.emit_ir or args.check):
+        print("error: no action selected; pass --emit-ir or --check", file=sys.stderr)
+        return EXIT_ERROR
+    if args.format is not None and not args.check:
+        print("error: --format only applies to --check", file=sys.stderr)
+        return EXIT_ERROR
 
     try:
         source = SourceManager().load_file(args.path)
-        module = lower_module(build_hir(source), ssa=args.ssa)
-    except (
-        OSError,
-        UnicodeError,
-        ParseError,
-        HIRBuildError,
-        ImportResolutionError,
-        ScopeError,
-        LoweringError,
-    ) as error:
+        if args.emit_ir:
+            print(format_module(lower_module(build_hir(source), ssa=args.ssa)))
+        if args.check:
+            findings = engine.check(source, args.plugins)
+            print(render(args.format or "text", engine.report(findings)), end="")
+            return EXIT_FINDINGS if findings else EXIT_CLEAN
+    except _ANALYSIS_ERRORS as error:
         print(f"error: {error}", file=sys.stderr)
-        return 1
-
-    print(format_module(module))
-    return 0
+        return EXIT_ERROR
+    return EXIT_CLEAN
 
 
 if __name__ == "__main__":

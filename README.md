@@ -24,6 +24,17 @@ python -m pytest
 python -m ruff check .
 ```
 
+## Check a file with plugins
+
+```bash
+coretrace-python-analyzer --check app.py --plugins plugins/
+coretrace-python-analyzer --check app.py --plugins plugins/ --format sarif > report.sarif
+```
+
+`--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
+repeated. `--format` is `text` (default), `json` or `sarif`. Exit status is 0 when nothing
+was found, 1 when findings were reported, and 2 on a usage or analysis error.
+
 ## Emit PyIR
 
 ```bash
