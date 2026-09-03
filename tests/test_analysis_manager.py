@@ -339,3 +339,37 @@ def test_module_ir_matches_lower_module() -> None:
     assert isinstance(module_ir, ModuleIR)
     assert module_ir == lower_module(module)
     assert engine.is_cached(PyIRAnalysis, functions(module)["second"]) is True
+
+
+# --------------------------------------------------------------------------- provided inputs
+# Some analyses are inputs the engine supplies rather than results it computes, such as the
+# security model table assembled from plugins (docs/architecture.md §16). Expected to remain
+# red until ``AnalysisManager.provide`` exists.
+
+
+def test_provided_results_are_served_without_computing() -> None:
+    engine = manager(Counting)
+
+    engine.provide(Counting, 42)
+
+    assert engine.is_cached(Counting) is True
+    assert engine.get(Counting) == 42
+    assert Counting.computed == 0
+
+
+def test_provided_results_are_invalidated_like_computed_ones() -> None:
+    engine = manager(Counting, Doubled)
+    engine.provide(Doubled, 10)
+
+    engine.run(Rewrite)
+
+    assert engine.is_cached(Doubled) is False
+    assert engine.get(Doubled) == 6
+
+
+def test_provide_requires_a_registered_module_analysis() -> None:
+    from coretrace_python.analysis import UnregisteredAnalysisError
+
+    engine = manager(Counting)
+    with pytest.raises(UnregisteredAnalysisError):
+        engine.provide(Doubled, 1)
