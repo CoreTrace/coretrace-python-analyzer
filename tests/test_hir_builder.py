@@ -139,3 +139,8 @@ def test_represents_list_comprehensions() -> None:
     assert isinstance(generator.iterable, nodes.Name)
     assert len(generator.conditions) == 1
     assert isinstance(generator.conditions[0], nodes.Compare)
+
+
+def test_module_carries_its_dotted_name() -> None:
+    source = SourceManager().add_source("db.py", "value = 1\n", module_name="app.services.db")
+    assert build_hir(source).name == "app.services.db"
