@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from coretrace_python.cfg import BlockId
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceSpan
 
@@ -84,10 +85,10 @@ class GetItem:
 
 
 @dataclass(frozen=True)
-class Return:
-    result: None
+class GetIter:
+    result: Value
     location: SourceSpan
-    value: Value | None
+    iterable: Value
 
 
 @dataclass(frozen=True)
@@ -115,26 +116,68 @@ ValueInstruction: TypeAlias = (
     | Call
     | GetAttr
     | GetItem
+    | GetIter
     | LoadLocal
 )
-EffectInstruction: TypeAlias = StoreLocal | Return
+EffectInstruction: TypeAlias = StoreLocal
 Instruction: TypeAlias = ValueInstruction | EffectInstruction
+
+
+# --------------------------------------------------------------------------- terminators
+
+
+@dataclass(frozen=True)
+class Return:
+    location: SourceSpan
+    value: Value | None
+
+
+@dataclass(frozen=True)
+class Branch:
+    location: SourceSpan
+    condition: Value
+    then_block: BlockId
+    else_block: BlockId
+
+
+@dataclass(frozen=True)
+class Jump:
+    location: SourceSpan
+    target: BlockId
+
+
+@dataclass(frozen=True)
+class Raise:
+    location: SourceSpan
+    exception: Value | None
+
+
+@dataclass(frozen=True)
+class ForNext:
+    """Store the next item of ``iterator`` into local ``target`` and enter ``body``, or ``exit``."""
+
+    location: SourceSpan
+    iterator: Value
+    target: str
+    body: BlockId
+    exit: BlockId
+
+
+Terminator: TypeAlias = Return | Branch | Jump | Raise | ForNext
 
 
 @dataclass(frozen=True)
 class BasicBlock:
-    name: str
-    instructions: list[Instruction]
-
-    def __init__(self, name: str, instructions: list[Instruction] | None = None) -> None:
-        object.__setattr__(self, "name", name)
-        object.__setattr__(self, "instructions", instructions or [])
+    id: BlockId
+    instructions: tuple[Instruction, ...]
+    terminator: Terminator
 
 
 @dataclass(frozen=True)
 class FunctionIR:
     name: str
     parameters: tuple[Value, ...]
+    entry: BlockId
     blocks: tuple[BasicBlock, ...]
     location: SourceSpan
 

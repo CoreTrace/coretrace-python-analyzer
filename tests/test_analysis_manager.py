@@ -21,6 +21,7 @@ from typing import ClassVar
 
 import pytest
 
+from coretrace_python.cfg import CFGAnalysis
 from coretrace_python.frontend import build_hir
 from coretrace_python.hir import nodes
 from coretrace_python.ir.lowering import lower_module
@@ -318,7 +319,7 @@ def test_analyses_declare_names_and_versions() -> None:
 
 
 def test_pyir_is_computed_per_function_on_demand() -> None:
-    engine = manager(*SEMANTIC_ANALYSES, PyIRAnalysis)
+    engine = manager(*SEMANTIC_ANALYSES, CFGAnalysis, PyIRAnalysis)
     module_functions = functions(engine.module)
 
     first = engine.get(PyIRAnalysis, module_functions["first"])
@@ -331,7 +332,7 @@ def test_pyir_is_computed_per_function_on_demand() -> None:
 def test_module_ir_matches_lower_module() -> None:
     module = hir()
     engine = AnalysisManager(module)
-    engine.register(*SEMANTIC_ANALYSES, PyIRAnalysis, ModuleIRAnalysis)
+    engine.register(*SEMANTIC_ANALYSES, CFGAnalysis, PyIRAnalysis, ModuleIRAnalysis)
 
     module_ir = engine.get(ModuleIRAnalysis)
 

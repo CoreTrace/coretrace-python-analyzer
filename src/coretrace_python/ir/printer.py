@@ -2,18 +2,24 @@ from __future__ import annotations
 
 from coretrace_python.ir.model import (
     BinaryOp,
+    Branch,
     Call,
     Compare,
     Constant,
+    ForNext,
     GetAttr,
     GetItem,
+    GetIter,
     Global,
     Instruction,
+    Jump,
     LoadLocal,
     ModuleIR,
+    Raise,
     Return,
     StoreLocal,
     Symbol,
+    Terminator,
     UnaryOp,
     Value,
 )
@@ -58,13 +64,33 @@ def _instruction(instruction: Instruction) -> str:
             f"{_value(instruction.result)} = get_item {_value(instruction.object)}, "
             f"{_value(instruction.key)}"
         )
+    if isinstance(instruction, GetIter):
+        return f"{_value(instruction.result)} = get_iter {_value(instruction.iterable)}"
     if isinstance(instruction, LoadLocal):
         return f'{_value(instruction.result)} = load_local "{instruction.name}"'
     if isinstance(instruction, StoreLocal):
         return f'store_local "{instruction.name}", {_value(instruction.value)}'
-    if isinstance(instruction, Return):
-        return "return" if instruction.value is None else f"return {_value(instruction.value)}"
     raise TypeError(f"unknown instruction: {instruction!r}")
+
+
+def _terminator(terminator: Terminator) -> str:
+    if isinstance(terminator, Return):
+        return "return" if terminator.value is None else f"return {_value(terminator.value)}"
+    if isinstance(terminator, Branch):
+        return (
+            f"branch {_value(terminator.condition)}, "
+            f"{terminator.then_block}, {terminator.else_block}"
+        )
+    if isinstance(terminator, Jump):
+        return f"jump {terminator.target}"
+    if isinstance(terminator, Raise):
+        return "raise" if terminator.exception is None else f"raise {_value(terminator.exception)}"
+    if isinstance(terminator, ForNext):
+        return (
+            f'for_next {_value(terminator.iterator)} -> "{terminator.target}", '
+            f"{terminator.body}, {terminator.exit}"
+        )
+    raise TypeError(f"unknown terminator: {terminator!r}")
 
 
 def format_module(module: ModuleIR) -> str:
@@ -73,8 +99,9 @@ def format_module(module: ModuleIR) -> str:
         parameters = ", ".join(_value(parameter) for parameter in function.parameters)
         lines = [f"func @{function.name}({parameters}) {{"]
         for block in function.blocks:
-            lines.append(f"{block.name}:")
+            lines.append(f"{block.id}:")
             lines.extend(f"    {_instruction(instruction)}" for instruction in block.instructions)
+            lines.append(f"    {_terminator(block.terminator)}")
         lines.append("}")
         functions.append("\n".join(lines))
     return "\n\n".join(functions)

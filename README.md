@@ -33,7 +33,10 @@ PYTHONPATH=src python -m coretrace_python --emit-ir example.py
 ```
 
 Currently supported inside functions: arguments, assignments, names, constants, binary
-operations, unary operations, comparisons, calls, attribute access, indexing, and returns.
+operations, unary operations, comparisons, calls, attribute access, indexing, returns,
+`if`/`elif`/`else`, `while`, `for`, `break`, `continue` and `raise`. Each function is
+emitted as its control-flow graph: one block per basic block, ending in an explicit
+terminator (`branch`, `jump`, `return`, `raise`, `for_next`).
 Unsupported syntax produces a source-located diagnostic and a non-zero exit status.
 
 Names are resolved to canonical symbols through lexical scopes, imports and builtins.

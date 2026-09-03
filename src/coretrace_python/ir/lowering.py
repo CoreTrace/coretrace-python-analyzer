@@ -1,10 +1,11 @@
-"""Lower parser-independent PyHIR into analysis-oriented PyIR."""
+"""Lower parser-independent PyHIR into analysis-oriented PyIR, one CFG block at a time."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import ClassVar, NoReturn
 
+from coretrace_python import cfg as control_flow
 from coretrace_python.analysis import (
     Analysis,
     AnalysisContext,
@@ -12,22 +13,31 @@ from coretrace_python.analysis import (
     AnyAnalysis,
     FunctionAnalysis,
 )
+from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.hir import nodes
+from coretrace_python.hir.visitors import Node, children
 from coretrace_python.ir.model import (
     BasicBlock,
     BinaryOp,
+    Branch,
     Call,
     Compare,
     Constant,
+    ForNext,
     FunctionIR,
     GetAttr,
     GetItem,
+    GetIter,
     Global,
+    Instruction,
+    Jump,
     LoadLocal,
     ModuleIR,
+    Raise,
     Return,
     StoreLocal,
     Symbol,
+    Terminator,
     UnaryOp,
     Value,
     ValueInstruction,
@@ -52,10 +62,11 @@ class _FunctionLowerer:
     symbols: SymbolTable
     scopes: ScopeTable
     scope: Scope
+    cfg: CFG
     next_value_id: int = 0
-    assigned: set[str] = field(default_factory=set)
     parameters: dict[str, Value] = field(default_factory=dict)
-    block: BasicBlock = field(default_factory=lambda: BasicBlock("entry"))
+    instructions: list[Instruction] = field(default_factory=list)
+    iterators: dict[BlockId, Value] = field(default_factory=dict)
 
     def fail(
         self,
@@ -71,14 +82,16 @@ class _FunctionLowerer:
         return value
 
     def emit(self, instruction: ValueInstruction) -> Value:
-        self.block.instructions.append(instruction)
+        self.instructions.append(instruction)
         return instruction.result
 
-    def emit_effect(self, instruction: StoreLocal | Return) -> None:
-        self.block.instructions.append(instruction)
+    def emit_effect(self, instruction: StoreLocal) -> None:
+        self.instructions.append(instruction)
 
     def resolve(self, name: str) -> Resolution:
         return self.scopes.resolve(self.scope.id, name)
+
+    # ------------------------------------------------------------------ expressions
 
     def imported_symbol(self, node: nodes.Expression) -> SymbolId | None:
         if isinstance(node, nodes.Name):
@@ -98,7 +111,7 @@ class _FunctionLowerer:
                 self.fail(node, "closures are not supported yet")
             if resolution.kind is not ResolutionKind.LOCAL:
                 return self.emit(Global(self.new_value(), node.span, node.identifier))
-            if node.identifier in self.parameters and node.identifier not in self.assigned:
+            if node.identifier in self.parameters:
                 return self.parameters[node.identifier]
             return self.emit(LoadLocal(self.new_value(), node.span, node.identifier))
         if isinstance(node, nodes.Constant):
@@ -129,45 +142,120 @@ class _FunctionLowerer:
             return self.emit(GetItem(self.new_value(), node.span, object_value, key))
         self.fail(node)
 
+    # ------------------------------------------------------------------ statements
+
+    def store(self, target: nodes.Name, value: Value) -> None:
+        if self.resolve(target.identifier).kind is not ResolutionKind.LOCAL:
+            self.fail(target, "assignment to a global or nonlocal name is not supported yet")
+        self.emit_effect(StoreLocal(None, target.span, target.identifier, value))
+
     def statement(self, node: nodes.Statement) -> None:
         if isinstance(node, nodes.Assign):
-            if self.resolve(node.target.identifier).kind is not ResolutionKind.LOCAL:
-                self.fail(node, "assignment to a global or nonlocal name is not supported yet")
-            value = self.expression(node.value)
-            self.emit_effect(StoreLocal(None, node.span, node.target.identifier, value))
-            self.assigned.add(node.target.identifier)
-            return
-        if isinstance(node, nodes.Return):
-            return_value = self.expression(node.value) if node.value is not None else None
-            self.emit_effect(Return(None, node.span, return_value))
+            self.store(node.target, self.expression(node.value))
             return
         if isinstance(node, nodes.ExpressionStatement):
             self.expression(node.expression)
             return
-        if isinstance(node, (nodes.Pass, nodes.Global, nodes.Import, nodes.ImportFrom)):
+        if isinstance(node, nodes.Pass | nodes.Global | nodes.Import | nodes.ImportFrom):
             # Declarations and imports are already applied by the semantic analyses.
             return
         self.fail(node)
 
+    # ------------------------------------------------------------------ blocks
+
+    def terminator(self, block: control_flow.BasicBlock) -> Terminator:
+        terminator = block.terminator
+        if isinstance(terminator, control_flow.Return):
+            value = self.expression(terminator.value) if terminator.value is not None else None
+            return Return(terminator.span, value)
+        if isinstance(terminator, control_flow.Branch):
+            condition = self.expression(terminator.condition)
+            return Branch(terminator.span, condition, terminator.then_block, terminator.else_block)
+        if isinstance(terminator, control_flow.Raise):
+            exception = (
+                self.expression(terminator.exception) if terminator.exception is not None else None
+            )
+            return Raise(terminator.span, exception)
+        if isinstance(terminator, control_flow.Jump):
+            self.enter_loop(block.id, terminator.target)
+            return Jump(terminator.span, terminator.target)
+        target = terminator.target
+        if self.resolve(target.identifier).kind is not ResolutionKind.LOCAL:
+            self.fail(target, "assignment to a global or nonlocal name is not supported yet")
+        return ForNext(
+            terminator.span,
+            self.iterators[block.id],
+            target.identifier,
+            terminator.body,
+            terminator.exit,
+        )
+
+    def enter_loop(self, source: BlockId, target: BlockId) -> None:
+        """Take the iterator of a ``for`` loop in the block that enters its header."""
+
+        header = self.cfg.block(target).terminator
+        if isinstance(header, control_flow.ForEach) and (source, target) not in self.cfg.back_edges():
+            iterable = self.expression(header.iterable)
+            self.iterators[target] = self.emit(GetIter(self.new_value(), header.span, iterable))
+
     def function(self, node: nodes.Function) -> FunctionIR:
-        parameters = tuple(self.new_value() for _ in node.parameters)
-        parameter_names = (parameter.name for parameter in node.parameters)
-        self.parameters.update(zip(parameter_names, parameters, strict=True))
-        for statement in node.body:
-            self.statement(statement)
-        return FunctionIR(node.name, parameters, (self.block,), node.span)
+        parameter_values = tuple(self.new_value() for _ in node.parameters)
+        reassigned = _reassigned_parameters(node)
+        self.parameters = {
+            parameter.name: value
+            for parameter, value in zip(node.parameters, parameter_values, strict=True)
+            if parameter.name not in reassigned
+        }
+        blocks: list[BasicBlock] = []
+        for cfg_block in self.cfg.blocks.values():
+            self.instructions = []
+            if cfg_block.id == self.cfg.entry:
+                # Reassigned parameters live in locals so every block reads the same slot.
+                for parameter, value in zip(node.parameters, parameter_values, strict=True):
+                    if parameter.name in reassigned:
+                        self.emit_effect(StoreLocal(None, parameter.span, parameter.name, value))
+            for statement in cfg_block.statements:
+                self.statement(statement)
+            terminator = self.terminator(cfg_block)
+            blocks.append(BasicBlock(cfg_block.id, tuple(self.instructions), terminator))
+        return FunctionIR(node.name, parameter_values, self.cfg.entry, tuple(blocks), node.span)
+
+
+def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:
+    """Parameters that the function body assigns to, outside nested scopes."""
+
+    assigned: set[str] = set()
+
+    def walk(node: Node) -> None:
+        if isinstance(node, nodes.Assign | nodes.For):
+            assigned.add(node.target.identifier)
+        if isinstance(node, nodes.Function | nodes.Class | nodes.Comprehension):
+            return
+        for child in children(node):
+            walk(child)
+
+    for statement in function.body:
+        walk(statement)
+    return frozenset(assigned & {parameter.name for parameter in function.parameters})
 
 
 class PyIRAnalysis(FunctionAnalysis[FunctionIR]):
-    """Lower one function to PyIR on demand."""
+    """Lower one function to PyIR on demand, following its control-flow graph."""
 
     name: ClassVar[str] = "ir.pyir"
-    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({ScopeAnalysis, SymbolAnalysis})
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
+        {ScopeAnalysis, SymbolAnalysis, CFGAnalysis}
+    )
 
     @classmethod
     def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> FunctionIR:
         scopes = ctx.get(ScopeAnalysis)
-        lowerer = _FunctionLowerer(ctx.get(SymbolAnalysis), scopes, scopes.scope_for(function))
+        lowerer = _FunctionLowerer(
+            ctx.get(SymbolAnalysis),
+            scopes,
+            scopes.scope_for(function),
+            ctx.get(CFGAnalysis, function),
+        )
         return lowerer.function(function)
 
 
@@ -204,5 +292,5 @@ def lower_module(module: nodes.Module) -> ModuleIR:
     """Lower a whole module through a fresh analysis manager."""
 
     manager = AnalysisManager(module)
-    manager.register(*SEMANTIC_ANALYSES, PyIRAnalysis, ModuleIRAnalysis)
+    manager.register(*SEMANTIC_ANALYSES, CFGAnalysis, PyIRAnalysis, ModuleIRAnalysis)
     return manager.get(ModuleIRAnalysis)
