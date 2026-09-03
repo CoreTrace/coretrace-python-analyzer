@@ -1,0 +1,9 @@
+name = "python-stdlib-models"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["model.python-stdlib"]
+
+[entrypoint]
+module = "python_stdlib"
+class = "PythonStdlibModels"

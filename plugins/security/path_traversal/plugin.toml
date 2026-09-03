@@ -1,0 +1,9 @@
+name = "path-traversal"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows"]
+provides = ["vulnerability.path-traversal"]
+
+[entrypoint]
+module = "path_traversal"
+class = "PathTraversalPlugin"

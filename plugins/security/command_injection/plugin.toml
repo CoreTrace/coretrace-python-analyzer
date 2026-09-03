@@ -1,0 +1,9 @@
+name = "command-injection"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows"]
+provides = ["vulnerability.command-injection"]
+
+[entrypoint]
+module = "command_injection"
+class = "CommandInjectionPlugin"
