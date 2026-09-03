@@ -8,7 +8,7 @@ language subset to deterministic PyIR. CFG construction, SSA, data-flow, and sec
 are intentionally deferred.
 
 ```text
-Python source -> SourceManager -> parser -> PyHIR -> semantic imports -> PyIR
+Python source -> SourceManager -> frontend -> PyHIR -> semantic imports and scopes -> PyIR
 ```
 
 The long-term engine architecture and incremental migration plan are recorded in

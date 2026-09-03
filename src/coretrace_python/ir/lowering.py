@@ -26,6 +26,13 @@ from coretrace_python.ir.model import (
     ValueInstruction,
 )
 from coretrace_python.semantic.imports import ImportBindings, collect_imports
+from coretrace_python.semantic.scopes import (
+    Resolution,
+    ResolutionKind,
+    Scope,
+    ScopeAnalysis,
+    analyze_scopes,
+)
 from coretrace_python.semantic.symbols import SymbolId
 
 
@@ -36,8 +43,10 @@ class LoweringError(Exception):
 @dataclass
 class _FunctionLowerer:
     imports: ImportBindings
+    scopes: ScopeAnalysis
+    scope: Scope
     next_value_id: int = 0
-    locals: set[str] = field(default_factory=set)
+    assigned: set[str] = field(default_factory=set)
     parameters: dict[str, Value] = field(default_factory=dict)
     block: BasicBlock = field(default_factory=lambda: BasicBlock("entry"))
 
@@ -61,9 +70,12 @@ class _FunctionLowerer:
     def emit_effect(self, instruction: StoreLocal | Return) -> None:
         self.block.instructions.append(instruction)
 
+    def resolve(self, name: str) -> Resolution:
+        return self.scopes.resolve(self.scope.id, name)
+
     def imported_symbol(self, node: nodes.Expression) -> SymbolId | None:
         if isinstance(node, nodes.Name):
-            if node.identifier in self.locals or node.identifier in self.parameters:
+            if self.resolve(node.identifier).kind is not ResolutionKind.GLOBAL:
                 return None
             return self.imports.resolve(node.identifier)
         if isinstance(node, nodes.Attribute):
@@ -76,11 +88,14 @@ class _FunctionLowerer:
         if imported_symbol is not None:
             return self.emit(Symbol(self.new_value(), node.span, imported_symbol))
         if isinstance(node, nodes.Name):
-            if node.identifier in self.locals:
-                return self.emit(LoadLocal(self.new_value(), node.span, node.identifier))
-            if node.identifier in self.parameters:
+            resolution = self.resolve(node.identifier)
+            if resolution.kind is ResolutionKind.FREE:
+                self.fail(node, "closures are not supported yet")
+            if resolution.kind is not ResolutionKind.LOCAL:
+                return self.emit(Global(self.new_value(), node.span, node.identifier))
+            if node.identifier in self.parameters and node.identifier not in self.assigned:
                 return self.parameters[node.identifier]
-            return self.emit(Global(self.new_value(), node.span, node.identifier))
+            return self.emit(LoadLocal(self.new_value(), node.span, node.identifier))
         if isinstance(node, nodes.Constant):
             return self.emit(Constant(self.new_value(), node.span, node.value))
         if isinstance(node, nodes.BinaryOp):
@@ -111,9 +126,11 @@ class _FunctionLowerer:
 
     def statement(self, node: nodes.Statement) -> None:
         if isinstance(node, nodes.Assign):
+            if self.resolve(node.target.identifier).kind is not ResolutionKind.LOCAL:
+                self.fail(node, "assignment to a global or nonlocal name is not supported yet")
             value = self.expression(node.value)
             self.emit_effect(StoreLocal(None, node.span, node.target.identifier, value))
-            self.locals.add(node.target.identifier)
+            self.assigned.add(node.target.identifier)
             return
         if isinstance(node, nodes.Return):
             return_value = self.expression(node.value) if node.value is not None else None
@@ -122,7 +139,8 @@ class _FunctionLowerer:
         if isinstance(node, nodes.ExpressionStatement):
             self.expression(node.expression)
             return
-        if isinstance(node, nodes.Pass):
+        if isinstance(node, (nodes.Pass, nodes.Global)):
+            # ``global`` is a declaration already applied by scope analysis.
             return
         self.fail(node)
 
@@ -137,10 +155,12 @@ class _FunctionLowerer:
 
 def lower_module(module: nodes.Module) -> ModuleIR:
     imports = collect_imports(module)
+    scopes = analyze_scopes(module)
     functions: list[FunctionIR] = []
     for statement in module.body:
         if isinstance(statement, nodes.Function):
-            functions.append(_FunctionLowerer(imports).function(statement))
+            lowerer = _FunctionLowerer(imports, scopes, scopes.scope_for(statement))
+            functions.append(lowerer.function(statement))
         elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
             continue
         elif (
