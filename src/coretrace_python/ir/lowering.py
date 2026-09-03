@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import NoReturn
+from typing import ClassVar, NoReturn
 
+from coretrace_python.analysis import (
+    Analysis,
+    AnalysisContext,
+    AnalysisManager,
+    AnyAnalysis,
+    FunctionAnalysis,
+)
 from coretrace_python.hir import nodes
 from coretrace_python.ir.model import (
     BasicBlock,
@@ -25,15 +32,15 @@ from coretrace_python.ir.model import (
     Value,
     ValueInstruction,
 )
-from coretrace_python.semantic.imports import analyze_imports
+from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.scopes import (
     Resolution,
     ResolutionKind,
     Scope,
     ScopeAnalysis,
-    analyze_scopes,
+    ScopeTable,
 )
-from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, analyze_symbols
+from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
 
 
 class LoweringError(Exception):
@@ -42,8 +49,8 @@ class LoweringError(Exception):
 
 @dataclass
 class _FunctionLowerer:
-    symbols: SymbolAnalysis
-    scopes: ScopeAnalysis
+    symbols: SymbolTable
+    scopes: ScopeTable
     scope: Scope
     next_value_id: int = 0
     assigned: set[str] = field(default_factory=set)
@@ -151,26 +158,51 @@ class _FunctionLowerer:
         return FunctionIR(node.name, parameters, (self.block,), node.span)
 
 
+class PyIRAnalysis(FunctionAnalysis[FunctionIR]):
+    """Lower one function to PyIR on demand."""
+
+    name: ClassVar[str] = "ir.pyir"
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({ScopeAnalysis, SymbolAnalysis})
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> FunctionIR:
+        scopes = ctx.get(ScopeAnalysis)
+        lowerer = _FunctionLowerer(ctx.get(SymbolAnalysis), scopes, scopes.scope_for(function))
+        return lowerer.function(function)
+
+
+class ModuleIRAnalysis(Analysis[ModuleIR]):
+    """Assemble the PyIR of every top-level function of the module."""
+
+    name: ClassVar[str] = "ir.module"
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({PyIRAnalysis})
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> ModuleIR:
+        functions: list[FunctionIR] = []
+        for statement in ctx.module.body:
+            if isinstance(statement, nodes.Function):
+                functions.append(ctx.get(PyIRAnalysis, statement))
+            elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
+                continue
+            elif (
+                isinstance(statement, nodes.ExpressionStatement)
+                and isinstance(statement.expression, nodes.Constant)
+                and isinstance(statement.expression.value, str)
+            ):
+                # Permit module docstrings.
+                continue
+            else:
+                raise LoweringError(
+                    f"{statement.span.display()}: "
+                    f"unsupported module syntax: {type(statement).__name__}"
+                )
+        return ModuleIR(tuple(functions))
+
+
 def lower_module(module: nodes.Module) -> ModuleIR:
-    scopes = analyze_scopes(module)
-    symbols = analyze_symbols(scopes, analyze_imports(module, scopes))
-    functions: list[FunctionIR] = []
-    for statement in module.body:
-        if isinstance(statement, nodes.Function):
-            lowerer = _FunctionLowerer(symbols, scopes, scopes.scope_for(statement))
-            functions.append(lowerer.function(statement))
-        elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
-            continue
-        elif (
-            isinstance(statement, nodes.ExpressionStatement)
-            and isinstance(statement.expression, nodes.Constant)
-            and isinstance(statement.expression.value, str)
-        ):
-            # Permit module docstrings.
-            continue
-        else:
-            raise LoweringError(
-                f"{statement.span.display()}: "
-                f"unsupported module syntax: {type(statement).__name__}"
-            )
-    return ModuleIR(tuple(functions))
+    """Lower a whole module through a fresh analysis manager."""
+
+    manager = AnalysisManager(module)
+    manager.register(*SEMANTIC_ANALYSES, PyIRAnalysis, ModuleIRAnalysis)
+    return manager.get(ModuleIRAnalysis)

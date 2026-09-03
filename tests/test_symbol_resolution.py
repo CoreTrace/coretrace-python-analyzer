@@ -124,7 +124,7 @@ def test_wildcard_import_leaves_names_unresolved(tmp_path, capsys) -> None:
 
 
 # --------------------------------------------------------------------------- next milestone
-# Lowering must consume the Phase 2 ScopeAnalysis instead of tracking locals itself
+# Lowering must consume the Phase 2 ScopeTable instead of tracking locals itself
 # (docs/architecture.md §4.1 and boundary "PyIR lowering consumes semantic results").
 # Expected to remain red until lowering is routed through scope analysis.
 
@@ -161,7 +161,7 @@ def test_global_declaration_is_not_a_local(tmp_path, capsys) -> None:
 
 
 # --------------------------------------------------------------------------- symbol analysis
-# Lowering resolves names through the Phase 2 SymbolAnalysis (docs/architecture.md §4.2,
+# Lowering resolves names through the Phase 2 SymbolTable (docs/architecture.md §4.2,
 # §4.3): builtins, function-level and relative imports become canonical symbols.
 # Expected to remain red until symbol analysis lands.
 

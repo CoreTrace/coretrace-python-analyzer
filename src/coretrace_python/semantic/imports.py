@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import ClassVar
 
+from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
 from coretrace_python.hir import nodes
-from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeId
-from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.semantic.identity import SymbolId
+from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeId, ScopeTable
 
 _NO_BINDINGS: Mapping[str, SymbolId] = MappingProxyType({})
 
@@ -21,7 +23,7 @@ class ImportResolutionError(Exception):
     """A source-located import that cannot be resolved statically."""
 
 
-class ImportAnalysis:
+class ImportTable:
     """Immutable import bindings and wildcard imports, keyed by scope."""
 
     def __init__(
@@ -42,7 +44,7 @@ class ImportAnalysis:
 
 
 class _Collector:
-    def __init__(self, module: nodes.Module, scopes: ScopeAnalysis) -> None:
+    def __init__(self, module: nodes.Module, scopes: ScopeTable) -> None:
         self.package = module.name.rpartition(".")[0]
         self.scopes = scopes
         self.bindings: dict[ScopeId, dict[str, SymbolId]] = {}
@@ -89,11 +91,20 @@ class _Collector:
         self.bindings.setdefault(scope_id, {})[local_name] = symbol
 
 
-def analyze_imports(module: nodes.Module, scopes: ScopeAnalysis) -> ImportAnalysis:
+def analyze_imports(module: nodes.Module, scopes: ScopeTable) -> ImportTable:
     """Collect every import binding of ``module`` without importing anything."""
 
     collector = _Collector(module, scopes)
-    return ImportAnalysis(
+    return ImportTable(
         collector.bindings,
         {scope_id: tuple(found) for scope_id, found in collector.wildcards.items()},
     )
+
+
+class ImportAnalysis(Analysis[ImportTable]):
+    name: ClassVar[str] = "semantic.imports"
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({ScopeAnalysis})
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> ImportTable:
+        return analyze_imports(ctx.module, ctx.get(ScopeAnalysis))
