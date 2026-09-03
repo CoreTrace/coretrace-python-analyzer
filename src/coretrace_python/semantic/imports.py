@@ -6,7 +6,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
 from coretrace_python.hir import nodes
-from coretrace_python.ir.symbol import SymbolId
+from coretrace_python.semantic.symbols import SymbolId
 
 
 class ImportResolutionError(Exception):
