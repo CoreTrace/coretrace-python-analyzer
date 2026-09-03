@@ -33,6 +33,7 @@ from coretrace_python.ir.model import (
     Undefined,
     Value,
     substitute,
+    successors,
 )
 
 
@@ -50,7 +51,7 @@ class _Renamer:
         self.terminators: dict[BlockId, Terminator] = {}
         self.predecessors: dict[BlockId, list[BlockId]] = {b: [] for b in self.blocks}
         for block in self.blocks.values():
-            for successor in _targets(block.terminator):
+            for successor in successors(block):
                 self.predecessors[successor].append(block.id)
         self.loop_variables: dict[BlockId, tuple[str, BlockId]] = {}
         for block in self.blocks.values():
@@ -128,7 +129,7 @@ class _Renamer:
             terminator = replace(terminator, result=self.new_value())
         self.terminators[block_id] = terminator
 
-        for successor in _targets(terminator):
+        for successor in (*_targets(terminator), *self.blocks[block_id].exception_targets):
             for name, phi in self.phis.get(successor, {}).items():
                 incoming = (*phi.incoming, (self.current(name), block_id))
                 self.phis[successor][name] = replace(phi, incoming=incoming)
@@ -152,7 +153,11 @@ class _Renamer:
                 instructions.extend(self.undefined.values())
             instructions.extend(self.ordered_phis(block.id))
             instructions.extend(self.instructions[block.id])
-            blocks.append(BasicBlock(block.id, tuple(instructions), self.terminators[block.id]))
+            blocks.append(
+                BasicBlock(
+                    block.id, tuple(instructions), self.terminators[block.id], block.exception_targets
+                )
+            )
         return _renumber(replace(self.function, blocks=tuple(blocks)))
 
     def ordered_phis(self, block_id: BlockId) -> list[Phi]:
@@ -248,6 +253,7 @@ def _renumber(function: FunctionIR) -> FunctionIR:
             block.id,
             tuple(substitute(i, renamed, include_result=True) for i in block.instructions),
             substitute(block.terminator, renamed, include_result=True),
+            block.exception_targets,
         )
         for block in function.blocks
     )

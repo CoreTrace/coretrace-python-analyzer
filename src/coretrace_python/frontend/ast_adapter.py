@@ -123,6 +123,13 @@ class AstHIRBuilder:
                 for keyword in node.keywords
             )
             return nodes.Call(self.expression(node.func), arguments, keywords, span)
+        if isinstance(node, ast.Await):
+            return nodes.Await(self.expression(node.value), span)
+        if isinstance(node, ast.Yield):
+            yielded = self.expression(node.value) if node.value is not None else None
+            return nodes.Yield(yielded, span)
+        if isinstance(node, ast.YieldFrom):
+            self.fail(node, "yield from is not supported yet")
         if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
             generators = tuple(self.generator(generator) for generator in node.generators)
             return nodes.Comprehension(
@@ -248,6 +255,24 @@ class AstHIRBuilder:
                 self.fail(node.cause, "raise from is not supported yet")
             exception = self.expression(node.exc) if node.exc is not None else None
             return nodes.Raise(exception, span)
+        if isinstance(node, ast.Try):
+            handlers = []
+            for handler in node.handlers:
+                handler_type = self.expression(handler.type) if handler.type is not None else None
+                handlers.append(
+                    nodes.ExceptHandler(
+                        handler_type, handler.name, self.block(handler.body), self.span(handler)
+                    )
+                )
+            return nodes.Try(
+                self.block(node.body),
+                tuple(handlers),
+                self.block(node.orelse),
+                self.block(node.finalbody),
+                span,
+            )
+        if isinstance(node, getattr(ast, "TryStar", ())):
+            self.fail(node, "except* groups are not supported yet")
         if isinstance(node, ast.Global):
             return nodes.Global(tuple(node.names), span)
         if isinstance(node, ast.Nonlocal):

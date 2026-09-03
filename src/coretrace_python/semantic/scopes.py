@@ -239,7 +239,17 @@ class _Collector:
                 if item.target is not None:
                     scope.bind(item.target.identifier, BindingKind.LOCAL, item.target.span)
             self.body(node.body, scope)
-        elif isinstance(node, nodes.EnterWith | nodes.ExitWith):
+        elif isinstance(node, nodes.Try):
+            self.body(node.body, scope)
+            for handler in node.handlers:
+                if handler.type is not None:
+                    self.expression(handler.type, scope)
+                if handler.name is not None:
+                    scope.bind(handler.name, BindingKind.LOCAL, handler.span)
+                self.body(handler.body, scope)
+            self.body(node.orelse, scope)
+            self.body(node.finalbody, scope)
+        elif isinstance(node, nodes.EnterWith | nodes.ExitWith | nodes.EnterHandler):
             pass
         elif isinstance(node, nodes.Return):
             if node.value is not None:
@@ -324,6 +334,11 @@ class _Collector:
         elif isinstance(node, nodes.BoolOp):
             for value in node.values:
                 self.expression(value, scope)
+        elif isinstance(node, nodes.Await):
+            self.expression(node.value, scope)
+        elif isinstance(node, nodes.Yield):
+            if node.value is not None:
+                self.expression(node.value, scope)
         elif isinstance(node, nodes.Tuple | nodes.List):
             for element in node.elements:
                 self.expression(element, scope)

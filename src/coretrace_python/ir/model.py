@@ -154,6 +154,29 @@ class WithEnter(Operands):
 
 
 @dataclass(frozen=True)
+class Catch(Operands):
+    """The exception bound by ``except type as name`` at the start of a handler."""
+
+    result: Value
+    location: SourceSpan
+    type: Value | None
+
+
+@dataclass(frozen=True)
+class Await(Operands):
+    result: Value
+    location: SourceSpan
+    value: Value
+
+
+@dataclass(frozen=True)
+class Yield(Operands):
+    result: Value
+    location: SourceSpan
+    value: Value | None
+
+
+@dataclass(frozen=True)
 class GetAttr(Operands):
     result: Value
     location: SourceSpan
@@ -262,6 +285,9 @@ ValueInstruction: TypeAlias = (
     | BuildTuple
     | BuildDict
     | WithEnter
+    | Catch
+    | Await
+    | Yield
 )
 EffectInstruction: TypeAlias = StoreLocal | SetAttr | SetItem | WithExit | Assert
 Instruction: TypeAlias = ValueInstruction | EffectInstruction
@@ -316,6 +342,25 @@ class BasicBlock:
     id: BlockId
     instructions: tuple[Instruction, ...]
     terminator: Terminator
+    exception_targets: tuple[BlockId, ...] = ()
+
+
+def successors(block: BasicBlock) -> tuple[BlockId, ...]:
+    """Terminator targets followed by the exception edges of ``block``."""
+
+    found = list(_terminator_targets(block.terminator))
+    found.extend(t for t in block.exception_targets if t not in found)
+    return tuple(found)
+
+
+def _terminator_targets(terminator: Terminator) -> tuple[BlockId, ...]:
+    if isinstance(terminator, Branch):
+        return (terminator.then_block, terminator.else_block)
+    if isinstance(terminator, Jump):
+        return (terminator.target,)
+    if isinstance(terminator, ForNext):
+        return (terminator.body, terminator.exit)
+    return ()
 
 
 @dataclass(frozen=True)

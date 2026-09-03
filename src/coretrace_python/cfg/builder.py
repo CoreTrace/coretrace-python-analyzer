@@ -35,6 +35,7 @@ class _Builder:
         self.blocks: dict[BlockId, BasicBlock] = {}
         self.counters: dict[str, int] = {}
         self.loops: list[tuple[BlockId, BlockId]] = []
+        self.handlers: list[tuple[BlockId, ...]] = []
 
     def build(self) -> CFG:
         entry = BlockId("entry")
@@ -50,10 +51,15 @@ class _Builder:
         return BlockId(f"{kind}_{self.counters[kind]}")
 
     def finish(self, block: _Open, terminator: Terminator) -> None:
-        self.blocks[block.id] = BasicBlock(block.id, tuple(block.statements), terminator)
+        self.blocks[block.id] = BasicBlock(
+            block.id, tuple(block.statements), terminator, self.exception_targets()
+        )
 
     def header(self, block_id: BlockId, terminator: Terminator) -> None:
-        self.blocks[block_id] = BasicBlock(block_id, (), terminator)
+        self.blocks[block_id] = BasicBlock(block_id, (), terminator, self.exception_targets())
+
+    def exception_targets(self) -> tuple[BlockId, ...]:
+        return self.handlers[-1] if self.handlers else ()
 
     # ------------------------------------------------------------------ statements
 
@@ -104,8 +110,48 @@ class _Builder:
             return self.loop_statement(node, block, continuation)
         if isinstance(node, nodes.With):
             return self.with_statement(node, block)
+        if isinstance(node, nodes.Try):
+            return self.try_statement(node, block, continuation)
         block.statements.append(node)
         return block
+
+    def try_statement(
+        self, node: nodes.Try, block: _Open, continuation: BlockId | None
+    ) -> _Open | None:
+        """Body blocks carry exception edges to every handler; handlers, ``else`` and
+        ``finally`` join on the normal path (exceptional exits are approximated)."""
+
+        body_id = self.new_id("try")
+        handler_ids = tuple(self.new_id("handler") for _ in node.handlers)
+        else_id = self.new_id("else") if node.orelse else None
+        final_id = self.new_id("finally") if node.finalbody else None
+        after_id = continuation if continuation is not None and final_id is None else None
+        if after_id is None:
+            after_id = self.new_id("after") if final_id is None or continuation is None else None
+        join = final_id if final_id is not None else after_id
+        assert join is not None
+
+        self.finish(block, Jump(body_id, node.span))
+        self.handlers.append(handler_ids)
+        try:
+            # The whole body, including the block that leaves it, may raise into a handler.
+            end = self.sequence(node.body, _Open(body_id), None, node.span)
+            if end is not None:
+                self.finish(end, Jump(else_id if else_id is not None else join, node.span))
+        finally:
+            self.handlers.pop()
+        if end is not None and else_id is not None:
+            self.sequence(node.orelse, _Open(else_id), join, node.span)
+        for handler, handler_id in zip(node.handlers, handler_ids, strict=True):
+            opened = _Open(handler_id)
+            opened.statements.append(nodes.EnterHandler(handler, handler.span))
+            self.sequence(handler.body, opened, join, node.span)
+        if final_id is not None:
+            target = continuation if continuation is not None else after_id
+            assert target is not None
+            self.sequence(node.finalbody, _Open(final_id), target, node.span)
+            return None if continuation is not None else _Open(target)
+        return None if continuation is not None else _Open(after_id)  # type: ignore[arg-type]
 
     def with_statement(self, node: nodes.With, block: _Open) -> _Open | None:
         """Lay the body out inline; an early exit skips the ``ExitWith`` statements."""
