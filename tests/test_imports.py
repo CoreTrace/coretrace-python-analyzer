@@ -12,13 +12,13 @@ from __future__ import annotations
 import pytest
 
 from coretrace_python.frontend import build_hir
-from coretrace_python.semantic.scopes import Scope, ScopeAnalysis, analyze_scopes
+from coretrace_python.semantic.scopes import Scope, ScopeTable, analyze_scopes
 from coretrace_python.source import SourceManager
 
 try:
     from coretrace_python.semantic.imports import (
-        ImportAnalysis,
         ImportResolutionError,
+        ImportTable,
         analyze_imports,
     )
     from coretrace_python.semantic.symbols import SymbolId
@@ -34,14 +34,14 @@ def require_import_analysis() -> None:
         pytest.fail(f"import analysis is not implemented yet: {MISSING}")
 
 
-def analyze(source_text: str, module_name: str = "imports") -> tuple[ScopeAnalysis, ImportAnalysis]:
+def analyze(source_text: str, module_name: str = "imports") -> tuple[ScopeTable, ImportTable]:
     source = SourceManager().add_source("imports.py", source_text, module_name=module_name)
     module = build_hir(source)
     scopes = analyze_scopes(module)
     return scopes, analyze_imports(module, scopes)
 
 
-def function_scope(scopes: ScopeAnalysis, name: str) -> Scope:
+def function_scope(scopes: ScopeTable, name: str) -> Scope:
     return next(s for s in scopes.children(scopes.module_scope.id) if s.name == name)
 
 

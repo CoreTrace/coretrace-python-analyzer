@@ -30,10 +30,10 @@ from coretrace_python.semantic.scopes import (
     Resolution,
     ResolutionKind,
     Scope,
-    ScopeAnalysis,
+    ScopeTable,
     analyze_scopes,
 )
-from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, analyze_symbols
+from coretrace_python.semantic.symbols import SymbolId, SymbolTable, analyze_symbols
 
 
 class LoweringError(Exception):
@@ -42,8 +42,8 @@ class LoweringError(Exception):
 
 @dataclass
 class _FunctionLowerer:
-    symbols: SymbolAnalysis
-    scopes: ScopeAnalysis
+    symbols: SymbolTable
+    scopes: ScopeTable
     scope: Scope
     next_value_id: int = 0
     assigned: set[str] = field(default_factory=set)

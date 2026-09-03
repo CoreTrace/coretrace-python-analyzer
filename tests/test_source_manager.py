@@ -56,7 +56,7 @@ def test_source_span_formats_its_start_location() -> None:
 
 # --------------------------------------------------------------------------- next milestone
 # Relative imports resolve against the importing module's dotted name, so the source
-# layer must know it (docs/architecture.md §3.1 source discovery, §4.2 ImportAnalysis).
+# layer must know it (docs/architecture.md §3.1 source discovery, §4.2 ImportTable).
 # Expected to remain red until ``SourceFile.module_name`` exists.
 
 
