@@ -201,6 +201,7 @@ Statement: TypeAlias = (
 
 @dataclass(frozen=True, slots=True)
 class Module:
+    name: str
     body: tuple[Statement, ...]
     span: SourceSpan
 

@@ -7,13 +7,24 @@ from pathlib import Path
 from coretrace_python.source.model import SourceFile, SourceId
 
 
+def module_name_for(path: Path) -> str:
+    """Dotted module name of ``path``, walking up through ``__init__.py`` packages."""
+
+    parts = [path.stem]
+    directory = path.parent
+    while (directory / "__init__.py").is_file():
+        parts.append(directory.name)
+        directory = directory.parent
+    return ".".join(reversed(parts))
+
+
 class SourceManager:
     """Own source text and return one canonical object for each source ID."""
 
     def __init__(self) -> None:
         self._sources: dict[SourceId, SourceFile] = {}
 
-    def add_source(self, name: str, text: str) -> SourceFile:
+    def add_source(self, name: str, text: str, module_name: str | None = None) -> SourceFile:
         source_id = SourceId(name)
         existing = self._sources.get(source_id)
         if existing is not None:
@@ -21,7 +32,11 @@ class SourceManager:
                 raise ValueError(f"source {name!r} already exists with different text")
             return existing
 
-        source = SourceFile(source_id=source_id, text=text)
+        source = SourceFile(
+            source_id=source_id,
+            text=text,
+            module_name=module_name if module_name is not None else Path(name).stem,
+        )
         self._sources[source_id] = source
         return source
 
@@ -34,7 +49,12 @@ class SourceManager:
 
         # utf-8-sig accepts ordinary UTF-8 and strips a leading UTF-8 BOM.
         text = resolved_path.read_text(encoding="utf-8-sig")
-        source = SourceFile(source_id=source_id, text=text, path=resolved_path)
+        source = SourceFile(
+            source_id=source_id,
+            text=text,
+            module_name=module_name_for(resolved_path),
+            path=resolved_path,
+        )
         self._sources[source_id] = source
         return source
 

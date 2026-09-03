@@ -41,7 +41,7 @@ def test_emit_ir_for_call(tmp_path, capsys) -> None:
 
     assert main(["--emit-ir", str(source)]) == 0
     output = capsys.readouterr().out
-    assert "%1 = global 'print'" in output
+    assert "%1 = symbol @python.builtins.print" in output
     assert "%2 = call %1(%0)" in output
 
 

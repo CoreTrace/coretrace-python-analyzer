@@ -47,9 +47,10 @@ class SourceSpan:
 
 @dataclass(frozen=True)
 class SourceFile:
-    """Decoded source text and its identity."""
+    """Decoded source text, its identity and its dotted module name."""
 
     source_id: SourceId
     text: str
+    module_name: str
     path: Path | None = None
 
