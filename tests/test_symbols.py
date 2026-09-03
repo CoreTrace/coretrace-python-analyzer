@@ -1,6 +1,6 @@
 import pytest
 
-from coretrace_python.frontend.symbols import SymbolId
+from coretrace_python.semantic.symbols import SymbolId
 
 
 def test_symbol_id_adds_the_python_namespace() -> None:

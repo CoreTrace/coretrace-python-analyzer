@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import NoReturn
 
-from coretrace_python.frontend.imports import ImportBindings, collect_imports
 from coretrace_python.hir import nodes
 from coretrace_python.ir.model import (
     BasicBlock,
@@ -26,7 +25,8 @@ from coretrace_python.ir.model import (
     Value,
     ValueInstruction,
 )
-from coretrace_python.ir.symbol import SymbolId
+from coretrace_python.semantic.imports import ImportBindings, collect_imports
+from coretrace_python.semantic.symbols import SymbolId
 
 
 class LoweringError(Exception):

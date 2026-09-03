@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 
-from coretrace_python.source import SourceFile, SourceManager
+from coretrace_python.source import SourceFile
 
 
 class ParseError(Exception):
@@ -18,11 +17,6 @@ def parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
         column = error.offset or 0
         message = error.msg or "invalid syntax"
         raise ParseError(f"{filename}:{line}:{column}: {message}") from error
-
-
-def parse_file(path: str | Path) -> ast.Module:
-    source = SourceManager().load_file(path)
-    return parse_source_file(source)
 
 
 def parse_source_file(source: SourceFile) -> ast.Module:
