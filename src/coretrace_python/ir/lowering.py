@@ -25,7 +25,7 @@ from coretrace_python.ir.model import (
     Value,
     ValueInstruction,
 )
-from coretrace_python.semantic.imports import ImportBindings, collect_imports
+from coretrace_python.semantic.imports import analyze_imports
 from coretrace_python.semantic.scopes import (
     Resolution,
     ResolutionKind,
@@ -33,7 +33,7 @@ from coretrace_python.semantic.scopes import (
     ScopeAnalysis,
     analyze_scopes,
 )
-from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, analyze_symbols
 
 
 class LoweringError(Exception):
@@ -42,7 +42,7 @@ class LoweringError(Exception):
 
 @dataclass
 class _FunctionLowerer:
-    imports: ImportBindings
+    symbols: SymbolAnalysis
     scopes: ScopeAnalysis
     scope: Scope
     next_value_id: int = 0
@@ -75,9 +75,7 @@ class _FunctionLowerer:
 
     def imported_symbol(self, node: nodes.Expression) -> SymbolId | None:
         if isinstance(node, nodes.Name):
-            if self.resolve(node.identifier).kind is not ResolutionKind.GLOBAL:
-                return None
-            return self.imports.resolve(node.identifier)
+            return self.symbols.resolve(self.scope.id, node.identifier)
         if isinstance(node, nodes.Attribute):
             parent = self.imported_symbol(node.value)
             return parent.attribute(node.name) if parent is not None else None
@@ -139,8 +137,8 @@ class _FunctionLowerer:
         if isinstance(node, nodes.ExpressionStatement):
             self.expression(node.expression)
             return
-        if isinstance(node, (nodes.Pass, nodes.Global)):
-            # ``global`` is a declaration already applied by scope analysis.
+        if isinstance(node, (nodes.Pass, nodes.Global, nodes.Import, nodes.ImportFrom)):
+            # Declarations and imports are already applied by the semantic analyses.
             return
         self.fail(node)
 
@@ -154,12 +152,12 @@ class _FunctionLowerer:
 
 
 def lower_module(module: nodes.Module) -> ModuleIR:
-    imports = collect_imports(module)
     scopes = analyze_scopes(module)
+    symbols = analyze_symbols(scopes, analyze_imports(module, scopes))
     functions: list[FunctionIR] = []
     for statement in module.body:
         if isinstance(statement, nodes.Function):
-            lowerer = _FunctionLowerer(imports, scopes, scopes.scope_for(statement))
+            lowerer = _FunctionLowerer(symbols, scopes, scopes.scope_for(statement))
             functions.append(lowerer.function(statement))
         elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
             continue

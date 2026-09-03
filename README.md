@@ -36,8 +36,9 @@ Currently supported inside functions: arguments, assignments, names, constants, 
 operations, unary operations, comparisons, calls, attribute access, indexing, and returns.
 Unsupported syntax produces a source-located diagnostic and a non-zero exit status.
 
-Module-level imports are resolved to canonical symbols. Import aliases do not change an
-API's identity, so all of the following resolve to `python.os.system`:
+Names are resolved to canonical symbols through lexical scopes, imports and builtins.
+Import aliases do not change an API's identity, so all of the following resolve to
+`python.os.system`:
 
 ```python
 import os
@@ -45,4 +46,6 @@ from os import system
 from os import system as run
 ```
 
-Relative and wildcard imports are not supported yet and produce source-located diagnostics.
+Relative imports resolve against the module's dotted name, derived from the enclosing
+`__init__.py` packages. Builtins resolve to `python.builtins.<name>`. Names introduced by
+wildcard imports stay unresolved and are emitted as `global`.
