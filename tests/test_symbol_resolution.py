@@ -119,3 +119,40 @@ def test_wildcard_import_fails_with_a_source_location(tmp_path, capsys) -> None:
     assert output == ""
     assert "symbols.py:1:1" in error
     assert "wildcard imports are not supported" in error
+
+
+# --------------------------------------------------------------------------- next milestone
+# Lowering must consume the Phase 2 ScopeAnalysis instead of tracking locals itself
+# (docs/architecture.md §4.1 and boundary "PyIR lowering consumes semantic results").
+# Expected to remain red until lowering is routed through scope analysis.
+
+
+def test_read_before_assignment_is_local_not_an_import(tmp_path, capsys) -> None:
+    exit_code, output, error = emit_ir(
+        "from os import system as run\n\n"
+        "def execute(callback, command):\n"
+        "    run(command)\n"
+        "    run = callback\n",
+        tmp_path,
+        capsys,
+    )
+
+    assert exit_code == 0, error
+    assert "symbol @python.os.system" not in output
+    assert 'load_local "run"' in output
+    assert 'store_local "run", %0' in output
+
+
+def test_global_declaration_is_not_a_local(tmp_path, capsys) -> None:
+    exit_code, output, error = emit_ir(
+        "import os\n\n"
+        "def execute(command):\n"
+        "    global os\n"
+        "    os.system(command)\n",
+        tmp_path,
+        capsys,
+    )
+
+    assert exit_code == 0, error
+    assert "symbol @python.os.system" in output
+    assert 'load_local "os"' not in output
