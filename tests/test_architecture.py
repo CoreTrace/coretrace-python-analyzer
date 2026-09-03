@@ -21,15 +21,16 @@ PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "src" / PACKAGE
 PARSER_MODULES = {"ast", "tree_sitter", "tree_sitter_python"}
 
 # Dependency direction of the pipeline (§2, §37). A package may import only packages
-# with a strictly lower layer number, or itself.
+# with a strictly lower layer number, or itself. ``analysis`` is infrastructure every
+# provider subclasses, so it sits below the analyses it manages (§8).
 LAYERS = {
     "source": 0,
     "hir": 1,
+    "analysis": 2,
     "frontend": 2,
-    "semantic": 2,
-    "cfg": 3,
-    "ir": 4,
-    "analysis": 5,
+    "semantic": 3,
+    "cfg": 4,
+    "ir": 5,
     "dataflow": 6,
     "abstract": 6,
     "interprocedural": 6,

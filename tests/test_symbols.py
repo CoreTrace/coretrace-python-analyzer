@@ -1,6 +1,6 @@
 """Acceptance tests for canonical symbols (``docs/architecture.md`` §4.3).
 
-``SymbolId`` is a namespace-qualified dotted identity. ``SymbolAnalysis`` resolves any
+``SymbolId`` is a namespace-qualified dotted identity. ``SymbolTable`` resolves any
 name in any scope to such an identity through scope rules, imports and builtins, so
 security rules never depend on the textual name visible in the file.
 
@@ -12,13 +12,13 @@ from __future__ import annotations
 import pytest
 
 from coretrace_python.frontend import build_hir
-from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeId, analyze_scopes
+from coretrace_python.semantic.scopes import ScopeId, ScopeTable, analyze_scopes
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceManager
 
 try:
     from coretrace_python.semantic.imports import analyze_imports
-    from coretrace_python.semantic.symbols import SymbolAnalysis, analyze_symbols
+    from coretrace_python.semantic.symbols import SymbolTable, analyze_symbols
 except ImportError as error:  # pragma: no cover - red until symbol analysis lands
     MISSING = error
 else:
@@ -62,7 +62,7 @@ def test_symbol_id_requires_a_namespace_and_non_empty_components(name: str) -> N
         SymbolId(name)
 
 
-# --------------------------------------------------------------------------- SymbolAnalysis
+# --------------------------------------------------------------------------- SymbolTable
 
 
 @pytest.fixture
@@ -71,14 +71,14 @@ def symbols() -> None:
         pytest.fail(f"symbol analysis is not implemented yet: {MISSING}")
 
 
-def analyze(source_text: str) -> tuple[ScopeAnalysis, SymbolAnalysis]:
+def analyze(source_text: str) -> tuple[ScopeTable, SymbolTable]:
     source = SourceManager().add_source("symbols.py", source_text)
     module = build_hir(source)
     scopes = analyze_scopes(module)
     return scopes, analyze_symbols(scopes, analyze_imports(module, scopes))
 
 
-def scope_named(scopes: ScopeAnalysis, name: str) -> ScopeId:
+def scope_named(scopes: ScopeTable, name: str) -> ScopeId:
     return next(s for s in scopes.children(scopes.module_scope.id) if s.name == name).id
 
 

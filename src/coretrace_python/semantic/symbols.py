@@ -11,10 +11,10 @@ import builtins
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from coretrace_python.semantic.scopes import ResolutionKind, ScopeAnalysis, ScopeId
+from coretrace_python.semantic.scopes import ResolutionKind, ScopeId, ScopeTable
 
 if TYPE_CHECKING:
-    from coretrace_python.semantic.imports import ImportAnalysis
+    from coretrace_python.semantic.imports import ImportTable
 
 BUILTIN_NAMES = frozenset(name for name in dir(builtins) if not name.startswith("_"))
 
@@ -48,10 +48,10 @@ class SymbolId:
         return self.canonical_name
 
 
-class SymbolAnalysis:
+class SymbolTable:
     """Resolve names to canonical symbols through scopes, imports and builtins."""
 
-    def __init__(self, scopes: ScopeAnalysis, imports: ImportAnalysis) -> None:
+    def __init__(self, scopes: ScopeTable, imports: ImportTable) -> None:
         self._scopes = scopes
         self._imports = imports
 
@@ -63,5 +63,5 @@ class SymbolAnalysis:
         return self._imports.bindings(resolution.scope).get(name)
 
 
-def analyze_symbols(scopes: ScopeAnalysis, imports: ImportAnalysis) -> SymbolAnalysis:
-    return SymbolAnalysis(scopes, imports)
+def analyze_symbols(scopes: ScopeTable, imports: ImportTable) -> SymbolTable:
+    return SymbolTable(scopes, imports)
