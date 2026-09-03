@@ -161,12 +161,12 @@ class _TaintProblem(DataflowProblem[State]):
     def call(self, call: Call, state: Mapping[Value, Taint], flows: list[TaintFlow]) -> Taint:
         symbol = self.symbols.get(call.callee)
         arguments = Taint.none()
-        for argument in call.arguments:
+        for argument in call.argument_values():
             arguments = arguments.join(state.get(argument, Taint.none()))
         if symbol is not None:
             sink = self.models.sink(symbol)
             if sink is not None:
-                for argument in call.arguments:
+                for argument in call.argument_values():
                     taint = state.get(argument, Taint.none())
                     reaching = taint.kinds & sink.kinds
                     if reaching:

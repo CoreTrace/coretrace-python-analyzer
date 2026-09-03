@@ -12,12 +12,17 @@ from pathlib import Path
 from coretrace_python import __version__
 from coretrace_python.abstract import ConstantPropagation
 from coretrace_python.analysis import AnalysisManager, AnyAnalysis
-from coretrace_python.cfg import CFGAnalysis, DominanceAnalysis, PostDominanceAnalysis
-from coretrace_python.findings import Finding
+from coretrace_python.cfg import CFGAnalysis, CFGError, DominanceAnalysis, PostDominanceAnalysis
+from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.frontend import build_hir
 from coretrace_python.hir import nodes
 from coretrace_python.ir.defuse import DefUseAnalysis
-from coretrace_python.ir.lowering import ModuleIRAnalysis, PyIRAnalysis
+from coretrace_python.ir.lowering import (
+    LoweringError,
+    ModuleIRAnalysis,
+    PyIRAnalysis,
+    analyzable_functions,
+)
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.plugins import PluginRegistry, discover_plugins, run_plugins
 from coretrace_python.reporters import Report
@@ -68,7 +73,27 @@ def check(source: SourceFile, plugin_roots: Sequence[Path]) -> tuple[Finding, ..
     for loaded in registry:
         models.register(*loaded.plugin.models)
     manager.provide(SecurityModelAnalysis, models.freeze())
-    return run_plugins(manager, [loaded.plugin for loaded in registry])
+
+    supported: list[nodes.Function] = []
+    notes: list[Finding] = []
+    for function in analyzable_functions(manager.module):
+        try:
+            manager.get(SSAAnalysis, function)
+        except (LoweringError, CFGError) as error:
+            notes.append(
+                Finding(
+                    rule_id="unsupported-syntax",
+                    message=str(error),
+                    severity=Severity.INFO,
+                    confidence=Confidence.HIGH,
+                    span=function.span,
+                    function=function.name,
+                )
+            )
+        else:
+            supported.append(function)
+    findings = run_plugins(manager, [loaded.plugin for loaded in registry], tuple(supported))
+    return (*findings, *notes)
 
 
 def _register_all(module: nodes.Module) -> AnalysisManager:

@@ -226,9 +226,21 @@ class _Collector:
             self.statement(statement, scope)
 
     def statement(self, node: nodes.Statement, scope: _ScopeBuilder) -> None:
-        if isinstance(node, nodes.Assign):
+        if isinstance(node, nodes.Assign | nodes.AugAssign):
             self.expression(node.value, scope)
-            scope.bind(node.target.identifier, BindingKind.LOCAL, node.target.span)
+            self.target(node.target, scope)
+        elif isinstance(node, nodes.Assert):
+            self.expression(node.test, scope)
+            if node.message is not None:
+                self.expression(node.message, scope)
+        elif isinstance(node, nodes.With):
+            for item in node.items:
+                self.expression(item.context, scope)
+                if item.target is not None:
+                    scope.bind(item.target.identifier, BindingKind.LOCAL, item.target.span)
+            self.body(node.body, scope)
+        elif isinstance(node, nodes.EnterWith | nodes.ExitWith):
+            pass
         elif isinstance(node, nodes.Return):
             if node.value is not None:
                 self.expression(node.value, scope)
@@ -254,12 +266,19 @@ class _Collector:
                 scope.bind(name, BindingKind.NONLOCAL, node.span)
                 scope.declarations.append((node, name))
         elif isinstance(node, nodes.Function):
+            for decorator in node.decorators:
+                self.expression(decorator, scope)
+            for parameter in node.parameters:
+                if parameter.default is not None:
+                    self.expression(parameter.default, scope)
             scope.bind(node.name, BindingKind.FUNCTION, node.span)
             function = self.open(scope, ScopeKind.FUNCTION, node.name, node.span)
             for parameter in node.parameters:
                 function.bind(parameter.name, BindingKind.PARAMETER, parameter.span)
             self.body(node.body, function)
         elif isinstance(node, nodes.Class):
+            for decorator in node.decorators:
+                self.expression(decorator, scope)
             for base in node.bases:
                 self.expression(base, scope)
             scope.bind(node.name, BindingKind.CLASS, node.span)
@@ -302,8 +321,28 @@ class _Collector:
                 self.expression(keyword.value, scope)
         elif isinstance(node, nodes.Comprehension):
             self.comprehension(node, scope)
+        elif isinstance(node, nodes.BoolOp):
+            for value in node.values:
+                self.expression(value, scope)
+        elif isinstance(node, nodes.Tuple | nodes.List):
+            for element in node.elements:
+                self.expression(element, scope)
+        elif isinstance(node, nodes.Dict):
+            for key, value in node.items:
+                self.expression(key, scope)
+                self.expression(value, scope)
         else:
             raise TypeError(f"unknown expression: {node!r}")
+
+    def target(self, node: nodes.Target, scope: _ScopeBuilder) -> None:
+        if isinstance(node, nodes.Name):
+            scope.bind(node.identifier, BindingKind.LOCAL, node.span)
+        elif isinstance(node, nodes.Tuple):
+            for element in node.elements:
+                assert isinstance(element, nodes.Name | nodes.Attribute | nodes.Subscript | nodes.Tuple)
+                self.target(element, scope)
+        else:
+            self.expression(node, scope)
 
     def comprehension(self, node: nodes.Comprehension, scope: _ScopeBuilder) -> None:
         # The first iterable is evaluated in the enclosing scope; everything else runs

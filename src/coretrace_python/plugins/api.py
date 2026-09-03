@@ -22,6 +22,7 @@ from coretrace_python.analysis import (
 from coretrace_python.analysis.provider import R
 from coretrace_python.findings import Finding
 from coretrace_python.hir import nodes
+from coretrace_python.ir.lowering import analyzable_functions
 from coretrace_python.taint import Model
 
 PLUGIN_API_VERSION = 1
@@ -50,16 +51,24 @@ class ModelPlugin(Plugin):
 class PluginContext:
     """What one plugin may see while analysing one module."""
 
-    def __init__(self, manager: AnalysisManager, plugin: Plugin) -> None:
+    def __init__(
+        self,
+        manager: AnalysisManager,
+        plugin: Plugin,
+        functions: tuple[nodes.Function, ...] | None = None,
+    ) -> None:
         self._manager = manager
         self._plugin = plugin
+        self._functions = analyzable_functions(manager.module) if functions is None else functions
 
     @property
     def module(self) -> nodes.Module:
         return self._manager.module
 
     def functions(self) -> tuple[nodes.Function, ...]:
-        return tuple(s for s in self.module.body if isinstance(s, nodes.Function))
+        """Top-level functions and methods the engine can analyse."""
+
+        return self._functions
 
     @overload
     def get(self, analysis: type[Analysis[R]], function: None = None) -> R: ...
@@ -79,10 +88,14 @@ class PluginContext:
         return self._manager.get(analysis, function)
 
 
-def run_plugins(manager: AnalysisManager, plugins: Iterable[Plugin]) -> tuple[Finding, ...]:
+def run_plugins(
+    manager: AnalysisManager,
+    plugins: Iterable[Plugin],
+    functions: tuple[nodes.Function, ...] | None = None,
+) -> tuple[Finding, ...]:
     """Run every plugin against one shared manager and concatenate their findings."""
 
     findings: list[Finding] = []
     for plugin in plugins:
-        findings.extend(plugin.analyze(PluginContext(manager, plugin)))
+        findings.extend(plugin.analyze(PluginContext(manager, plugin, functions)))
     return tuple(findings)

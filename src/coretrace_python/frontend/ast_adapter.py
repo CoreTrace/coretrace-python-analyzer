@@ -83,22 +83,40 @@ class AstHIRBuilder:
                 self.fail(node.op)
             return nodes.UnaryOp(operator, self.expression(node.operand), span)
         if isinstance(node, ast.Compare):
-            if len(node.ops) != 1 or len(node.comparators) != 1:
-                self.fail(node, "chained comparisons are not supported yet")
-            operator = _COMPARE_OPERATORS.get(type(node.ops[0]))
-            if operator is None:
-                self.fail(node.ops[0])
-            return nodes.Compare(
-                operator,
-                self.expression(node.left),
-                self.expression(node.comparators[0]),
-                span,
-            )
+            comparisons: list[nodes.Expression] = []
+            left = self.expression(node.left)
+            for op, comparator in zip(node.ops, node.comparators, strict=True):
+                operator = _COMPARE_OPERATORS.get(type(op))
+                if operator is None:
+                    self.fail(op)
+                right = self.expression(comparator)
+                comparisons.append(nodes.Compare(operator, left, right, span))
+                left = right
+            if len(comparisons) == 1:
+                return comparisons[0]
+            return nodes.BoolOp("and", tuple(comparisons), span)
+        if isinstance(node, ast.BoolOp):
+            operator = "and" if isinstance(node.op, ast.And) else "or"
+            return nodes.BoolOp(operator, tuple(self.expression(v) for v in node.values), span)
+        if isinstance(node, ast.Tuple):
+            return nodes.Tuple(self.elements(node.elts), span)
+        if isinstance(node, ast.List):
+            return nodes.List(self.elements(node.elts), span)
+        if isinstance(node, ast.Dict):
+            items = []
+            for key, value in zip(node.keys, node.values, strict=True):
+                if key is None:
+                    self.fail(value, "dict unpacking is not supported yet")
+                items.append((self.expression(key), self.expression(value)))
+            return nodes.Dict(tuple(items), span)
         if isinstance(node, ast.Attribute):
             return nodes.Attribute(self.expression(node.value), node.attr, span)
         if isinstance(node, ast.Subscript):
             return nodes.Subscript(self.expression(node.value), self.expression(node.slice), span)
         if isinstance(node, ast.Call):
+            for argument in node.args:
+                if isinstance(argument, ast.Starred):
+                    self.fail(argument, "star arguments are not supported yet")
             arguments = tuple(self.expression(argument) for argument in node.args)
             keywords = tuple(
                 nodes.Keyword(keyword.arg, self.expression(keyword.value), self.span(keyword))
@@ -111,6 +129,26 @@ class AstHIRBuilder:
                 _COMPREHENSIONS[type(node)], self.expression(node.elt), generators, span
             )
         self.fail(node)
+
+    def elements(self, elements: list[ast.expr]) -> tuple[nodes.Expression, ...]:
+        for element in elements:
+            if isinstance(element, ast.Starred):
+                self.fail(element, "star expressions are not supported yet")
+        return tuple(self.expression(element) for element in elements)
+
+    def target(self, node: ast.expr) -> nodes.Target:
+        if isinstance(node, ast.Name):
+            return nodes.Name(node.id, self.span(node))
+        if isinstance(node, (ast.Attribute, ast.Subscript)):
+            target = self.expression(node)
+            assert isinstance(target, (nodes.Attribute, nodes.Subscript))
+            return target
+        if isinstance(node, (ast.Tuple, ast.List)):
+            for element in node.elts:
+                if isinstance(element, ast.Starred):
+                    self.fail(element, "starred assignment targets are not supported yet")
+            return nodes.Tuple(tuple(self.target(element) for element in node.elts), self.span(node))
+        self.fail(node, f"unsupported assignment target: {type(node).__name__}")
 
     def generator(self, node: ast.comprehension) -> nodes.ComprehensionGenerator:
         if node.is_async:
@@ -133,10 +171,36 @@ class AstHIRBuilder:
     def statement(self, node: ast.stmt) -> nodes.Statement:
         span = self.span(node)
         if isinstance(node, ast.Assign):
-            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
-                self.fail(node, "only assignment to one local name is supported")
-            target = nodes.Name(node.targets[0].id, self.span(node.targets[0]))
-            return nodes.Assign(target, self.expression(node.value), span)
+            if len(node.targets) != 1:
+                self.fail(node, "chained assignment is not supported yet")
+            return nodes.Assign(self.target(node.targets[0]), self.expression(node.value), span)
+        if isinstance(node, ast.AugAssign):
+            operator = _BINARY_OPERATORS.get(type(node.op))
+            if operator is None:
+                self.fail(node.op)
+            target = self.target(node.target)
+            if isinstance(target, nodes.Tuple):
+                self.fail(node.target, "unsupported augmented assignment target")
+            return nodes.AugAssign(target, operator, self.expression(node.value), span)
+        if isinstance(node, ast.Assert):
+            message = self.expression(node.msg) if node.msg is not None else None
+            return nodes.Assert(self.expression(node.test), message, span)
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            items = []
+            for item in node.items:
+                bound: nodes.Name | None = None
+                if item.optional_vars is not None:
+                    if not isinstance(item.optional_vars, ast.Name):
+                        self.fail(
+                            item.optional_vars, "only a single name is supported as a with target"
+                        )
+                    bound = nodes.Name(item.optional_vars.id, self.span(item.optional_vars))
+                items.append(
+                    nodes.WithItem(
+                        self.expression(item.context_expr), bound, self.span(item.context_expr)
+                    )
+                )
+            return nodes.With(tuple(items), self.block(node.body), isinstance(node, ast.AsyncWith), span)
         if isinstance(node, ast.Return):
             value = self.expression(node.value) if node.value is not None else None
             return nodes.Return(value, span)
@@ -198,34 +262,42 @@ class AstHIRBuilder:
         return tuple(self.statement(statement) for statement in statements)
 
     def class_definition(self, node: ast.ClassDef) -> nodes.Class:
-        if node.decorator_list:
-            self.fail(node, "decorated classes are not supported yet")
         if node.keywords:
             self.fail(node, "class keyword arguments are not supported yet")
         bases = tuple(self.expression(base) for base in node.bases)
         body = tuple(self.statement(statement) for statement in node.body)
-        return nodes.Class(node.name, bases, body, self.span(node))
+        decorators = tuple(self.expression(d) for d in node.decorator_list)
+        return nodes.Class(node.name, bases, body, self.span(node), decorators)
 
     def function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> nodes.Function:
-        if node.decorator_list:
-            self.fail(node, "decorated functions are not supported yet")
-        arguments = node.args
-        has_advanced_arguments = (
-            arguments.posonlyargs or arguments.kwonlyargs or arguments.vararg or arguments.kwarg
-        )
-        if has_advanced_arguments or arguments.defaults or arguments.kw_defaults:
-            self.fail(arguments, "only required positional arguments are supported")
-        parameters = tuple(
-            nodes.Parameter(argument.arg, self.span(argument)) for argument in arguments.args
-        )
         body = tuple(self.statement(statement) for statement in node.body)
         return nodes.Function(
             name=node.name,
-            parameters=parameters,
+            parameters=self.parameters(node.args),
             body=body,
             is_async=isinstance(node, ast.AsyncFunctionDef),
             span=self.span(node),
+            decorators=tuple(self.expression(d) for d in node.decorator_list),
         )
+
+    def parameters(self, arguments: ast.arguments) -> tuple[nodes.Parameter, ...]:
+        positional = [*arguments.posonlyargs, *arguments.args]
+        defaults: list[ast.expr | None] = [None] * (len(positional) - len(arguments.defaults))
+        defaults.extend(arguments.defaults)
+        parameters: list[nodes.Parameter] = []
+        for argument, default in zip(positional, defaults, strict=True):
+            parameters.append(self.parameter(argument, default, "positional"))
+        if arguments.vararg is not None:
+            parameters.append(self.parameter(arguments.vararg, None, "var_positional"))
+        for argument, default in zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True):
+            parameters.append(self.parameter(argument, default, "keyword"))
+        if arguments.kwarg is not None:
+            parameters.append(self.parameter(arguments.kwarg, None, "var_keyword"))
+        return tuple(parameters)
+
+    def parameter(self, argument: ast.arg, default: ast.expr | None, kind: str) -> nodes.Parameter:
+        value = self.expression(default) if default is not None else None
+        return nodes.Parameter(argument.arg, self.span(argument), value, kind)
 
     def module(self, tree: ast.Module) -> nodes.Module:
         body = tuple(self.statement(statement) for statement in tree.body)

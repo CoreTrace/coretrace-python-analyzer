@@ -48,9 +48,13 @@ coretrace-python-analyzer --emit-ir example.py
 PYTHONPATH=src python -m coretrace_python --emit-ir example.py
 ```
 
-Currently supported inside functions: arguments, assignments, names, constants, binary
-operations, unary operations, comparisons, calls, attribute access, indexing, returns,
-`if`/`elif`/`else`, `while`, `for`, `break`, `continue` and `raise`. Each function is
+Currently supported inside functions: parameters with defaults and keyword-only or star
+forms, decorators, assignments to names, attributes, items and unpacked tuples, augmented
+assignment, list, tuple and dict literals, `and`/`or`, chained comparisons, keyword
+arguments, `with`, `assert`, `if`/`elif`/`else`, `while`, `for`, `break`, `continue` and
+`raise`. Methods of module-level classes are analysed like functions; other module-level
+code is skipped. A function using syntax outside this subset is reported by `--check` as
+an `unsupported-syntax` note and the other functions are still analysed. Each function is
 emitted as its control-flow graph: one block per basic block, ending in an explicit
 terminator (`branch`, `jump`, `return`, `raise`, `for_next`). Add `--ssa` to print the
 static single assignment form: locals become numbered values, merges get `phi`

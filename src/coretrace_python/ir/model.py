@@ -20,18 +20,25 @@ class Operands:
     def operands(self) -> tuple[Value, ...]:
         found: list[Value] = []
         for field_info in fields(self):  # type: ignore[arg-type]
-            if field_info.name == "result":
-                continue
-            value = getattr(self, field_info.name)
-            if isinstance(value, Value):
-                found.append(value)
-            elif isinstance(value, tuple):
-                for item in value:
-                    if isinstance(item, Value):
-                        found.append(item)
-                    elif isinstance(item, tuple) and item and isinstance(item[0], Value):
-                        found.append(item[0])
+            if field_info.name != "result":
+                found.extend(_values_in(getattr(self, field_info.name)))
         return tuple(found)
+
+
+def _values_in(value: object) -> list[Value]:
+    if isinstance(value, Value):
+        return [value]
+    if isinstance(value, tuple):
+        return [v for item in value for v in _values_in(item)]
+    return []
+
+
+def _map_values(value: Any, mapping: Callable[[Value], Value]) -> Any:
+    if isinstance(value, Value):
+        return mapping(value)
+    if isinstance(value, tuple):
+        return tuple(_map_values(item, mapping) for item in value)
+    return value
 
 
 N = TypeVar("N", bound=Operands)
@@ -46,17 +53,8 @@ def substitute(node: N, mapping: Callable[[Value], Value], *, include_result: bo
         if field_info.name == "result":
             if include_result and isinstance(value, Value):
                 changes["result"] = mapping(value)
-        elif isinstance(value, Value):
-            changes[field_info.name] = mapping(value)
-        elif isinstance(value, tuple):
-            changes[field_info.name] = tuple(
-                mapping(item)
-                if isinstance(item, Value)
-                else (mapping(item[0]), *item[1:])
-                if isinstance(item, tuple) and item and isinstance(item[0], Value)
-                else item
-                for item in value
-            )
+        else:
+            changes[field_info.name] = _map_values(value, mapping)
     return replace(node, **changes)  # type: ignore[type-var]
 
 
@@ -113,6 +111,46 @@ class Call(Operands):
     location: SourceSpan
     callee: Value
     arguments: tuple[Value, ...]
+    keywords: tuple[tuple[str | None, Value], ...] = ()
+
+    def argument_values(self) -> tuple[Value, ...]:
+        return (*self.arguments, *(value for _, value in self.keywords))
+
+
+@dataclass(frozen=True)
+class BoolOp(Operands):
+    result: Value
+    location: SourceSpan
+    operator: str
+    values: tuple[Value, ...]
+
+
+@dataclass(frozen=True)
+class BuildList(Operands):
+    result: Value
+    location: SourceSpan
+    elements: tuple[Value, ...]
+
+
+@dataclass(frozen=True)
+class BuildTuple(Operands):
+    result: Value
+    location: SourceSpan
+    elements: tuple[Value, ...]
+
+
+@dataclass(frozen=True)
+class BuildDict(Operands):
+    result: Value
+    location: SourceSpan
+    items: tuple[tuple[Value, Value], ...]
+
+
+@dataclass(frozen=True)
+class WithEnter(Operands):
+    result: Value
+    location: SourceSpan
+    context: Value
 
 
 @dataclass(frozen=True)
@@ -172,6 +210,39 @@ class StoreLocal(Operands):
     value: Value
 
 
+@dataclass(frozen=True)
+class SetAttr(Operands):
+    result: None
+    location: SourceSpan
+    object: Value
+    attribute: str
+    value: Value
+
+
+@dataclass(frozen=True)
+class SetItem(Operands):
+    result: None
+    location: SourceSpan
+    object: Value
+    key: Value
+    value: Value
+
+
+@dataclass(frozen=True)
+class WithExit(Operands):
+    result: None
+    location: SourceSpan
+    context: Value
+
+
+@dataclass(frozen=True)
+class Assert(Operands):
+    result: None
+    location: SourceSpan
+    test: Value
+    message: Value | None
+
+
 ValueInstruction: TypeAlias = (
     Constant
     | Global
@@ -186,8 +257,13 @@ ValueInstruction: TypeAlias = (
     | LoadLocal
     | Phi
     | Undefined
+    | BoolOp
+    | BuildList
+    | BuildTuple
+    | BuildDict
+    | WithEnter
 )
-EffectInstruction: TypeAlias = StoreLocal
+EffectInstruction: TypeAlias = StoreLocal | SetAttr | SetItem | WithExit | Assert
 Instruction: TypeAlias = ValueInstruction | EffectInstruction
 
 
