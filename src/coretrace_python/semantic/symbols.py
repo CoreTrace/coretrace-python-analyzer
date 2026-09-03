@@ -1,51 +1,16 @@
-"""Canonical symbol identities and their resolution (architecture §4.3).
-
-A ``SymbolId`` names a Python object independently of how a file spells it: every way
-of importing ``os.system`` yields ``python.os.system``. Framework models may live in
-their own namespaces, such as ``flask.request.args``.
-"""
+"""Symbol analysis: resolve names to canonical identities (architecture §4.3)."""
 
 from __future__ import annotations
 
 import builtins
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import ClassVar
 
-from coretrace_python.semantic.scopes import ResolutionKind, ScopeId, ScopeTable
-
-if TYPE_CHECKING:
-    from coretrace_python.semantic.imports import ImportTable
+from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
+from coretrace_python.semantic.identity import SymbolId
+from coretrace_python.semantic.imports import ImportAnalysis, ImportTable
+from coretrace_python.semantic.scopes import ResolutionKind, ScopeAnalysis, ScopeId, ScopeTable
 
 BUILTIN_NAMES = frozenset(name for name in dir(builtins) if not name.startswith("_"))
-
-
-@dataclass(frozen=True, order=True)
-class SymbolId:
-    """A stable, import-style-independent, namespace-qualified dotted name."""
-
-    canonical_name: str
-
-    def __post_init__(self) -> None:
-        components = self.canonical_name.split(".")
-        if len(components) < 2:
-            raise ValueError("a canonical symbol needs a namespace and a path")
-        if not all(component.isidentifier() for component in components):
-            raise ValueError(f"invalid canonical symbol: {self.canonical_name!r}")
-
-    @classmethod
-    def from_python_path(cls, path: str) -> SymbolId:
-        normalized_path = path.removeprefix("python.")
-        if not normalized_path or normalized_path.startswith("."):
-            raise ValueError("a Python symbol path cannot be empty")
-        return cls(f"python.{normalized_path}")
-
-    def attribute(self, name: str) -> SymbolId:
-        if not name or "." in name:
-            raise ValueError("an attribute name must be one non-empty component")
-        return SymbolId(f"{self.canonical_name}.{name}")
-
-    def __str__(self) -> str:
-        return self.canonical_name
 
 
 class SymbolTable:
@@ -65,3 +30,15 @@ class SymbolTable:
 
 def analyze_symbols(scopes: ScopeTable, imports: ImportTable) -> SymbolTable:
     return SymbolTable(scopes, imports)
+
+
+class SymbolAnalysis(Analysis[SymbolTable]):
+    name: ClassVar[str] = "semantic.symbols"
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({ScopeAnalysis, ImportAnalysis})
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> SymbolTable:
+        return analyze_symbols(ctx.get(ScopeAnalysis), ctx.get(ImportAnalysis))
+
+
+__all__ = ["BUILTIN_NAMES", "SymbolAnalysis", "SymbolId", "SymbolTable", "analyze_symbols"]

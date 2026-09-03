@@ -14,7 +14,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
+from typing import ClassVar
 
+from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.hir import nodes
 from coretrace_python.source import SourceSpan
 
@@ -326,3 +328,11 @@ def analyze_scopes(module: nodes.Module) -> ScopeTable:
                     f"{declaration.span.display()}: no binding for nonlocal {name!r}"
                 )
     return analysis
+
+
+class ScopeAnalysis(Analysis[ScopeTable]):
+    name: ClassVar[str] = "semantic.scopes"
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> ScopeTable:
+        return analyze_scopes(ctx.module)
