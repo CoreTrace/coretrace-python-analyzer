@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from coretrace_python.cli import main
+from coretrace_python.cli import main as main_cli
 
 
 def emit_ir(source_text: str, tmp_path, capsys) -> tuple[int, str, str]:
@@ -79,17 +80,17 @@ def test_import_bindings_are_available_to_every_function(tmp_path, capsys) -> No
     assert "func @second(%0)" in output
 
 
-def test_non_imported_name_remains_a_global(tmp_path, capsys) -> None:
+def test_unknown_name_remains_a_global(tmp_path, capsys) -> None:
     exit_code, output, error = emit_ir(
         "def greet(name):\n"
-        "    print(name)\n",
+        "    undefined_helper(name)\n",
         tmp_path,
         capsys,
     )
 
     assert exit_code == 0, error
-    assert "%1 = global 'print'" in output
-    assert "symbol @python.print" not in output
+    assert "%1 = global 'undefined_helper'" in output
+    assert "symbol @" not in output
 
 
 def test_local_assignment_shadows_an_import_binding(tmp_path, capsys) -> None:
@@ -108,17 +109,18 @@ def test_local_assignment_shadows_an_import_binding(tmp_path, capsys) -> None:
     assert "symbol @python.os.system" not in output
 
 
-def test_wildcard_import_fails_with_a_source_location(tmp_path, capsys) -> None:
+def test_wildcard_import_leaves_names_unresolved(tmp_path, capsys) -> None:
     exit_code, output, error = emit_ir(
-        "from os import *\n",
+        "from os import *\n\n"
+        "def execute(command):\n"
+        "    system(command)\n",
         tmp_path,
         capsys,
     )
 
-    assert exit_code == 1
-    assert output == ""
-    assert "symbols.py:1:1" in error
-    assert "wildcard imports are not supported" in error
+    assert exit_code == 0, error
+    assert "%1 = global 'system'" in output
+    assert "symbol @" not in output
 
 
 # --------------------------------------------------------------------------- next milestone
@@ -156,3 +158,55 @@ def test_global_declaration_is_not_a_local(tmp_path, capsys) -> None:
     assert exit_code == 0, error
     assert "symbol @python.os.system" in output
     assert 'load_local "os"' not in output
+
+
+# --------------------------------------------------------------------------- symbol analysis
+# Lowering resolves names through the Phase 2 SymbolAnalysis (docs/architecture.md §4.2,
+# §4.3): builtins, function-level and relative imports become canonical symbols.
+# Expected to remain red until symbol analysis lands.
+
+
+def test_builtins_are_canonical_symbols(tmp_path, capsys) -> None:
+    exit_code, output, error = emit_ir(
+        "def greet(name):\n"
+        "    print(name)\n",
+        tmp_path,
+        capsys,
+    )
+
+    assert exit_code == 0, error
+    assert "%1 = symbol @python.builtins.print" in output
+    assert "global 'print'" not in output
+
+
+def test_function_level_import_resolves_to_a_symbol(tmp_path, capsys) -> None:
+    exit_code, output, error = emit_ir(
+        "def execute(command):\n"
+        "    import os\n"
+        "    os.system(command)\n",
+        tmp_path,
+        capsys,
+    )
+
+    assert exit_code == 0, error
+    assert "symbol @python.os.system" in output
+
+
+def test_relative_import_resolves_inside_a_package(tmp_path, capsys) -> None:
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "helpers.py").write_text("def run(command):\n    return command\n", encoding="utf-8")
+    main = package / "main.py"
+    main.write_text(
+        "from .helpers import run\n\n"
+        "def execute(command):\n"
+        "    run(command)\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main_cli(["--emit-ir", str(main)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0, captured.err
+    assert "symbol @python.pkg.helpers.run" in captured.out
