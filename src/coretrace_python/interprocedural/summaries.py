@@ -49,6 +49,20 @@ NONE: Dependencies = frozenset()
 
 
 @dataclass(frozen=True)
+class Dep:
+    """What a value depends on: parameter indices and results of external symbols."""
+
+    parameters: Dependencies = NONE
+    externals: frozenset[SymbolId] = frozenset()
+
+    def __or__(self, other: Dep) -> Dep:
+        return Dep(self.parameters | other.parameters, self.externals | other.externals)
+
+
+EMPTY = Dep()
+
+
+@dataclass(frozen=True)
 class ExternalCall:
     """An external symbol reached from this function; dependencies are parameter indices."""
 
@@ -66,6 +80,7 @@ class FunctionSummary:
     return_dependencies: Dependencies
     external_calls: tuple[ExternalCall, ...]
     unsupported: bool = False
+    return_externals: frozenset[SymbolId] = frozenset()
 
 
 class SummaryTable:
@@ -77,7 +92,7 @@ class SummaryTable:
         return self._summaries[name]
 
 
-State = Mapping[Value, Dependencies]
+State = Mapping[Value, Dep]
 _CallKey = tuple[SymbolId, SourceSpan, SourceSpan | None]
 
 
@@ -93,11 +108,11 @@ class _DependenceProblem(DataflowProblem[State]):
         self.table = table
         self.blocks = {block.id: block for block in function.blocks}
         self.external: dict[_CallKey, ExternalCall] = {}
-        self.returns: Dependencies = NONE
+        self.returns: Dep = EMPTY
 
     def initial(self) -> State:
         return MappingProxyType(
-            {p: frozenset({i}) for i, p in enumerate(self.function.parameters)}
+            {p: Dep(frozenset({i})) for i, p in enumerate(self.function.parameters)}
         )
 
     def join(self, a: State, b: State) -> State:
@@ -108,17 +123,17 @@ class _DependenceProblem(DataflowProblem[State]):
 
     def evaluate(self, block: BasicBlock, incoming: Mapping[BlockId, State]) -> State:
         states = list(incoming.values())
-        state: dict[Value, Dependencies] = dict(states[0]) if states else {}
+        state: dict[Value, Dep] = dict(states[0]) if states else {}
         for other in states[1:]:
             state = dict(self.join(state, other))
         for instruction in block.instructions:
             if instruction.result is None:
                 continue
             if isinstance(instruction, Phi):
-                deps = NONE
+                deps = EMPTY
                 for value, predecessor in instruction.incoming:
                     if predecessor in incoming:
-                        deps |= incoming[predecessor].get(value, NONE)
+                        deps |= incoming[predecessor].get(value, EMPTY)
             elif isinstance(instruction, Call):
                 deps = self.call(instruction, state)
             else:
@@ -126,9 +141,9 @@ class _DependenceProblem(DataflowProblem[State]):
             state[instruction.result] = deps
         terminator = block.terminator
         if isinstance(terminator, ForNext) and terminator.result is not None:
-            state[terminator.result] = state.get(terminator.iterator, NONE)
+            state[terminator.result] = state.get(terminator.iterator, EMPTY)
         if isinstance(terminator, Return) and terminator.value is not None:
-            self.returns |= state.get(terminator.value, NONE)
+            self.returns |= state.get(terminator.value, EMPTY)
         return MappingProxyType(state)
 
     def flow(self, cfg: CFG, block_id: BlockId, incoming: Mapping[BlockId, State]) -> Mapping[BlockId, State]:
@@ -146,49 +161,55 @@ class _DependenceProblem(DataflowProblem[State]):
     # ------------------------------------------------------------------ transfer
 
     @staticmethod
-    def instruction(instruction: Instruction, state: Mapping[Value, Dependencies]) -> Dependencies:
+    def instruction(instruction: Instruction, state: Mapping[Value, Dep]) -> Dep:
         if isinstance(instruction, Constant | Global | Symbol | Undefined):
-            return NONE
-        deps = NONE
+            return EMPTY
+        deps = EMPTY
         for operand in instruction.operands():
-            deps |= state.get(operand, NONE)
+            deps |= state.get(operand, EMPTY)
         return deps
 
-    def call(self, call: Call, state: Mapping[Value, Dependencies]) -> Dependencies:
-        arguments = tuple(state.get(a, NONE) for a in call.arguments)
-        keywords = NONE
+    def call(self, call: Call, state: Mapping[Value, Dep]) -> Dep:
+        arguments = tuple(state.get(a, EMPTY) for a in call.arguments)
+        keywords = EMPTY
         for _, value in call.keywords:
-            keywords |= state.get(value, NONE)
+            keywords |= state.get(value, EMPTY)
         everything = keywords
         for deps in arguments:
             everything |= deps
         target = self.graph.target_at(self.name, call.location)
 
         if isinstance(target, ExternalSymbol):
-            self.record(target.symbol, arguments, keywords, call.location, None)
-            return everything
+            self.record(
+                target.symbol,
+                tuple(a.parameters for a in arguments),
+                keywords.parameters,
+                call.location,
+                None,
+            )
+            return everything | Dep(externals=frozenset({target.symbol}))
         if isinstance(target, KnownFunction):
             callee = self.table[target.name]
             if callee.unsupported:
                 return everything
 
-            def mapped(deps: Dependencies) -> Dependencies:
-                result = NONE
-                for index in deps:
+            def mapped(indices: Dependencies) -> Dep:
+                result = EMPTY
+                for index in indices:
                     result |= arguments[index] if index < len(arguments) else keywords
                 return result
 
             for reached in callee.external_calls:
                 self.record(
                     reached.symbol,
-                    tuple(mapped(d) for d in reached.argument_dependencies),
-                    mapped(reached.keyword_dependencies),
+                    tuple(mapped(d).parameters for d in reached.argument_dependencies),
+                    mapped(reached.keyword_dependencies).parameters,
                     reached.location,
                     call.location,
                 )
-            return mapped(callee.return_dependencies)
+            return mapped(callee.return_dependencies) | Dep(externals=callee.return_externals)
         assert isinstance(target, UnknownTarget)
-        return everything | state.get(call.callee, NONE)
+        return everything | state.get(call.callee, EMPTY)
 
     def record(
         self,
@@ -214,12 +235,16 @@ def summarize(
     problem = _DependenceProblem(name, function, graph, table)
     solution = solve(problem, cfg)
     problem.external = {}
-    problem.returns = NONE
+    problem.returns = EMPTY
     for block in function.blocks:
         if solution.reached(block.id):
             problem.evaluate(block, solution.incoming(block.id))
     return FunctionSummary(
-        name, len(function.parameters), problem.returns, tuple(problem.external.values())
+        name,
+        len(function.parameters),
+        problem.returns.parameters,
+        tuple(problem.external.values()),
+        return_externals=problem.returns.externals,
     )
 
 

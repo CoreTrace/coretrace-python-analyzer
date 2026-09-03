@@ -35,19 +35,25 @@ class TaintDetector(Plugin):
             for flow in ctx.get(TaintAnalysis, function).flows:
                 if not flow.kinds & self.kind:
                     continue
+                message = f"{self.title}: {flow.source.label} input reaches {flow.sink.symbol}"
+                metadata = {
+                    "source": str(flow.source.symbol),
+                    "source_label": flow.source.label,
+                    "sink": str(flow.sink.symbol),
+                }
+                if flow.through is not None and flow.sink_location is not None:
+                    message += f" through {flow.through}"
+                    metadata["through"] = flow.through
+                    metadata["sink_line"] = str(flow.sink_location.start_line)
                 findings.append(
                     Finding(
                         rule_id=self.rule_id,
-                        message=f"{self.title}: {flow.source.label} input reaches {flow.sink.symbol}",
+                        message=message,
                         severity=self.severity,
                         confidence=Confidence.HIGH,
                         span=flow.location,
                         function=function.name,
-                        metadata={
-                            "source": str(flow.source.symbol),
-                            "source_label": flow.source.label,
-                            "sink": str(flow.sink.symbol),
-                        },
+                        metadata=metadata,
                     )
                 )
         return findings

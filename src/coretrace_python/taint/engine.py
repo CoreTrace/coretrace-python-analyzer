@@ -18,6 +18,14 @@ from coretrace_python.analysis import AnalysisContext, AnyAnalysis, FunctionAnal
 from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.dataflow import DataflowProblem, Direction, solve
 from coretrace_python.hir import nodes
+from coretrace_python.interprocedural import (
+    CallGraph,
+    CallGraphAnalysis,
+    ExternalSymbol,
+    KnownFunction,
+    SummaryAnalysis,
+    SummaryTable,
+)
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
@@ -65,11 +73,16 @@ class Taint:
 
 @dataclass(frozen=True)
 class TaintFlow:
+    """``location`` is the call in the analysed function; when the sink is reached
+    inside a known callee, ``through`` names it and ``sink_location`` points at the sink."""
+
     source: Source
     sink: Sink
     kinds: TaintKind
     argument: Value
     location: SourceSpan
+    through: str | None = None
+    sink_location: SourceSpan | None = None
 
 
 class TaintFacts:
@@ -87,9 +100,19 @@ State = Mapping[Value, Taint]
 class _TaintProblem(DataflowProblem[State]):
     direction: ClassVar[Direction] = Direction.FORWARD
 
-    def __init__(self, function: FunctionIR, models: ModelTable) -> None:
+    def __init__(
+        self,
+        name: str,
+        function: FunctionIR,
+        models: ModelTable,
+        graph: CallGraph,
+        summaries: SummaryTable,
+    ) -> None:
+        self.name = name
         self.function = function
         self.models = models
+        self.graph = graph
+        self.summaries = summaries
         self.blocks = {block.id: block for block in function.blocks}
         self.symbols: dict[Value, SymbolId] = {
             i.result: i.symbol_id
@@ -159,30 +182,90 @@ class _TaintProblem(DataflowProblem[State]):
         return taint
 
     def call(self, call: Call, state: Mapping[Value, Taint], flows: list[TaintFlow]) -> Taint:
-        symbol = self.symbols.get(call.callee)
-        arguments = Taint.none()
-        for argument in call.argument_values():
-            arguments = arguments.join(state.get(argument, Taint.none()))
-        if symbol is not None:
-            sink = self.models.sink(symbol)
+        arguments = tuple(state.get(a, Taint.none()) for a in call.arguments)
+        keywords = Taint.none()
+        for _, value in call.keywords:
+            keywords = keywords.join(state.get(value, Taint.none()))
+        everything = keywords
+        for taint in arguments:
+            everything = everything.join(taint)
+
+        target = self.graph.target_at(self.name, call.location)
+        if isinstance(target, ExternalSymbol):
+            sink = self.models.sink(target.symbol)
             if sink is not None:
                 for argument in call.argument_values():
-                    taint = state.get(argument, Taint.none())
-                    reaching = taint.kinds & sink.kinds
-                    if reaching:
-                        for source in sorted(taint.sources, key=lambda s: str(s.symbol)):
-                            flows.append(TaintFlow(source, sink, reaching, argument, call.location))
-            sanitizer = self.models.sanitizer(symbol)
+                    self.report(flows, sink, state.get(argument, Taint.none()), argument, call, None, None)
+            sanitizer = self.models.sanitizer(target.symbol)
             if sanitizer is not None:
-                return arguments.without(sanitizer.kinds)
-            called_source = self.models.source(symbol)
-            if called_source is not None:
-                return arguments.join(Taint(called_source.kinds, frozenset({called_source})))
-        return arguments.join(state.get(call.callee, Taint.none()))
+                return everything.without(sanitizer.kinds)
+            source = self.models.source(target.symbol)
+            if source is not None:
+                return everything.join(Taint(source.kinds, frozenset({source})))
+            return everything
+        if isinstance(target, KnownFunction):
+            summary = self.summaries.summary(target.name)
+            if summary.unsupported:
+                return everything
+
+            def mapped(deps: frozenset[int]) -> tuple[Taint, Value | None]:
+                taint, witness = Taint.none(), None
+                for index in sorted(deps):
+                    part = arguments[index] if index < len(arguments) else keywords
+                    if part and witness is None:
+                        witness = (
+                            call.arguments[index] if index < len(arguments) else call.keywords[0][1]
+                        )
+                    taint = taint.join(part)
+                return taint, witness
+
+            for reached in summary.external_calls:
+                sink = self.models.sink(reached.symbol)
+                if sink is None:
+                    continue
+                for deps in (*reached.argument_dependencies, reached.keyword_dependencies):
+                    taint, witness = mapped(deps)
+                    if witness is not None:
+                        self.report(flows, sink, taint, witness, call, target.name, reached.location)
+            result = mapped(summary.return_dependencies)[0]
+            for symbol in sorted(summary.return_externals, key=str):
+                returned_source = self.models.source(symbol)
+                if returned_source is not None:
+                    result = result.join(Taint(returned_source.kinds, frozenset({returned_source})))
+            return result
+        return everything.join(state.get(call.callee, Taint.none()))
+
+    @staticmethod
+    def report(
+        flows: list[TaintFlow],
+        sink: Sink,
+        taint: Taint,
+        argument: Value,
+        call: Call,
+        through: str | None,
+        sink_location: SourceSpan | None,
+    ) -> None:
+        reaching = taint.kinds & sink.kinds
+        if not reaching:
+            return
+        for source in sorted(taint.sources, key=lambda s: str(s.symbol)):
+            flows.append(
+                TaintFlow(
+                    source,
+                    sink,
+                    reaching,
+                    argument,
+                    call.location,
+                    through,
+                    call.location if sink_location is None else sink_location,
+                )
+            )
 
 
-def propagate_taint(function: FunctionIR, cfg: CFG, models: ModelTable) -> TaintFacts:
-    problem = _TaintProblem(function, models)
+def propagate_taint(
+    name: str, function: FunctionIR, cfg: CFG, models: ModelTable, graph: CallGraph, summaries: SummaryTable
+) -> TaintFacts:
+    problem = _TaintProblem(name, function, models, graph, summaries)
     solution = solve(problem, cfg)
     taints: dict[Value, Taint] = {}
     flows: list[TaintFlow] = []
@@ -191,7 +274,7 @@ def propagate_taint(function: FunctionIR, cfg: CFG, models: ModelTable) -> Taint
             state, found = problem.evaluate(block, solution.incoming(block.id))
             taints.update(state)
             flows.extend(found)
-    return TaintFacts(taints, tuple(flows))
+    return TaintFacts(taints, tuple(dict.fromkeys(flows)))
 
 
 class TaintAnalysis(FunctionAnalysis[TaintFacts]):
@@ -199,13 +282,17 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
 
     name: ClassVar[str] = "taint.flows"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {SSAAnalysis, CFGAnalysis, SecurityModelAnalysis}
+        {SSAAnalysis, CFGAnalysis, SecurityModelAnalysis, CallGraphAnalysis, SummaryAnalysis}
     )
 
     @classmethod
     def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> TaintFacts:
+        graph = ctx.get(CallGraphAnalysis)
         return propagate_taint(
+            graph.name_of(function),
             ctx.get(SSAAnalysis, function),
             ctx.get(CFGAnalysis, function),
             ctx.get(SecurityModelAnalysis),
+            graph,
+            ctx.get(SummaryAnalysis),
         )
