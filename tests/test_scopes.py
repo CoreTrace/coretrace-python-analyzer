@@ -23,6 +23,7 @@ import pytest
 from coretrace_python.source import SourceManager
 
 try:
+    from coretrace_python.frontend import build_hir
     from coretrace_python.semantic.scopes import (
         BindingKind,
         ResolutionKind,
@@ -32,8 +33,6 @@ try:
         ScopeKind,
         analyze_scopes,
     )
-
-    from coretrace_python.frontend import build_hir
 except ImportError as error:  # pragma: no cover - red until the semantic layer lands
     MISSING = error
 else:
