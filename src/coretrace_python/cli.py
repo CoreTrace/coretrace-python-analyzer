@@ -23,6 +23,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print the lowered Python intermediate representation",
     )
+    parser.add_argument(
+        "--ssa",
+        action="store_true",
+        help="with --emit-ir, print the static single assignment form",
+    )
     return parser
 
 
@@ -34,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         source = SourceManager().load_file(args.path)
-        module = lower_module(build_hir(source))
+        module = lower_module(build_hir(source), ssa=args.ssa)
     except (
         OSError,
         UnicodeError,

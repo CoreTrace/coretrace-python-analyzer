@@ -259,6 +259,30 @@ class PyIRAnalysis(FunctionAnalysis[FunctionIR]):
         return lowerer.function(function)
 
 
+def top_level_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
+    """The functions a module lowers to, rejecting module syntax outside the subset."""
+
+    functions: list[nodes.Function] = []
+    for statement in module.body:
+        if isinstance(statement, nodes.Function):
+            functions.append(statement)
+        elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
+            continue
+        elif (
+            isinstance(statement, nodes.ExpressionStatement)
+            and isinstance(statement.expression, nodes.Constant)
+            and isinstance(statement.expression.value, str)
+        ):
+            # Permit module docstrings.
+            continue
+        else:
+            raise LoweringError(
+                f"{statement.span.display()}: "
+                f"unsupported module syntax: {type(statement).__name__}"
+            )
+    return tuple(functions)
+
+
 class ModuleIRAnalysis(Analysis[ModuleIR]):
     """Assemble the PyIR of every top-level function of the module."""
 
@@ -267,30 +291,23 @@ class ModuleIRAnalysis(Analysis[ModuleIR]):
 
     @classmethod
     def compute(cls, ctx: AnalysisContext) -> ModuleIR:
-        functions: list[FunctionIR] = []
-        for statement in ctx.module.body:
-            if isinstance(statement, nodes.Function):
-                functions.append(ctx.get(PyIRAnalysis, statement))
-            elif isinstance(statement, (nodes.Import, nodes.ImportFrom)):
-                continue
-            elif (
-                isinstance(statement, nodes.ExpressionStatement)
-                and isinstance(statement.expression, nodes.Constant)
-                and isinstance(statement.expression.value, str)
-            ):
-                # Permit module docstrings.
-                continue
-            else:
-                raise LoweringError(
-                    f"{statement.span.display()}: "
-                    f"unsupported module syntax: {type(statement).__name__}"
-                )
-        return ModuleIR(tuple(functions))
+        return ModuleIR(
+            tuple(ctx.get(PyIRAnalysis, function) for function in top_level_functions(ctx.module))
+        )
 
 
-def lower_module(module: nodes.Module) -> ModuleIR:
-    """Lower a whole module through a fresh analysis manager."""
+def lower_module(module: nodes.Module, *, ssa: bool = False) -> ModuleIR:
+    """Lower a whole module through a fresh analysis manager, optionally to SSA form."""
 
     manager = AnalysisManager(module)
     manager.register(*SEMANTIC_ANALYSES, CFGAnalysis, PyIRAnalysis, ModuleIRAnalysis)
-    return manager.get(ModuleIRAnalysis)
+    if not ssa:
+        return manager.get(ModuleIRAnalysis)
+    # Imported here because the SSA pass is built on top of this module's analyses.
+    from coretrace_python.cfg.dominance import DominanceAnalysis
+    from coretrace_python.ir.ssa import SSAAnalysis
+
+    manager.register(DominanceAnalysis, SSAAnalysis)
+    return ModuleIR(
+        tuple(manager.get(SSAAnalysis, function) for function in top_level_functions(module))
+    )

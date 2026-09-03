@@ -36,7 +36,9 @@ Currently supported inside functions: arguments, assignments, names, constants, 
 operations, unary operations, comparisons, calls, attribute access, indexing, returns,
 `if`/`elif`/`else`, `while`, `for`, `break`, `continue` and `raise`. Each function is
 emitted as its control-flow graph: one block per basic block, ending in an explicit
-terminator (`branch`, `jump`, `return`, `raise`, `for_next`).
+terminator (`branch`, `jump`, `return`, `raise`, `for_next`). Add `--ssa` to print the
+static single assignment form: locals become numbered values, merges get `phi`
+instructions and unassigned paths read an explicit `undefined` value.
 Unsupported syntax produces a source-located diagnostic and a non-zero exit status.
 
 Names are resolved to canonical symbols through lexical scopes, imports and builtins.
