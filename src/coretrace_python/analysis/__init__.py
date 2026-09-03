@@ -4,6 +4,7 @@ from coretrace_python.analysis.manager import (
     AnalysisError,
     AnalysisManager,
     CyclicDependencyError,
+    MissingInputError,
     UndeclaredDependencyError,
     UnregisteredAnalysisError,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "AnyAnalysis",
     "CyclicDependencyError",
     "FunctionAnalysis",
+    "MissingInputError",
     "TransformationPass",
     "UndeclaredDependencyError",
     "UnregisteredAnalysisError",
