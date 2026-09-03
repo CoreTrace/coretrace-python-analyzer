@@ -46,7 +46,11 @@ sources. Model plugins contribute sources, sinks and sanitizers;
 detectors consume the shared taint result, so adding a framework model makes every
 detector aware of it. Taint follows calls between functions of the same module through
 function summaries: a tainted argument passed to a helper that reaches a sink is reported
-at the call site, and a helper returning attacker-controlled data taints its result. `--format` is `text` (default), `json` or `sarif`. Exit status is 0 when nothing
+at the call site, and a helper returning attacker-controlled data taints its result.
+Each flow is then judged: a dominating guard that proves the value safe (`isdigit()`,
+membership in a constant allowlist, equality with a constant) refutes it and it is not
+reported; a guard that only mentions the value makes it a hotspot with medium confidence;
+the verdict and its evidence are in the finding metadata. `--format` is `text` (default), `json` or `sarif`. Exit status is 0 when nothing
 was found, 1 when findings were reported, and 2 on a usage or analysis error.
 
 ## Emit PyIR

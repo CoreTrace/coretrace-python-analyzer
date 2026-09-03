@@ -13,6 +13,7 @@ from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
 from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings.refutation import RefutationAnalysis, Status
 from coretrace_python.ir.model import Call, Symbol
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.plugins.api import Plugin, PluginContext
@@ -23,7 +24,7 @@ from coretrace_python.taint import TaintAnalysis, TaintKind
 class TaintDetector(Plugin):
     """Report every taint flow carrying ``kind`` into a sink."""
 
-    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({TaintAnalysis})
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({TaintAnalysis, RefutationAnalysis})
     rule_id: ClassVar[str]
     kind: ClassVar[TaintKind]
     severity: ClassVar[Severity]
@@ -32,25 +33,34 @@ class TaintDetector(Plugin):
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         findings: list[Finding] = []
         for function in ctx.functions():
+            verdicts = ctx.get(RefutationAnalysis, function)
             for flow in ctx.get(TaintAnalysis, function).flows:
                 if not flow.kinds & self.kind:
+                    continue
+                verdict = verdicts.verdict(flow)
+                if verdict.status is Status.REFUTED:
                     continue
                 message = f"{self.title}: {flow.source.label} input reaches {flow.sink.symbol}"
                 metadata = {
                     "source": str(flow.source.symbol),
                     "source_label": flow.source.label,
                     "sink": str(flow.sink.symbol),
+                    "verdict": verdict.status.value,
+                    "evidence": verdict.evidence,
                 }
                 if flow.through is not None and flow.sink_location is not None:
                     message += f" through {flow.through}"
                     metadata["through"] = flow.through
                     metadata["sink_line"] = str(flow.sink_location.start_line)
+                confidence = (
+                    Confidence.HIGH if verdict.status is Status.VULNERABILITY else Confidence.MEDIUM
+                )
                 findings.append(
                     Finding(
                         rule_id=self.rule_id,
                         message=message,
                         severity=self.severity,
-                        confidence=Confidence.HIGH,
+                        confidence=confidence,
                         span=flow.location,
                         function=function.name,
                         metadata=metadata,

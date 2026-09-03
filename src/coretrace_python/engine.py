@@ -21,6 +21,7 @@ from coretrace_python.analysis import (
 )
 from coretrace_python.cfg import CFGAnalysis, CFGError, DominanceAnalysis, PostDominanceAnalysis
 from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import (
@@ -72,6 +73,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     ProjectSummaries,
     SecurityModelAnalysis,
     TaintAnalysis,
+    RefutationAnalysis,
 )
 
 
