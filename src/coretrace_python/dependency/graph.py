@@ -137,6 +137,7 @@ class Advisory:
     summary: str
     severity: Severity
     affected_symbols: tuple[SymbolId, ...] = ()
+    aliases: tuple[str, ...] = ()
 
     def affects(self, requirement: Requirement) -> bool:
         return requirement.name == normalize(self.package) and requirement.may_match(self.vulnerable)

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+import zipfile
 from pathlib import Path
 
 from coretrace_python import __version__, engine
 from coretrace_python.analysis import AnalysisError
 from coretrace_python.cache import ProjectCache
 from coretrace_python.cfg import CFGError
-from coretrace_python.dependency import render_sbom
+from coretrace_python.dependency import dump_advisories, import_osv, read_osv, render_sbom
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
 from coretrace_python.ir.printer import format_module
@@ -42,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
         prog=engine.TOOL_NAME,
         description="Analyze Python source with CoreTrace.",
     )
-    parser.add_argument("path", type=Path, help="Python source file, or a directory for --check")
+    parser.add_argument(
+        "path", type=Path, nargs="?", help="Python source file, or a directory for --check"
+    )
     parser.add_argument(
         "--emit-ir",
         action="store_true",
@@ -94,13 +97,50 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="with --check on a directory, write a CycloneDX bill of materials to PATH",
     )
+    parser.add_argument(
+        "--advisories",
+        action="append",
+        type=Path,
+        default=[],
+        metavar="FILE",
+        help="with --check on a directory, a local advisory file to read in addition to "
+        "advisories.json at the root (repeatable)",
+    )
+    parser.add_argument(
+        "--policy",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="with --check on a directory, the dependency policy to apply instead of "
+        "coretrace-policy.toml at the root",
+    )
+    parser.add_argument(
+        "--import-advisories",
+        nargs=2,
+        type=Path,
+        default=None,
+        metavar=("SRC", "OUT"),
+        help="convert an OSV dump (a JSON file, a directory of them or a zip archive) "
+        "into the local advisory file OUT, then exit",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.import_advisories is not None:
+        source, out = args.import_advisories
+        try:
+            out.write_text(dump_advisories(import_osv(read_osv(source))), encoding="utf-8")
+        except (OSError, ValueError, zipfile.BadZipFile) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return EXIT_ERROR
+        return EXIT_CLEAN
     if not (args.emit_ir or args.check):
         print("error: no action selected; pass --emit-ir or --check", file=sys.stderr)
+        return EXIT_ERROR
+    if args.path is None:
+        print("error: a path is required", file=sys.stderr)
         return EXIT_ERROR
     if args.format is not None and not args.check:
         print("error: --format only applies to --check", file=sys.stderr)
@@ -117,6 +157,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.sbom is not None and not (args.check and args.path.is_dir()):
         print("error: --sbom only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
+    if args.advisories and not (args.check and args.path.is_dir()):
+        print("error: --advisories only applies to --check on a directory", file=sys.stderr)
+        return EXIT_ERROR
+    if args.policy is not None and not (args.check and args.path.is_dir()):
+        print("error: --policy only applies to --check on a directory", file=sys.stderr)
+        return EXIT_ERROR
 
     if args.path.is_dir() and args.emit_ir:
         print(f"error: {args.path} is a directory; --emit-ir needs a file", file=sys.stderr)
@@ -130,7 +176,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.path.is_dir():
                 cache = None if args.cache is None else ProjectCache(args.cache)
                 analysis = engine.analyze_project(
-                    args.path, args.plugins, cache=cache, jobs=args.jobs or 1
+                    args.path,
+                    args.plugins,
+                    cache=cache,
+                    jobs=args.jobs or 1,
+                    advisory_files=args.advisories,
+                    policy_file=args.policy,
                 )
                 findings = analysis.findings
                 if args.sbom is not None:

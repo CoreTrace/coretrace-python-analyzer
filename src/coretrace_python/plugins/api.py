@@ -20,7 +20,7 @@ from coretrace_python.analysis import (
     UndeclaredDependencyError,
 )
 from coretrace_python.analysis.provider import R
-from coretrace_python.dependency import Advisory, DependencyGraph
+from coretrace_python.dependency import Advisory, DependencyGraph, Policy
 from coretrace_python.findings import Finding
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import CallGraph, CallGraphAnalysis, ModuleGraph
@@ -54,8 +54,9 @@ class ModelPlugin(Plugin):
 
 class ProjectContext:
     """What a project-scoped plugin sees: the module graph, the dependency graph, the
-    advisories every plugin contributed, and each module's imports and call graph. The
-    engine passes the call graphs of modules it served from its cache."""
+    advisories every plugin and advisory file contributed, the dependency policy, and
+    each module's imports and call graph. The engine passes the call graphs of modules
+    it served from its cache."""
 
     def __init__(
         self,
@@ -64,10 +65,12 @@ class ProjectContext:
         advisories: tuple[Advisory, ...],
         managers: Mapping[str, AnalysisManager],
         call_graphs: Mapping[str, CallGraph] | None = None,
+        policy: Policy | None = None,
     ) -> None:
         self.graph = graph
         self.dependencies = dependencies
         self.advisories = advisories
+        self.policy = policy or Policy()
         self._managers = managers
         self._call_graphs = dict(call_graphs or {})
 

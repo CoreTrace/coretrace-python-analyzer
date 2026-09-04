@@ -41,7 +41,25 @@ shipped `dependency/` plugins report a requirement that allows a vulnerable vers
 its line, and every call in the project to an API the advisory affects. When
 attacker-controlled data reaches such a call, the engine correlates the four facts into
 one critical `exploitable-vulnerability` finding, judged like any other flow. The shipped
-advisory database is a small offline sample; a live OSV feed is future work.
+advisory database is a small offline sample. A real feed stays offline too:
+`--import-advisories SRC OUT` converts a public OSV dump (a JSON file, a directory of
+them or a zip archive) into a local advisory file once, and a directory check reads
+`advisories.json` at the project root plus the files passed with `--advisories`, the
+local file winning over a plugin for the same advisory. OSV records name no affected
+APIs, so imported advisories feed the requirement checks and the SBOM; add
+`affected_symbols` by hand to a local entry and it feeds reachability and correlation
+too. A `coretrace-policy.toml` at the root, or the file passed with `--policy`, denies
+packages (`denied-dependency`), requires pins (`unpinned-dependency`) and lists accepted
+advisories whose findings are dropped:
+
+```toml
+[dependencies]
+deny = ["pycrypto"]
+require_pinned = true
+
+[advisories]
+ignore = ["CVE-2020-1747"]
+```
 
 `--sbom PATH` writes a CycloneDX 1.5 bill of materials of the dependency graph, one
 component per requirement with its package URL, and the advisories affecting them as
