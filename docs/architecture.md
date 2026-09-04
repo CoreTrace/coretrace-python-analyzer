@@ -44,7 +44,7 @@ Core principles:
                         Source Discovery
                               │
                               ▼
-                         Tree-sitter
+                       Frontend (ast)
                               │
                               ▼
                             PyHIR
@@ -110,20 +110,32 @@ Pipeline:
 ```text
 Python source
     ↓
-tree-sitter-python
+ast (standard library)
     ↓
-Tree-sitter CST
+PyHIR, through build_hir
 ```
 
-Tree-sitter must not be exposed directly to advanced analyses.
+The parser must not be exposed directly to advanced analyses.
 
-Syntactic plugins may use it when appropriate, but semantic plugins must depend on PyHIR or PyIR.
+Syntactic plugins may use PyHIR when appropriate, but semantic plugins must depend on PyHIR or PyIR.
+
+> **Decision (2026-09-04): the frontend is the standard-library `ast` module, not Tree-sitter.**
+> The document was written with Tree-sitter as the parser. The engine was built behind the
+> `build_hir` seam this section requires, with the `ast` module as the only parser, and the
+> architecture tests enforce that no layer above the frontend touches a parser object. Every
+> later phase was delivered against that frontend. Tree-sitter would add a native dependency,
+> a second adapter to keep identical to the first, and incremental parsing whose benefit the
+> engine already gets elsewhere: the persistent cache (§11) is keyed per module, so an edit
+> re-analyses that module and its importers only, and the whole test suite runs in about two
+> seconds. Tree-sitter is therefore retired from the roadmap. The seam stays: a Tree-sitter
+> adapter producing the same PyHIR remains possible if error recovery on broken files or
+> sub-second editor feedback ever becomes a requirement.
 
 ---
 
 ## 3.2 PyHIR
 
-PyHIR is a high-level representation independent of Tree-sitter.
+PyHIR is a high-level representation independent of the parser.
 
 Example:
 
@@ -175,7 +187,7 @@ Comprehension
 
 Objective:
 
-> Decouple the Tree-sitter grammar from all subsequent analyses.
+> Decouple the parser from all subsequent analyses.
 
 ---
 
@@ -498,7 +510,7 @@ The engine must not compute every analysis by default.
 Example:
 
 ```text
-Plugin A -> Tree-sitter
+Plugin A -> PyHIR (syntax)
 Plugin B -> PyHIR
 Plugin C -> Symbols
 Plugin D -> Taint
@@ -1253,7 +1265,7 @@ Suppose:
 The engine must perform the following only once:
 
 ```text
-Tree-sitter
+Parsing
 PyHIR
 Symbol resolution
 CFG
@@ -1537,7 +1549,7 @@ engine/
 
 ```text
 SourceManager
-Tree-sitter
+Frontend (ast adapter; Tree-sitter retired, see §3.1)
 PyHIR
 Plugin API
 Plugin Loader
@@ -1622,7 +1634,7 @@ SBOM
 
 ```text
 Persistent cache
-Incremental parsing
+Incremental parsing (covered by the per-module cache; Tree-sitter retired, see §3.1)
 Incremental summaries
 Parallel analysis
 Memory eviction
@@ -1697,7 +1709,7 @@ Memory eviction
           │                           │                          │
           ▼                           ▼                          ▼
       Frontend                    Semantic                     PyIR
- Tree-sitter / PyHIR       Scopes / Imports / Symbols      CFG / SSA
+    ast / PyHIR            Scopes / Imports / Symbols      CFG / SSA
           │                           │                          │
           └───────────────────────────┼──────────────────────────┘
                                       ▼
