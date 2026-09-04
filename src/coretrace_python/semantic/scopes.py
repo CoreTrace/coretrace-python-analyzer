@@ -317,6 +317,8 @@ class _Collector:
         elif isinstance(node, nodes.Delete):
             for target in node.targets:
                 self.target(target, scope)
+        elif isinstance(node, nodes.Declaration):
+            scope.bind(node.name, BindingKind.LOCAL, node.span)
         elif not isinstance(node, nodes.Pass | nodes.Break | nodes.Continue):
             raise TypeError(f"unknown statement: {node!r}")
 

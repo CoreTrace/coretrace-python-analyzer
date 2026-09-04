@@ -46,6 +46,7 @@ from coretrace_python.ir.model import (
     Instruction,
     Jump,
     LoadLocal,
+    MakeClass,
     MakeFunction,
     ModuleIR,
     Raise,
@@ -65,6 +66,7 @@ from coretrace_python.ir.model import (
 )
 from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.scopes import (
+    BindingKind,
     Resolution,
     ResolutionKind,
     Scope,
@@ -134,7 +136,10 @@ class _FunctionLowerer:
         if isinstance(node, nodes.Name):
             resolution = self.resolve(node.identifier)
             if resolution.kind is ResolutionKind.FREE:
-                # A captured variable is an implicit parameter of the nested function.
+                # A captured variable is an implicit parameter of the nested function; a
+                # ``nonlocal`` one lives in a local slot initialised from it.
+                if node.identifier in self.nonlocals:
+                    return self.emit(LoadLocal(self.new_value(), node.span, node.identifier))
                 if node.identifier in self.parameters:
                     return self.parameters[node.identifier]
                 self.fail(node, "closures are not supported yet")
@@ -223,8 +228,8 @@ class _FunctionLowerer:
             if resolution.kind is ResolutionKind.GLOBAL:
                 self.emit_effect(SetGlobal(None, target.span, target.identifier, value))
                 return
-            if resolution.kind is not ResolutionKind.LOCAL:
-                self.fail(target, "assignment to a nonlocal name is not supported yet")
+            if resolution.kind is not ResolutionKind.LOCAL and target.identifier not in self.nonlocals:
+                self.fail(target, "assignment to a free variable that is not declared nonlocal")
             self.emit_effect(StoreLocal(None, target.span, target.identifier, value))
         elif isinstance(target, nodes.Attribute):
             object_value = self.expression(target.value)
@@ -243,6 +248,18 @@ class _FunctionLowerer:
     def statement(self, node: nodes.Statement) -> None:
         if isinstance(node, nodes.Assign):
             self.store(node.target, self.expression(node.value))
+            return
+        if isinstance(node, nodes.Declaration):
+            return
+        if isinstance(node, nodes.Class):
+            # A local class is a value bound to its name; bases and decorators run here,
+            # its methods are analysed as nested functions.
+            for decorator in node.decorators:
+                self.expression(decorator)
+            for base in node.bases:
+                self.expression(base)
+            made_class = self.emit(MakeClass(self.new_value(), node.span, node.name))
+            self.store(nodes.Name(node.name, node.span), made_class)
             return
         if isinstance(node, nodes.Delete):
             for target in node.targets:
@@ -308,7 +325,7 @@ class _FunctionLowerer:
                 written = alias.name if isinstance(node, nodes.Import) else module
                 self.emit_effect(Import(None, alias.span, written, symbol, bound))
             return
-        if isinstance(node, nodes.Pass | nodes.Global):
+        if isinstance(node, nodes.Pass | nodes.Global | nodes.Nonlocal):
             # Declarations are already applied by the semantic analyses.
             return
         self.fail(node)
@@ -365,9 +382,15 @@ class _FunctionLowerer:
             for parameter, value in zip(node.parameters, parameter_values, strict=False)
             if parameter.name not in reassigned
         }
-        # Captured variables come after the explicit parameters; they are never
-        # reassigned, an assignment would have made them local.
-        self.parameters.update(zip(captured, parameter_values[len(node.parameters) :], strict=True))
+        # Captured variables come after the explicit parameters. A ``nonlocal`` one is
+        # assigned in this body, so it lives in a local slot initialised from the
+        # captured value; the others are never reassigned.
+        bindings = self.scopes.scope_for(node).bindings
+        self.nonlocals = frozenset(
+            name for name in captured if name in bindings and bindings[name].kind is BindingKind.NONLOCAL
+        )
+        captured_values = dict(zip(captured, parameter_values[len(node.parameters) :], strict=True))
+        self.parameters.update({n: v for n, v in captured_values.items() if n not in self.nonlocals})
         blocks: list[BasicBlock] = []
         for cfg_block in self.cfg.blocks.values():
             self.instructions = []
@@ -376,6 +399,8 @@ class _FunctionLowerer:
                 for parameter, value in zip(node.parameters, parameter_values, strict=False):
                     if parameter.name in reassigned:
                         self.emit_effect(StoreLocal(None, parameter.span, parameter.name, value))
+                for name in sorted(self.nonlocals):
+                    self.emit_effect(StoreLocal(None, node.span, name, captured_values[name]))
             for statement in cfg_block.statements:
                 self.statement(statement)
             terminator = self.terminator(cfg_block)
@@ -508,6 +533,10 @@ def _collect(function: nodes.Function, into: list[nodes.Function]) -> None:
             _collect(lambda_function(node), into)
             return
         if isinstance(node, nodes.Class):
+            # The methods of a class defined inside a function are nested functions.
+            for member in node.body:
+                if isinstance(member, nodes.Function):
+                    _collect(member, into)
             return
         for child in children(node):
             walk(child)

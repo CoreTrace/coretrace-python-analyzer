@@ -217,9 +217,16 @@ class AstHIRBuilder:
         if isinstance(node, ast.Assign):
             return nodes.Assign(self.target(node.targets[0]), self.expression(node.value), span)
         if isinstance(node, ast.AnnAssign):
-            # The annotation never affects behaviour; a bare declaration does nothing.
+            # The annotation never affects behaviour; a bare declaration binds nothing
+            # but names a dataclass field or an annotated local.
             if node.value is None:
-                return nodes.Pass(span)
+                annotation: nodes.Expression | None = None
+                try:
+                    annotation = self.expression(node.annotation)
+                except HIRBuildError:
+                    annotation = None
+                name = node.target.id if isinstance(node.target, ast.Name) else None
+                return nodes.Declaration(name, annotation, span) if name is not None else nodes.Pass(span)
             return nodes.Assign(self.target(node.target), self.expression(node.value), span)
         if isinstance(node, ast.AugAssign):
             operator = _BINARY_OPERATORS.get(type(node.op))

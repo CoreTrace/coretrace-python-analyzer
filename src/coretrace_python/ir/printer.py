@@ -27,6 +27,7 @@ from coretrace_python.ir.model import (
     Instruction,
     Jump,
     LoadLocal,
+    MakeClass,
     MakeFunction,
     ModuleIR,
     Phi,
@@ -102,6 +103,8 @@ def _instruction(instruction: Instruction) -> str:
         return f"del_item {_value(instruction.object)}, {_value(instruction.key)}"
     if isinstance(instruction, DelAttr):
         return f'del_attr {_value(instruction.object)}, "{instruction.attribute}"'
+    if isinstance(instruction, MakeClass):
+        return f'{_value(instruction.result)} = make_class "{instruction.name}"'
     if isinstance(instruction, SetGlobal):
         return f'set_global "{instruction.name}", {_value(instruction.value)}'
     if isinstance(instruction, BuildString):
