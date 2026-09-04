@@ -175,7 +175,7 @@ def test_project_coverage_reflects_notes(tmp_path: Path) -> None:
         tmp_path,
         {
             "clean.py": "def a():\n    return 1\n\ndef b():\n    return 2\n",
-            "partial.py": "def ok():\n    return 1\n\ndef odd():\n    class Inner:\n        pass\n    return Inner\n",
+            "partial.py": "def ok():\n    return 1\n\ndef odd():\n    break\n",
             "broken.py": "def (:\n",
             "legacy.py": b"\xff\xfeprint('x')\n",
         },
@@ -194,7 +194,7 @@ def test_project_coverage_reflects_notes(tmp_path: Path) -> None:
 
 def test_single_file_analysis_carries_coverage() -> None:
     analysis = engine.analyze_file(
-        SourceManager().add_source("one.py", "def a():\n    return 1\n\ndef b():\n    class C:\n        pass\n"), [PLUGINS]
+        SourceManager().add_source("one.py", "def a():\n    return 1\n\ndef b():\n    break\n"), [PLUGINS]
     )
     assert analysis.coverage.summary() == "coverage: 1/1 files, 1/2 functions"
     assert [f.rule_id for f in analysis.findings] == ["unsupported-syntax"]

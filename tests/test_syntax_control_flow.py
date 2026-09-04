@@ -126,9 +126,8 @@ def test_conditionals_nest_inside_other_expressions() -> None:
     assert flow_lines("def f(a, b):\n    os.system('ping ' + (input() if a else ('x' if b else 'y')))\n") == [4]
 
 
-def test_conditionals_in_loop_conditions_are_reported_not_crashed() -> None:
-    found = notes("def f(x):\n    while (x if x else 1):\n        x = x - 1\n")
-    assert len(found) == 1 and "loop condition" in found[0]
+def test_conditionals_in_loop_conditions_are_recomputed_each_iteration() -> None:
+    assert notes("def f(x):\n    while (x if x else 1):\n        x = x - 1\n") == []
 
 
 # --------------------------------------------------------------------------- lambdas and nested functions

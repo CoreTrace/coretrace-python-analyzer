@@ -171,7 +171,7 @@ def test_parallel_analysis_keeps_syntax_and_unsupported_notes(tmp_path: Path) ->
         tmp_path / "src",
         {
             "broken.py": "def (:\n",
-            "nested.py": "def outer():\n    class Inner:\n        pass\n    return Inner\n",
+            "nested.py": "def outer():\n    break\n",
             "fine.py": CLEAN,
         },
     )

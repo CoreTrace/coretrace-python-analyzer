@@ -117,7 +117,7 @@ def test_methods_are_named_by_their_class() -> None:
 def test_recursion_and_unsupported_functions() -> None:
     graph = call_graph(
         "def loop(n):\n    return loop(n)\n\n"
-        "def outer():\n    class Inner:\n        pass\n    return Inner\n"
+        "def outer():\n    break\n"
     )
 
     assert graph.callees("loop") == frozenset({"loop"})
@@ -227,7 +227,7 @@ def test_recursive_summaries_reach_a_fixpoint() -> None:
 
 
 def test_unsupported_functions_have_conservative_summaries() -> None:
-    table = summaries("def outer(a):\n    class Inner:\n        pass\n    return Inner\n\ndef use(b):\n    return outer(b)\n")
+    table = summaries("def outer(a):\n    break\n\ndef use(b):\n    return outer(b)\n")
 
     assert table.summary("outer").return_dependencies == frozenset({0})
     assert table.summary("outer").unsupported is True
