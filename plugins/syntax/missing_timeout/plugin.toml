@@ -1,0 +1,9 @@
+name = "missing-timeout"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["ir.ssa", "interprocedural.callgraph"]
+provides = ["syntax.missing-timeout"]
+
+[entrypoint]
+module = "missing_timeout"
+class = "MissingTimeoutPlugin"

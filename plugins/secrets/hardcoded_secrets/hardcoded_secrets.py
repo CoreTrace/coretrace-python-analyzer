@@ -20,6 +20,11 @@ class HardcodedSecrets(SecretDetector):
         SecretPattern("jwt", r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
         SecretPattern("sendgrid", r"\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b"),
         SecretPattern("twilio", r"\bSK[0-9a-fA-F]{32}\b"),
+        SecretPattern(
+            "url",
+            r"://[^/\s:@'\"]+:[^/\s@'\"]+@"
+            r"|[?&](?:password|passwd|pwd|token|api_key|apikey|secret|access_key)=[^&\s'\"]{3,}",
+        ),
     )
     credential_names: ClassVar[tuple[str, ...]] = (
         "password",

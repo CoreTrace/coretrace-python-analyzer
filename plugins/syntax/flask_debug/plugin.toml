@@ -1,0 +1,9 @@
+name = "flask-debug"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["semantic.scopes", "semantic.symbols"]
+provides = ["syntax.flask-debug"]
+
+[entrypoint]
+module = "flask_debug"
+class = "FlaskDebugPlugin"
