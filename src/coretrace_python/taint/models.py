@@ -8,6 +8,8 @@ so every detector consumes the same models and the same taint result.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass, field
 from enum import Flag, auto
 from types import MappingProxyType
@@ -27,6 +29,9 @@ class TaintKind(Flag):
     CODE = auto()
     ADVISORY = auto()
     ALL = SQL | COMMAND | HTML | PATH | SSRF | CODE | ADVISORY
+    # Outside ALL on purpose: only credential-named parameters carry it, so a database
+    # write reached by ordinary input is not a plaintext credential.
+    CREDENTIAL = auto()
 
 
 class ModelError(Exception):
@@ -78,6 +83,24 @@ class TypedParameter:
 
 
 @dataclass(frozen=True)
+class NamedParameter:
+    """Parameters whose name matches ``pattern`` carry ``kinds`` (``password`` is a
+    credential wherever it is a parameter)."""
+
+    pattern: str
+    label: str
+    kinds: TaintKind
+
+    @property
+    def symbol(self) -> SymbolId:
+        digest = hashlib.sha1(self.pattern.encode("utf-8")).hexdigest()[:12]
+        return SymbolId(f"python.parameter.p{digest}")
+
+    def matches(self, name: str) -> bool:
+        return re.search(self.pattern, name) is not None
+
+
+@dataclass(frozen=True)
 class Validator:
     """A callable whose truth proves its ``argument`` safe (refutation evidence, §24)."""
 
@@ -95,7 +118,9 @@ class AuthorizationGuard:
     label: str
 
 
-Model = Source | Sink | Sanitizer | EntryPoint | TypedParameter | Validator | AuthorizationGuard
+Model = (
+    Source | Sink | Sanitizer | EntryPoint | TypedParameter | Validator | AuthorizationGuard | NamedParameter
+)
 
 
 @dataclass(frozen=True)
@@ -107,6 +132,7 @@ class ModelTable:
     typed_parameters: tuple[TypedParameter, ...] = ()
     validators: tuple[Validator, ...] = ()
     authorizations: tuple[AuthorizationGuard, ...] = ()
+    named_parameters: tuple[NamedParameter, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -175,6 +201,7 @@ class ModelTable:
             self.typed_parameters,
             self.validators,
             self.authorizations,
+            self.named_parameters,
         )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
@@ -207,6 +234,7 @@ class SecurityModelRegistry:
             typed_parameters=tuple(m for m in models if isinstance(m, TypedParameter)),
             validators=tuple(m for m in models if isinstance(m, Validator)),
             authorizations=tuple(m for m in models if isinstance(m, AuthorizationGuard)),
+            named_parameters=tuple(m for m in models if isinstance(m, NamedParameter)),
         )
 
 

@@ -32,7 +32,7 @@ def _sym(path: str) -> SymbolId:
 class SqlAlchemyModels(ModelPlugin):
     name: ClassVar[str] = "sqlalchemy-models"
     models: ClassVar[tuple[Model, ...]] = tuple(
-        Sink(_sym(f"{executor}.{method}"), TaintKind.SQL)
+        Sink(_sym(f"{executor}.{method}"), TaintKind.SQL | TaintKind.CREDENTIAL)
         for executor in _EXECUTORS
         for method in ("execute", "exec_driver_sql", "scalar", "scalars")
     )

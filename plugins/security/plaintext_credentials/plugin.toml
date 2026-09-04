@@ -1,0 +1,9 @@
+name = "plaintext-credentials"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows", "findings.refutation"]
+provides = ["vulnerability.plaintext-credential-storage"]
+
+[entrypoint]
+module = "plaintext_credentials"
+class = "PlaintextCredentialsPlugin"
