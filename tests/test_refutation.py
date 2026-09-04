@@ -52,7 +52,7 @@ def require_refutation() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 MODELS = (
     Source(SymbolId("python.builtins.input"), "stdin"),

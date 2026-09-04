@@ -49,7 +49,7 @@ def require_pass() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def check(text: str, name: str = "app.py") -> tuple[Finding, ...]:

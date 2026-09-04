@@ -30,7 +30,7 @@ from coretrace_python.plugins.secrets import literals
 from coretrace_python.source import SourceManager
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 @pytest.fixture(autouse=True)

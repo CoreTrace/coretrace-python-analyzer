@@ -47,7 +47,7 @@ def require_routes() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def project(root: Path, files: dict[str, str]) -> Path:

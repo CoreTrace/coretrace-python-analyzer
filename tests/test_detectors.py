@@ -47,7 +47,7 @@ def require_detectors() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def check(source_text: str, *extra_roots: Path, name: str = "app.py") -> tuple[Finding, ...]:

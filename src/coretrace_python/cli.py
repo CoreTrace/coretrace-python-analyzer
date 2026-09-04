@@ -67,7 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=[],
         metavar="DIR",
-        help="with --check, a directory searched recursively for plugin.toml (repeatable)",
+        help="with --check, a directory searched recursively for plugin.toml, loaded on "
+        "top of the bundled plugins (repeatable)",
+    )
+    parser.add_argument(
+        "--no-bundled-plugins",
+        action="store_true",
+        help="with --check, do not load the plugins shipped with the package",
     )
     parser.add_argument(
         "--format",
@@ -164,6 +170,11 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --policy only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
 
+    if args.no_bundled_plugins and not args.check:
+        print("error: --no-bundled-plugins only applies to --check", file=sys.stderr)
+        return EXIT_ERROR
+    plugin_roots = ([] if args.no_bundled_plugins else [engine.BUNDLED_PLUGINS]) + list(args.plugins)
+
     if args.path.is_dir() and args.emit_ir:
         print(f"error: {args.path} is a directory; --emit-ir needs a file", file=sys.stderr)
         return EXIT_ERROR
@@ -177,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
                 cache = None if args.cache is None else ProjectCache(args.cache)
                 analysis = engine.analyze_project(
                     args.path,
-                    args.plugins,
+                    plugin_roots,
                     cache=cache,
                     jobs=args.jobs or 1,
                     advisory_files=args.advisories,
@@ -191,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
                         encoding="utf-8",
                     )
             else:
-                file_analysis = engine.analyze_file(SourceManager().load_file(args.path), args.plugins)
+                file_analysis = engine.analyze_file(SourceManager().load_file(args.path), plugin_roots)
                 findings, coverage = file_analysis.findings, file_analysis.coverage
             print(render(args.format or "text", engine.report(findings, coverage)), end="")
             return EXIT_FINDINGS if findings else EXIT_CLEAN

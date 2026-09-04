@@ -1057,10 +1057,12 @@ Refuted
 
 # 25. Plugin Types
 
-Possible organization:
+Organization of the plugins shipped inside the package (`coretrace_python/bundled/`,
+loaded by default; `--plugins DIR` adds external directories, `--no-bundled-plugins`
+leaves them out):
 
 ```text
-plugins/
+bundled/
 ├── syntax/
 │   ├── dangerous_eval/
 │   └── weak_crypto/

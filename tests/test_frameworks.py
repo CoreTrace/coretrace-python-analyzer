@@ -54,7 +54,7 @@ def require_entry_points() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def module_for(source_text: str) -> nodes.Module:

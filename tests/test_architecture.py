@@ -40,6 +40,8 @@ LAYERS = {
     "dependency": 11,
     "plugins": 12,
     "reporters": 13,
+    # The plugins shipped with the package sit on top of the plugin API.
+    "bundled": 14,
 }
 
 # Top-level modules that wire the pipeline together and may import any layer.

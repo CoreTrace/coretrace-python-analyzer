@@ -63,7 +63,7 @@ def require_plugin_api() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-DANGEROUS_EVAL = REPO / "plugins" / "syntax" / "dangerous_eval"
+DANGEROUS_EVAL = REPO / "src" / "coretrace_python" / "bundled" / "syntax" / "dangerous_eval"
 
 
 def manager_for(source_text: str) -> AnalysisManager:
