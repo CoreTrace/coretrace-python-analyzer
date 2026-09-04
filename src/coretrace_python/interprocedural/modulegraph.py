@@ -24,10 +24,13 @@ from coretrace_python.source import SourceFile, SourceManager
 IGNORED_DIRECTORIES = frozenset({"__pycache__", "node_modules", "venv", "build", "dist", "site-packages"})
 
 
-def discover_sources(root: Path, manager: SourceManager) -> tuple[SourceFile, ...]:
+def discover_sources(
+    root: Path, manager: SourceManager, errors: list[tuple[Path, str]] | None = None
+) -> tuple[SourceFile, ...]:
     """Load every ``.py`` file under ``root``, skipping hidden and tooling directories and
     virtual environments, recognised by the ``pyvenv.cfg`` at their root whatever their
-    name."""
+    name. A file that cannot be read or decoded is skipped and reported in ``errors``:
+    Python could not import it either."""
 
     found: list[SourceFile] = []
     environments: dict[Path, bool] = {}
@@ -37,7 +40,12 @@ def discover_sources(root: Path, manager: SourceManager) -> tuple[SourceFile, ..
             continue
         if any(_is_environment(root / Path(*relative.parts[:depth]), environments) for depth in range(1, len(relative.parts))):
             continue
-        found.append(manager.load_file(path))
+        try:
+            found.append(manager.load_file(path))
+        except (OSError, UnicodeDecodeError) as error:
+            if errors is None:
+                raise
+            errors.append((path, str(error)))
     return tuple(found)
 
 

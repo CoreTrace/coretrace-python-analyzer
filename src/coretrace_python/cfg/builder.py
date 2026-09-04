@@ -96,7 +96,7 @@ class _Builder:
             self.finish(block, Return(node.value, node.span))
             return None
         if isinstance(node, nodes.Raise):
-            self.finish(block, Raise(node.exception, node.span))
+            self.finish(block, Raise(node.exception, node.span, node.cause))
             return None
         if isinstance(node, nodes.Break):
             self.finish(block, Jump(self.loop("break", node.span)[1], node.span))

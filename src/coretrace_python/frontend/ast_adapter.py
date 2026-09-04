@@ -103,20 +103,26 @@ class AstHIRBuilder:
         if isinstance(node, ast.List):
             return nodes.List(self.elements(node.elts), span)
         if isinstance(node, ast.Dict):
-            items = []
+            items: list[tuple[nodes.Expression | None, nodes.Expression]] = []
             for key, value in zip(node.keys, node.values, strict=True):
-                if key is None:
-                    self.fail(value, "dict unpacking is not supported yet")
-                items.append((self.expression(key), self.expression(value)))
+                items.append((None if key is None else self.expression(key), self.expression(value)))
             return nodes.Dict(tuple(items), span)
+        if isinstance(node, ast.JoinedStr):
+            return nodes.FormattedString(tuple(self.formatted_parts(node)), span)
+        if isinstance(node, ast.Slice):
+            return nodes.Slice(
+                self.expression(node.lower) if node.lower is not None else None,
+                self.expression(node.upper) if node.upper is not None else None,
+                self.expression(node.step) if node.step is not None else None,
+                span,
+            )
+        if isinstance(node, ast.Starred):
+            return nodes.Starred(self.expression(node.value), span)
         if isinstance(node, ast.Attribute):
             return nodes.Attribute(self.expression(node.value), node.attr, span)
         if isinstance(node, ast.Subscript):
             return nodes.Subscript(self.expression(node.value), self.expression(node.slice), span)
         if isinstance(node, ast.Call):
-            for argument in node.args:
-                if isinstance(argument, ast.Starred):
-                    self.fail(argument, "star arguments are not supported yet")
             arguments = tuple(self.expression(argument) for argument in node.args)
             keywords = tuple(
                 nodes.Keyword(keyword.arg, self.expression(keyword.value), self.span(keyword))
@@ -138,10 +144,20 @@ class AstHIRBuilder:
         self.fail(node)
 
     def elements(self, elements: list[ast.expr]) -> tuple[nodes.Expression, ...]:
-        for element in elements:
-            if isinstance(element, ast.Starred):
-                self.fail(element, "star expressions are not supported yet")
         return tuple(self.expression(element) for element in elements)
+
+    def formatted_parts(self, node: ast.JoinedStr) -> list[nodes.Expression]:
+        parts: list[nodes.Expression] = []
+        for value in node.values:
+            if isinstance(value, ast.Constant):
+                parts.append(nodes.Constant(value.value, self.span(value)))
+            elif isinstance(value, ast.FormattedValue):
+                parts.append(self.expression(value.value))
+                if isinstance(value.format_spec, ast.JoinedStr):
+                    parts.extend(p for p in self.formatted_parts(value.format_spec) if not isinstance(p, nodes.Constant))
+            else:  # pragma: no cover - the grammar allows nothing else
+                self.fail(value)
+        return parts
 
     def target(self, node: ast.expr) -> nodes.Target:
         if isinstance(node, ast.Name):
@@ -241,13 +257,18 @@ class AstHIRBuilder:
         if isinstance(node, (ast.For, ast.AsyncFor)):
             if node.orelse:
                 self.fail(node.orelse[0], "loop else clauses are not supported yet")
-            if not isinstance(node.target, ast.Name):
-                self.fail(node.target, "only a single name is supported as a loop target")
-            target = nodes.Name(node.target.id, self.span(node.target))
+            body = self.block(node.body)
+            if isinstance(node.target, ast.Name):
+                target = nodes.Name(node.target.id, self.span(node.target))
+            else:
+                # ``for k, v in items`` binds a hidden local and destructures it first.
+                target_span = self.span(node.target)
+                target = nodes.Name(f"_coretrace_item_{target_span.start_line}_{target_span.start_column}", target_span)
+                body = (nodes.Assign(self.target(node.target), target, target_span), *body)
             return nodes.For(
                 target,
                 self.expression(node.iter),
-                self.block(node.body),
+                body,
                 isinstance(node, ast.AsyncFor),
                 span,
             )
@@ -256,10 +277,9 @@ class AstHIRBuilder:
         if isinstance(node, ast.Continue):
             return nodes.Continue(span)
         if isinstance(node, ast.Raise):
-            if node.cause is not None:
-                self.fail(node.cause, "raise from is not supported yet")
             exception = self.expression(node.exc) if node.exc is not None else None
-            return nodes.Raise(exception, span)
+            cause = self.expression(node.cause) if node.cause is not None else None
+            return nodes.Raise(exception, span, cause)
         if isinstance(node, ast.Try):
             handlers = []
             for handler in node.handlers:

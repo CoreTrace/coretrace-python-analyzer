@@ -110,14 +110,18 @@ class Compare(Operands):
 
 @dataclass(frozen=True)
 class Call(Operands):
+    """``starred`` are ``*iterable`` arguments whose positions are unknown; keywords
+    with a ``None`` name are ``**mapping`` arguments."""
+
     result: Value
     location: SourceSpan
     callee: Value
     arguments: tuple[Value, ...]
     keywords: tuple[tuple[str | None, Value], ...] = ()
+    starred: tuple[Value, ...] = ()
 
     def argument_values(self) -> tuple[Value, ...]:
-        return (*self.arguments, *(value for _, value in self.keywords))
+        return (*self.arguments, *self.starred, *(value for _, value in self.keywords))
 
 
 @dataclass(frozen=True)
@@ -133,6 +137,7 @@ class BuildList(Operands):
     result: Value
     location: SourceSpan
     elements: tuple[Value, ...]
+    unpacked: tuple[Value, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -140,6 +145,7 @@ class BuildTuple(Operands):
     result: Value
     location: SourceSpan
     elements: tuple[Value, ...]
+    unpacked: tuple[Value, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -147,6 +153,25 @@ class BuildDict(Operands):
     result: Value
     location: SourceSpan
     items: tuple[tuple[Value, Value], ...]
+    unpacked: tuple[Value, ...] = ()
+
+
+@dataclass(frozen=True)
+class BuildString(Operands):
+    """An f-string: its constant and formatted parts, in order."""
+
+    result: Value
+    location: SourceSpan
+    parts: tuple[Value, ...]
+
+
+@dataclass(frozen=True)
+class BuildSlice(Operands):
+    result: Value
+    location: SourceSpan
+    lower: Value | None
+    upper: Value | None
+    step: Value | None
 
 
 @dataclass(frozen=True)
@@ -299,6 +324,8 @@ ValueInstruction: TypeAlias = (
     | BuildList
     | BuildTuple
     | BuildDict
+    | BuildString
+    | BuildSlice
     | WithEnter
     | Catch
     | Await
@@ -335,6 +362,7 @@ class Jump(Operands):
 class Raise(Operands):
     location: SourceSpan
     exception: Value | None
+    cause: Value | None = None
 
 
 @dataclass(frozen=True)

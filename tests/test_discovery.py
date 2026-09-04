@@ -71,3 +71,26 @@ def test_dashed_packages_are_analysed_instead_of_crashing(tmp_path: Path) -> Non
         ("command-injection", "__main__.py", 4)
     ]
     assert SymbolId("python.network_topologer.traceroute.probe") in analysis.index.symbols
+
+
+def test_undecodable_files_become_notes_and_the_rest_is_analysed(tmp_path: Path) -> None:
+    root = project(tmp_path, {"app.py": "import os\n\ndef run():\n    os.system(input())\n"})
+    (root / "legacy.py").write_bytes(b"\xff\xfeprint('utf-16')\n")
+
+    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "plugins"])
+
+    notes = [(f.rule_id, Path(str(f.span.source_id)).name) for f in analysis.findings]
+    assert ("syntax-error", "legacy.py") in notes
+    assert ("command-injection", "app.py") in notes
+    assert set(analysis.keys) == {"app"}
+    assert any("utf-8" in f.message for f in analysis.findings if f.rule_id == "syntax-error")
+
+
+def test_utf16_dependency_files_are_read(tmp_path: Path) -> None:
+    root = project(tmp_path, {"app.py": "x = 1\n"})
+    (root / "requirements.txt").write_bytes("pyyaml==5.3.1\r\nflask==2.0.0\r\n".encode("utf-16"))
+
+    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "plugins"])
+
+    assert analysis.dependencies.names == ("flask", "pyyaml")
+    assert sorted(f.rule_id for f in analysis.findings) == ["vulnerable-dependency", "vulnerable-dependency"]

@@ -52,6 +52,7 @@ class Return:
 class Raise:
     exception: nodes.Expression | None
     span: SourceSpan
+    cause: nodes.Expression | None = None
 
 
 @dataclass(frozen=True)

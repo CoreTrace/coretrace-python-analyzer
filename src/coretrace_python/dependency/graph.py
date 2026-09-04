@@ -13,6 +13,7 @@ import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import PurePath
 from types import MappingProxyType
 from typing import Any, ClassVar
 
@@ -179,7 +180,7 @@ class DependencyGraph:
 def parse_dependencies(source: SourceFile) -> DependencyGraph:
     """The requirements declared or pinned by one dependency file; other files are empty."""
 
-    name = source.path.name if source.path is not None else str(source.source_id)
+    name = source.path.name if source.path is not None else PurePath(str(source.source_id)).name
     if name.startswith("requirements") and name.endswith(".txt"):
         return _parse_requirements_txt(source)
     if name == "pyproject.toml":

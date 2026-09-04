@@ -215,9 +215,25 @@ def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
     graph = DependencyGraph()
     candidates = sorted(root.glob("requirements*.txt")) + [root / name for name in DEPENDENCY_FILES]
     for path in candidates:
-        if path.is_file():
-            graph = graph.merge(parse_dependencies(sources.load_file(path)))
+        if not path.is_file():
+            continue
+        try:
+            text = _decode_manifest(path.read_bytes())
+        except (OSError, UnicodeDecodeError) as error:
+            graph = graph.merge(DependencyGraph(errors=(f"{path}: {error}",)))
+            continue
+        graph = graph.merge(parse_dependencies(sources.add_source(str(path), text)))
     return graph
+
+
+def _decode_manifest(data: bytes) -> str:
+    """Dependency files written by ``pip freeze`` on Windows are UTF-16 with a byte
+    order mark; honour the mark, otherwise expect UTF-8."""
+
+    for mark, encoding in ((b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16")):
+        if data.startswith(mark):
+            return data.decode(encoding)
+    return data.decode("utf-8")
 
 
 def analyze_project(
@@ -261,7 +277,11 @@ def analyze_project(
             findings.append(_note("syntax-error", str(error), sources.add_source(str(policy_path), ""), 1))
     modules: dict[str, nodes.Module] = {}
     files: dict[str, SourceFile] = {}
-    for source in discover_sources(root, sources):
+    unreadable: list[tuple[Path, str]] = []
+    discovered = discover_sources(root, sources, unreadable)
+    for path, reason in unreadable:
+        findings.append(_note("syntax-error", f"{path}: {reason}", sources.add_source(str(path), ""), 1))
+    for source in discovered:
         try:
             modules[source.module_name] = build_hir(source)
         except (ParseError, HIRBuildError) as error:

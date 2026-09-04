@@ -25,6 +25,8 @@ from coretrace_python.ir.model import (
     Branch,
     BuildDict,
     BuildList,
+    BuildSlice,
+    BuildString,
     BuildTuple,
     Call,
     Catch,
@@ -146,21 +148,28 @@ class _FunctionLowerer:
             return self.emit(Compare(self.new_value(), node.span, node.operator, left, right))
         if isinstance(node, nodes.Call):
             callee = self.expression(node.callee)
-            arguments = tuple(self.expression(argument) for argument in node.arguments)
+            arguments, starred = self.spread(node.arguments)
             keywords = tuple((k.name, self.expression(k.value)) for k in node.keywords)
-            return self.emit(Call(self.new_value(), node.span, callee, arguments, keywords))
+            return self.emit(Call(self.new_value(), node.span, callee, arguments, keywords, starred))
         if isinstance(node, nodes.BoolOp):
             values = tuple(self.expression(value) for value in node.values)
             return self.emit(BoolOp(self.new_value(), node.span, node.operator, values))
-        if isinstance(node, nodes.List):
-            elements = tuple(self.expression(element) for element in node.elements)
-            return self.emit(BuildList(self.new_value(), node.span, elements))
-        if isinstance(node, nodes.Tuple):
-            elements = tuple(self.expression(element) for element in node.elements)
-            return self.emit(BuildTuple(self.new_value(), node.span, elements))
+        if isinstance(node, nodes.List | nodes.Tuple):
+            elements, unpacked = self.spread(node.elements)
+            builder = BuildList if isinstance(node, nodes.List) else BuildTuple
+            return self.emit(builder(self.new_value(), node.span, elements, unpacked))
         if isinstance(node, nodes.Dict):
-            items = tuple((self.expression(k), self.expression(v)) for k, v in node.items)
-            return self.emit(BuildDict(self.new_value(), node.span, items))
+            items = tuple((self.expression(k), self.expression(v)) for k, v in node.items if k is not None)
+            unpacked = tuple(self.expression(v) for k, v in node.items if k is None)
+            return self.emit(BuildDict(self.new_value(), node.span, items, unpacked))
+        if isinstance(node, nodes.FormattedString):
+            parts = tuple(self.expression(part) for part in node.parts)
+            return self.emit(BuildString(self.new_value(), node.span, parts))
+        if isinstance(node, nodes.Slice):
+            bounds = [self.expression(b) if b is not None else None for b in (node.lower, node.upper, node.step)]
+            return self.emit(BuildSlice(self.new_value(), node.span, bounds[0], bounds[1], bounds[2]))
+        if isinstance(node, nodes.Starred):
+            self.fail(node, "a starred expression is only supported in calls, lists and tuples")
         if isinstance(node, nodes.Await):
             return self.emit(Await(self.new_value(), node.span, self.expression(node.value)))
         if isinstance(node, nodes.Yield):
@@ -174,6 +183,18 @@ class _FunctionLowerer:
             key = self.expression(node.key)
             return self.emit(GetItem(self.new_value(), node.span, object_value, key))
         self.fail(node)
+
+    def spread(self, elements: tuple[nodes.Expression, ...]) -> tuple[tuple[Value, ...], tuple[Value, ...]]:
+        """Plain elements and ``*iterable`` elements of a display or an argument list."""
+
+        plain: list[Value] = []
+        unpacked: list[Value] = []
+        for element in elements:
+            if isinstance(element, nodes.Starred):
+                unpacked.append(self.expression(element.value))
+            else:
+                plain.append(self.expression(element))
+        return tuple(plain), tuple(unpacked)
 
     # ------------------------------------------------------------------ statements
 
@@ -262,7 +283,8 @@ class _FunctionLowerer:
             exception = (
                 self.expression(terminator.exception) if terminator.exception is not None else None
             )
-            return Raise(terminator.span, exception)
+            cause = self.expression(terminator.cause) if terminator.cause is not None else None
+            return Raise(terminator.span, exception, cause)
         if isinstance(terminator, control_flow.Jump):
             self.enter_loop(block.id, terminator.target)
             return Jump(terminator.span, terminator.target)

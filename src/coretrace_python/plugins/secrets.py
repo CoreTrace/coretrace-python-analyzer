@@ -79,7 +79,8 @@ def _walk(node: Node, name: str | None, function: str | None) -> Iterator[Litera
                 bound = key.value if isinstance(key.value, str) else None
             else:
                 bound = None
-                yield from _walk(key, None, function)
+                if key is not None:
+                    yield from _walk(key, None, function)
             yield from _walk(value, bound, function)
         return
     for child in children(node):

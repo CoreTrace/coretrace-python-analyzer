@@ -307,6 +307,8 @@ class _Collector:
         elif isinstance(node, nodes.Raise):
             if node.exception is not None:
                 self.expression(node.exception, scope)
+            if node.cause is not None:
+                self.expression(node.cause, scope)
         elif not isinstance(node, nodes.Pass | nodes.Break | nodes.Continue):
             raise TypeError(f"unknown statement: {node!r}")
 
@@ -344,8 +346,18 @@ class _Collector:
                 self.expression(element, scope)
         elif isinstance(node, nodes.Dict):
             for key, value in node.items:
-                self.expression(key, scope)
+                if key is not None:
+                    self.expression(key, scope)
                 self.expression(value, scope)
+        elif isinstance(node, nodes.FormattedString):
+            for part in node.parts:
+                self.expression(part, scope)
+        elif isinstance(node, nodes.Slice):
+            for bound in (node.lower, node.upper, node.step):
+                if bound is not None:
+                    self.expression(bound, scope)
+        elif isinstance(node, nodes.Starred):
+            self.expression(node.value, scope)
         else:
             raise TypeError(f"unknown expression: {node!r}")
 

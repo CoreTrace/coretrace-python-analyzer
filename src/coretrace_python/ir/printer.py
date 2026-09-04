@@ -8,6 +8,8 @@ from coretrace_python.ir.model import (
     Branch,
     BuildDict,
     BuildList,
+    BuildSlice,
+    BuildString,
     BuildTuple,
     Call,
     Catch,
@@ -68,6 +70,7 @@ def _instruction(instruction: Instruction) -> str:
         )
     if isinstance(instruction, Call):
         parts = [_value(argument) for argument in instruction.arguments]
+        parts.extend(f"*{_value(value)}" for value in instruction.starred)
         for name, value in instruction.keywords:
             parts.append(f"{name}={_value(value)}" if name is not None else f"**{_value(value)}")
         return f"{_value(instruction.result)} = call {_value(instruction.callee)}({', '.join(parts)})"
@@ -76,11 +79,17 @@ def _instruction(instruction: Instruction) -> str:
         return f"{_value(instruction.result)} = bool_op.{instruction.operator} {values}"
     if isinstance(instruction, BuildList | BuildTuple):
         kind = "build_list" if isinstance(instruction, BuildList) else "build_tuple"
-        elements = ", ".join(_value(v) for v in instruction.elements)
-        return f"{_value(instruction.result)} = {kind} {elements}".rstrip()
+        parts = [_value(v) for v in instruction.elements] + [f"*{_value(v)}" for v in instruction.unpacked]
+        return f"{_value(instruction.result)} = {kind} {', '.join(parts)}".rstrip()
     if isinstance(instruction, BuildDict):
-        items = ", ".join(f"{_value(k)}: {_value(v)}" for k, v in instruction.items)
-        return f"{_value(instruction.result)} = build_dict {items}".rstrip()
+        parts = [f"{_value(k)}: {_value(v)}" for k, v in instruction.items]
+        parts.extend(f"**{_value(v)}" for v in instruction.unpacked)
+        return f"{_value(instruction.result)} = build_dict {', '.join(parts)}".rstrip()
+    if isinstance(instruction, BuildString):
+        return f"{_value(instruction.result)} = build_string {', '.join(_value(v) for v in instruction.parts)}".rstrip()
+    if isinstance(instruction, BuildSlice):
+        bounds = ", ".join("none" if b is None else _value(b) for b in (instruction.lower, instruction.upper, instruction.step))
+        return f"{_value(instruction.result)} = build_slice {bounds}"
     if isinstance(instruction, WithEnter):
         return f"{_value(instruction.result)} = with_enter {_value(instruction.context)}"
     if isinstance(instruction, WithExit):
@@ -140,7 +149,10 @@ def _terminator(terminator: Terminator) -> str:
     if isinstance(terminator, Jump):
         return f"jump {terminator.target}"
     if isinstance(terminator, Raise):
-        return "raise" if terminator.exception is None else f"raise {_value(terminator.exception)}"
+        if terminator.exception is None:
+            return "raise"
+        text = f"raise {_value(terminator.exception)}"
+        return text if terminator.cause is None else f"{text} from {_value(terminator.cause)}"
     if isinstance(terminator, ForNext):
         prefix = "" if terminator.result is None else f"{_value(terminator.result)} = "
         return (

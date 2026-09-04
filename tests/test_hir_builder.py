@@ -210,10 +210,9 @@ def test_represents_raise_with_and_without_exception() -> None:
     "source_text, message",
     [
         ("while x:\n    pass\nelse:\n    pass\n", "else"),
-        ("for a, b in items:\n    pass\n", "single name"),
-        ("raise Error from cause\n", "from"),
+        ("for a, b in items:\n    pass\nelse:\n    pass\n", "else"),
     ],
-    ids=["loop-else", "tuple-target", "raise-from"],
+    ids=["while-else", "for-else"],
 )
 def test_unsupported_control_flow_forms_are_reported(source_text: str, message: str) -> None:
     from coretrace_python.frontend import HIRBuildError
