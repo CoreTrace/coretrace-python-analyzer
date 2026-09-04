@@ -83,6 +83,8 @@ class BasicBlock:
     id: BlockId
     statements: tuple[nodes.Statement, ...]
     terminator: Terminator
+    exception_targets: tuple[BlockId, ...] = ()
+    """Handler blocks control may reach if a statement of this block raises."""
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,9 @@ class CFG:
         for block_id, block in blocks.items():
             if block.id != block_id:
                 raise CFGError(f"block {block.id} is stored under {block_id}")
-            successors[block_id] = targets(block.terminator)
+            found = list(targets(block.terminator))
+            found.extend(t for t in block.exception_targets if t not in found)
+            successors[block_id] = tuple(found)
             for target in successors[block_id]:
                 if target not in blocks:
                     raise CFGError(f"block {block_id} targets unknown block {target}")

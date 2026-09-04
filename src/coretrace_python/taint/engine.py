@@ -167,14 +167,15 @@ class _TaintProblem(DataflowProblem[State]):
     def flow(self, cfg: CFG, block_id: BlockId, incoming: Mapping[BlockId, State]) -> Mapping[BlockId, State]:
         block = self.blocks[block_id]
         state, _ = self.evaluate(block, incoming)
+        exits = {target: state for target in block.exception_targets}
         terminator = block.terminator
         if isinstance(terminator, Branch):
-            return {terminator.then_block: state, terminator.else_block: state}
+            return {**exits, terminator.then_block: state, terminator.else_block: state}
         if isinstance(terminator, Jump):
-            return {terminator.target: state}
+            return {**exits, terminator.target: state}
         if isinstance(terminator, ForNext):
-            return {terminator.body: state, terminator.exit: state}
-        return {}
+            return {**exits, terminator.body: state, terminator.exit: state}
+        return exits
 
     # ------------------------------------------------------------------ transfer
 

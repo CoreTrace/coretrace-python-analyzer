@@ -87,6 +87,12 @@ class _Collector:
                 self.body(statement.orelse, scope_id)
             elif isinstance(statement, (nodes.While, nodes.For, nodes.With)):
                 self.body(statement.body, scope_id)
+            elif isinstance(statement, nodes.Try):
+                self.body(statement.body, scope_id)
+                for handler in statement.handlers:
+                    self.body(handler.body, scope_id)
+                self.body(statement.orelse, scope_id)
+                self.body(statement.finalbody, scope_id)
 
     def base_module(self, statement: nodes.ImportFrom) -> str:
         if not statement.level:

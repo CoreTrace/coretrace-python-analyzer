@@ -18,6 +18,7 @@ from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.ir.model import (
     Assert,
+    Await,
     BasicBlock,
     BinaryOp,
     BoolOp,
@@ -26,6 +27,7 @@ from coretrace_python.ir.model import (
     BuildList,
     BuildTuple,
     Call,
+    Catch,
     Compare,
     Constant,
     EffectInstruction,
@@ -51,6 +53,7 @@ from coretrace_python.ir.model import (
     ValueInstruction,
     WithEnter,
     WithExit,
+    Yield,
 )
 from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.scopes import (
@@ -157,6 +160,11 @@ class _FunctionLowerer:
         if isinstance(node, nodes.Dict):
             items = tuple((self.expression(k), self.expression(v)) for k, v in node.items)
             return self.emit(BuildDict(self.new_value(), node.span, items))
+        if isinstance(node, nodes.Await):
+            return self.emit(Await(self.new_value(), node.span, self.expression(node.value)))
+        if isinstance(node, nodes.Yield):
+            value = self.expression(node.value) if node.value is not None else None
+            return self.emit(Yield(self.new_value(), node.span, value))
         if isinstance(node, nodes.Attribute):
             object_value = self.expression(node.value)
             return self.emit(GetAttr(self.new_value(), node.span, object_value, node.name))
@@ -211,6 +219,13 @@ class _FunctionLowerer:
             return
         if isinstance(node, nodes.ExitWith):
             self.emit_effect(WithExit(None, node.item.span, self.contexts[node.item.span]))
+            return
+        if isinstance(node, nodes.EnterHandler):
+            handler = node.handler
+            caught_type = self.expression(handler.type) if handler.type is not None else None
+            caught = self.emit(Catch(self.new_value(), handler.span, caught_type))
+            if handler.name is not None:
+                self.store(nodes.Name(handler.name, handler.span), caught)
             return
         if isinstance(node, nodes.ExpressionStatement):
             self.expression(node.expression)
@@ -276,7 +291,11 @@ class _FunctionLowerer:
             for statement in cfg_block.statements:
                 self.statement(statement)
             terminator = self.terminator(cfg_block)
-            blocks.append(BasicBlock(cfg_block.id, tuple(self.instructions), terminator))
+            blocks.append(
+                BasicBlock(
+                    cfg_block.id, tuple(self.instructions), terminator, cfg_block.exception_targets
+                )
+            )
         return FunctionIR(
             qualified_name(self.scopes, node), parameter_values, self.cfg.entry, tuple(blocks), node.span
         )
@@ -309,6 +328,8 @@ def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:
     def walk(node: Node) -> None:
         if isinstance(node, nodes.Assign | nodes.AugAssign | nodes.For | nodes.WithItem):
             names(node.target)
+        elif isinstance(node, nodes.ExceptHandler) and node.name is not None:
+            assigned.add(node.name)
         if isinstance(node, nodes.Function | nodes.Class | nodes.Comprehension):
             return
         for child in children(node):

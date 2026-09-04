@@ -104,6 +104,18 @@ class Dict:
 
 
 @dataclass(frozen=True, slots=True)
+class Await:
+    value: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Yield:
+    value: Expression | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class ComprehensionGenerator:
     """One ``for target in iterable if condition...`` clause of a comprehension."""
 
@@ -136,6 +148,8 @@ Expression: TypeAlias = (
     | Tuple
     | List
     | Dict
+    | Await
+    | Yield
     | Comprehension
 )
 
@@ -263,6 +277,33 @@ class ExitWith:
 
 
 @dataclass(frozen=True, slots=True)
+class ExceptHandler:
+    """``except type as name:``; ``type`` is ``None`` for a bare ``except``."""
+
+    type: Expression | None
+    name: str | None
+    body: tuple[Statement, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Try:
+    body: tuple[Statement, ...]
+    handlers: tuple[ExceptHandler, ...]
+    orelse: tuple[Statement, ...]
+    finalbody: tuple[Statement, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class EnterHandler:
+    """Synthetic statement the CFG builder emits at the start of a handler block."""
+
+    handler: ExceptHandler
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class ImportAlias:
     name: str
     as_name: str | None
@@ -330,6 +371,8 @@ Statement: TypeAlias = (
     | With
     | EnterWith
     | ExitWith
+    | Try
+    | EnterHandler
     | Import
     | ImportFrom
     | Global

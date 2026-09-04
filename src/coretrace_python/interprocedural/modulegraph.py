@@ -99,10 +99,13 @@ def _prefixes(dotted: str) -> list[str]:
 def _statements(body: Iterable[nodes.Statement]) -> Iterable[nodes.Statement]:
     for statement in body:
         yield statement
-        for attribute in ("body", "orelse"):
+        for attribute in ("body", "orelse", "finalbody"):
             nested = getattr(statement, attribute, None)
             if isinstance(nested, tuple):
                 yield from _statements(nested)
+        if isinstance(statement, nodes.Try):
+            for handler in statement.handlers:
+                yield from _statements(handler.body)
 
 __all__ = [
     "IGNORED_DIRECTORIES",

@@ -113,6 +113,7 @@ class _ConstantProblem(DataflowProblem[State]):
     def flow(self, cfg: CFG, block_id: BlockId, incoming: Mapping[BlockId, State]) -> Mapping[BlockId, State]:
         block = self.blocks[block_id]
         state = self.evaluate(block, incoming)
+        exits = {target: state for target in block.exception_targets}
         terminator = block.terminator
         if isinstance(terminator, Branch):
             truth = state[terminator.condition].truthiness
@@ -121,12 +122,12 @@ class _ConstantProblem(DataflowProblem[State]):
                 Truth.FALSE: (terminator.else_block,),
                 Truth.UNKNOWN: (terminator.then_block, terminator.else_block),
             }[truth]
-            return {target: state for target in targets}
+            return {**exits, **{target: state for target in targets}}
         if isinstance(terminator, Jump):
-            return {terminator.target: state}
+            return {**exits, terminator.target: state}
         if isinstance(terminator, ForNext):
-            return {terminator.body: state, terminator.exit: state}
-        return {}
+            return {**exits, terminator.body: state, terminator.exit: state}
+        return exits
 
     # ------------------------------------------------------------------ transfer
 

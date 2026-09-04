@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from coretrace_python.ir.model import (
     Assert,
+    Await,
     BinaryOp,
     BoolOp,
     Branch,
@@ -9,6 +10,7 @@ from coretrace_python.ir.model import (
     BuildList,
     BuildTuple,
     Call,
+    Catch,
     Compare,
     Constant,
     ForNext,
@@ -33,6 +35,7 @@ from coretrace_python.ir.model import (
     Value,
     WithEnter,
     WithExit,
+    Yield,
 )
 
 
@@ -81,6 +84,14 @@ def _instruction(instruction: Instruction) -> str:
         return f"{_value(instruction.result)} = with_enter {_value(instruction.context)}"
     if isinstance(instruction, WithExit):
         return f"with_exit {_value(instruction.context)}"
+    if isinstance(instruction, Catch):
+        suffix = "" if instruction.type is None else f" {_value(instruction.type)}"
+        return f"{_value(instruction.result)} = catch{suffix}"
+    if isinstance(instruction, Await):
+        return f"{_value(instruction.result)} = await {_value(instruction.value)}"
+    if isinstance(instruction, Yield):
+        suffix = "" if instruction.value is None else f" {_value(instruction.value)}"
+        return f"{_value(instruction.result)} = yield{suffix}"
     if isinstance(instruction, SetAttr):
         return f"set_attr {_value(instruction.object)}, {instruction.attribute!r}, {_value(instruction.value)}"
     if isinstance(instruction, SetItem):
@@ -142,7 +153,10 @@ def format_module(module: ModuleIR) -> str:
         parameters = ", ".join(_value(parameter) for parameter in function.parameters)
         lines = [f"func @{function.name}({parameters}) {{"]
         for block in function.blocks:
-            lines.append(f"{block.id}:")
+            header = str(block.id)
+            if block.exception_targets:
+                header += f" [except: {', '.join(str(t) for t in block.exception_targets)}]"
+            lines.append(f"{header}:")
             lines.extend(f"    {_instruction(instruction)}" for instruction in block.instructions)
             lines.append(f"    {_terminator(block.terminator)}")
         lines.append("}")

@@ -64,8 +64,9 @@ PYTHONPATH=src python -m coretrace_python --emit-ir example.py
 Currently supported inside functions: parameters with defaults and keyword-only or star
 forms, decorators, assignments to names, attributes, items and unpacked tuples, augmented
 assignment, list, tuple and dict literals, `and`/`or`, chained comparisons, keyword
-arguments, `with`, `assert`, `if`/`elif`/`else`, `while`, `for`, `break`, `continue` and
-`raise`. Methods of module-level classes are analysed like functions; other module-level
+arguments, `with`, `assert`, `try`/`except`/`else`/`finally`, `await`, `yield`,
+`if`/`elif`/`else`, `while`, `for`, `break`, `continue` and `raise`. Blocks inside a `try`
+body carry exception edges to the handlers; `finally` is modelled on the normal path only. Methods of module-level classes are analysed like functions; other module-level
 code is skipped. A function using syntax outside this subset is reported by `--check` as
 an `unsupported-syntax` note and the other functions are still analysed. Each function is
 emitted as its control-flow graph: one block per basic block, ending in an explicit
