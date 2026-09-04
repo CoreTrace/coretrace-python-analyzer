@@ -9,7 +9,7 @@ argument reaching a sink whose kinds it still carries is reported as a ``TaintFl
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import ClassVar
@@ -53,6 +53,7 @@ from coretrace_python.ir.model import (
     GetAttr,
     GetItem,
     GetIter,
+    Global,
     Instruction,
     Jump,
     MakeFunction,
@@ -144,6 +145,7 @@ class _TaintProblem(DataflowProblem[State]):
         parameters: Mapping[int, Source] | None = None,
         project: SummaryIndex | None = None,
         heap: HeapFacts | None = None,
+        seeds: Mapping[HeapLocation, Taint] | None = None,
     ) -> None:
         self.name = name
         self.function = function
@@ -153,6 +155,7 @@ class _TaintProblem(DataflowProblem[State]):
         self.parameters = parameters or {}
         self.project = project or SummaryIndex()
         self.heap = heap or HeapFacts({})
+        self.seeds = dict(seeds or {})
         self.blocks = {block.id: block for block in function.blocks}
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
@@ -187,13 +190,14 @@ class _TaintProblem(DataflowProblem[State]):
         return taint
 
     def initial(self) -> State:
-        return MappingProxyType(
-            {
-                self.function.parameters[index]: Taint(source.kinds, frozenset({source}))
-                for index, source in self.parameters.items()
-                if index < len(self.function.parameters)
-            }
-        )
+        state: dict[Key, Taint] = {
+            self.function.parameters[index]: Taint(source.kinds, frozenset({source}))
+            for index, source in self.parameters.items()
+            if index < len(self.function.parameters)
+        }
+        for location, taint in self.seeds.items():
+            state[location] = taint
+        return MappingProxyType(state)
 
     def join(self, a: State, b: State) -> State:
         merged = dict(a)
@@ -280,9 +284,16 @@ class _TaintProblem(DataflowProblem[State]):
         target = self.graph.target_at(self.name, call.location)
         if isinstance(target, ExternalSymbol):
             project = self.project.summary(target.symbol)
+            if project is None:
+                # ``App(x)`` with ``App`` defined in another file: its ``__init__``.
+                project = self.project.summary(target.symbol.attribute("__init__"))
             if project is not None:
                 through = target.symbol.canonical_name.removeprefix("python.")
-                return self.known(project, through, arguments, keywords, everything, call, flows, state)
+                bound = self.receiver(call, project.name)
+                arguments = (*(self.deep(r, state) for r in bound), *arguments)
+                return self.known(
+                    project, through, arguments, keywords, everything, call, flows, state, (), bound
+                )
             symbol = target.symbol
             if not self.modelled(symbol):
                 # ``get_conn().execute`` derived ``app.database.get_conn.execute``; what
@@ -292,14 +303,32 @@ class _TaintProblem(DataflowProblem[State]):
         if isinstance(target, KnownFunction):
             summary = self.summaries.summary(target.name)
             captured = self.captured(call)
-            arguments = (*arguments, *(self.deep(value, state) for value in captured))
+            bound = self.receiver(call, target.name)
+            arguments = (
+                *(self.deep(r, state) for r in bound),
+                *arguments,
+                *(self.deep(value, state) for value in captured),
+            )
             return self.known(
-                summary, target.name, arguments, keywords, everything, call, flows, state, captured
+                summary, target.name, arguments, keywords, everything, call, flows, state, captured, bound
             )
         returned = self.returned_symbol(call)
         if returned is not None:
             return self.external(returned, everything, call, state, flows)
         return everything.join(state.get(call.callee, Taint.none()))
+
+    def receiver(self, call: Call, name: str) -> tuple[Value, ...]:
+        """The object a method call runs on, its implicit first parameter: the receiver
+        of ``obj.method(...)``, or the new object of ``Class(...)``."""
+
+        if "." not in name:
+            return ()
+        callee = self.defs.get(call.callee)
+        if isinstance(callee, GetAttr):
+            return (callee.object,)
+        if name.endswith(".__init__") and isinstance(callee, Global | Symbol):
+            return (call.result,)
+        return ()
 
     def captured(self, call: Call) -> tuple[Value, ...]:
         """The values a nested callee captured, its implicit trailing parameters."""
@@ -372,6 +401,7 @@ class _TaintProblem(DataflowProblem[State]):
         flows: list[TaintFlow],
         state: dict[Key, Taint],
         captured: tuple[Value, ...] = (),
+        receiver: tuple[Value, ...] = (),
     ) -> Taint:
         """Flows and result taint of a call to a function whose summary is known."""
 
@@ -379,7 +409,7 @@ class _TaintProblem(DataflowProblem[State]):
             return everything
 
         spread = (*call.starred, *(value for _, value in call.keywords))
-        values = (*call.arguments, *captured)
+        values = (*receiver, *call.arguments, *captured)
 
         def mapped(deps: frozenset[int]) -> tuple[Taint, Value | None]:
             taint, witness = Taint.none(), None
@@ -654,8 +684,9 @@ def propagate_taint(
     parameters: Mapping[int, Source] | None = None,
     project: SummaryIndex | None = None,
     heap: HeapFacts | None = None,
+    seeds: Mapping[HeapLocation, Taint] | None = None,
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap)
+    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds)
     solution = solve(problem, cfg)
     taints: dict[Key, Taint] = {}
     flows: list[TaintFlow] = []
@@ -690,28 +721,80 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
     def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> TaintFacts:
         graph = ctx.get(CallGraphAnalysis)
         models = ctx.get(SecurityModelAnalysis)
+        scopes, symbols = ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)
+        instances = factory_instances(ctx.module, scopes, symbols, ctx.get(SummaryAnalysis), ctx.get(ProjectSummaries))
+        routes = ctx.get(RegisteredRoutes)
+
+        def sources_of(member: nodes.Function) -> Mapping[int, Source]:
+            return parameter_sources(member, ctx.module, models, scopes, symbols, instances, routes)
+
+        ssa = ctx.get(SSAAnalysis, function)
+        heap = ctx.get(HeapAnalysis, function)
+        sources = sources_of(function)
+        # Only a method the framework calls, an entry point, starts with what its
+        # siblings stored; a method the project calls gets its ``self`` from the caller.
+        seeds = (
+            self_seeds(function, ctx.module, ssa, heap, models, graph, ctx.get(SummaryAnalysis), sources_of)
+            if sources
+            else {}
+        )
         return propagate_taint(
             graph.name_of(function),
-            ctx.get(SSAAnalysis, function),
+            ssa,
             ctx.get(CFGAnalysis, function),
             models,
             graph,
             ctx.get(SummaryAnalysis),
-            parameter_sources(
-                function,
-                ctx.module,
-                models,
-                ctx.get(ScopeAnalysis),
-                ctx.get(SymbolAnalysis),
-                factory_instances(
-                    ctx.module,
-                    ctx.get(ScopeAnalysis),
-                    ctx.get(SymbolAnalysis),
-                    ctx.get(SummaryAnalysis),
-                    ctx.get(ProjectSummaries),
-                ),
-                ctx.get(RegisteredRoutes),
-            ),
+            sources,
             ctx.get(ProjectSummaries),
-            ctx.get(HeapAnalysis, function),
+            heap,
+            seeds,
         )
+
+
+def self_seeds(
+    function: nodes.Function,
+    module: nodes.Module,
+    ssa: FunctionIR,
+    heap: HeapFacts,
+    models: ModelTable,
+    graph: CallGraph,
+    summaries: SummaryTable,
+    sources_of: Callable[[nodes.Function], Mapping[int, Source]],
+) -> dict[HeapLocation, Taint]:
+    """What the sibling methods of a method store into ``self`` from their own inputs:
+    the attributes ``self`` starts with when the framework, not the project, calls the
+    methods (``self.cmd = request.POST[...]`` in ``post``, read by ``get``)."""
+
+    owner = next(
+        (s for s in module.body if isinstance(s, nodes.Class) and any(m is function for m in s.body)),
+        None,
+    )
+    if owner is None or not ssa.parameters:
+        return {}
+    seeds: dict[HeapLocation, Taint] = {}
+    for sibling in owner.body:
+        if not isinstance(sibling, nodes.Function) or sibling is function:
+            continue
+        try:
+            summary = summaries.summary(graph.name_of(sibling))
+        except KeyError:
+            continue
+        sources = sources_of(sibling)
+        for mutation in summary.mutations:
+            if mutation.parameter != 0:
+                continue
+            taint = Taint.none()
+            for index in mutation.dependencies:
+                source = sources.get(index)
+                if source is not None:
+                    taint = taint.join(Taint(source.kinds, frozenset({source})))
+            for symbol in mutation.externals:
+                external = models.source(symbol)
+                if external is not None:
+                    taint = taint.join(Taint(external.kinds, frozenset({external})))
+            if not taint:
+                continue
+            for location in heap.locations(ssa.parameters[0], mutation.field):
+                seeds[location] = seeds.get(location, Taint.none()).join(taint)
+    return seeds

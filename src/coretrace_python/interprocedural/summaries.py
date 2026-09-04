@@ -300,8 +300,12 @@ class _DependenceProblem(DataflowProblem[State]):
 
         if isinstance(target, ExternalSymbol):
             project = self.project.get(target.symbol)
+            if project is None:
+                project = self.project.get(target.symbol.attribute("__init__"))
             if project is not None:
-                return self.known(project, arguments, keywords, everything, call, state)
+                bound = self.receiver(call, project.name)
+                arguments = (*(self.deep(r, state) for r in bound), *arguments)
+                return self.known(project, arguments, keywords, everything, call, state, bound)
             self.record(
                 target.symbol,
                 tuple(a.parameters for a in arguments),
@@ -314,9 +318,24 @@ class _DependenceProblem(DataflowProblem[State]):
             made = self.defs.get(call.callee)
             if isinstance(made, MakeFunction):
                 arguments = (*arguments, *(self.deep(v, state) for v in made.captured))
-            return self.known(self.table[target.name], arguments, keywords, everything, call, state)
+            bound = self.receiver(call, target.name)
+            arguments = (*(self.deep(r, state) for r in bound), *arguments)
+            return self.known(self.table[target.name], arguments, keywords, everything, call, state, bound)
         assert isinstance(target, UnknownTarget)
         return everything | state.get(call.callee, EMPTY)
+
+    def receiver(self, call: Call, name: str) -> tuple[Value, ...]:
+        """The object a method call runs on: the receiver of ``obj.method(...)`` or the
+        new object of ``Class(...)``, the method's implicit first parameter."""
+
+        if "." not in name:
+            return ()
+        callee = self.defs.get(call.callee)
+        if isinstance(callee, GetAttr):
+            return (callee.object,)
+        if name.endswith(".__init__") and isinstance(callee, Global | Symbol):
+            return (call.result,)
+        return ()
 
     def known(
         self,
@@ -326,6 +345,7 @@ class _DependenceProblem(DataflowProblem[State]):
         everything: Dep,
         call: Call,
         state: dict[Key, Dep],
+        receiver: tuple[Value, ...] = (),
     ) -> Dep:
         """Dependencies of a call to a function whose summary is known."""
 
@@ -347,7 +367,7 @@ class _DependenceProblem(DataflowProblem[State]):
                 call.location,
             )
         made = self.defs.get(call.callee)
-        values = (*call.arguments, *(made.captured if isinstance(made, MakeFunction) else ()))
+        values = (*receiver, *call.arguments, *(made.captured if isinstance(made, MakeFunction) else ()))
         for mutation in callee.mutations:
             if mutation.parameter < len(values):
                 deps = mapped(mutation.dependencies) | Dep(externals=mutation.externals)

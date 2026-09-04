@@ -151,29 +151,48 @@ def resolve_targets(
     known: frozenset[str],
     parameters: Mapping[Value, SymbolId] | None = None,
     nested: frozenset[str] = frozenset(),
+    classes: Mapping[str, frozenset[str]] | None = None,
+    owner: str | None = None,
+    typed: Mapping[Value, str] | None = None,
 ) -> tuple[dict[Value, Target], dict[Value, SymbolId]]:
     """Map every callee value of ``function`` to its target, and every symbol value.
-    ``nested`` names the functions defined inside this one, ``outer.inner``."""
+    ``nested`` names the functions defined inside this one (``outer.inner``);
+    ``classes`` maps the module's classes to their methods, ``owner`` is the class of a
+    method and ``typed`` the parameters annotated with a module class. ``App(x)`` is a
+    call to ``App.__init__``, ``app.run()`` and ``self.run()`` calls to ``App.run``."""
 
     module = scopes.module_scope
     symbols = derive_symbols(function, parameters)
     targets: dict[Value, Target] = {
         value: ExternalSymbol(symbol) for value, symbol in symbols.items()
     }
+    classes = classes or {}
+    instance_of: dict[Value, str] = dict(typed or {})
+    if owner is not None and function.parameters:
+        instance_of[function.parameters[0]] = owner
+    defs = {i.result: i for block in function.blocks for i in block.instructions if i.result}
     for block in function.blocks:
         for instruction in block.instructions:
             if isinstance(instruction, MakeFunction):
                 qualified = f"{function.name}.{instruction.name}"
                 if qualified in nested:
                     targets[instruction.result] = KnownFunction(qualified)
-            if isinstance(instruction, Global):
+            elif isinstance(instruction, Global):
                 binding = module.bindings.get(instruction.name)
-                if (
-                    binding is not None
-                    and binding.kind is BindingKind.FUNCTION
-                    and instruction.name in known
-                ):
+                if binding is None:
+                    continue
+                if binding.kind is BindingKind.FUNCTION and instruction.name in known:
                     targets[instruction.result] = KnownFunction(instruction.name)
+                elif binding.kind is BindingKind.CLASS and "__init__" in classes.get(instruction.name, ()):
+                    targets[instruction.result] = KnownFunction(f"{instruction.name}.__init__")
+            elif isinstance(instruction, Call):
+                callee = defs.get(instruction.callee)
+                if isinstance(callee, Global) and callee.name in classes:
+                    instance_of[instruction.result] = callee.name
+            elif isinstance(instruction, GetAttr) and instruction.object in instance_of:
+                method = f"{instance_of[instruction.object]}.{instruction.attribute}"
+                if method in nested:
+                    targets[instruction.result] = KnownFunction(method)
     return targets, symbols
 
 
@@ -192,6 +211,19 @@ def _annotated(
         symbol = table.resolve_expression(enclosing, parameter.annotation)
         if symbol is not None:
             found[value] = symbol
+    return found
+
+
+def _typed_with_module_classes(
+    function: nodes.Function, ssa: FunctionIR, classes: Mapping[str, frozenset[str]]
+) -> dict[Value, str]:
+    """Parameters annotated with a class of this module (``a: App``)."""
+
+    found: dict[Value, str] = {}
+    for value, parameter in zip(ssa.parameters, function.parameters, strict=False):
+        annotation = parameter.annotation
+        if isinstance(annotation, nodes.Name) and annotation.identifier in classes:
+            found[value] = annotation.identifier
     return found
 
 
@@ -216,6 +248,11 @@ class CallGraphAnalysis(Analysis[CallGraph]):
         known = frozenset(
             name for name, function in definitions.items() if function in ctx.module.body
         )
+        classes = {
+            statement.name: frozenset(m.name for m in statement.body if isinstance(m, nodes.Function))
+            for statement in ctx.module.body
+            if isinstance(statement, nodes.Class)
+        }
         sites: dict[str, tuple[CallSite, ...]] = {}
         symbols: dict[str, Mapping[Value, SymbolId]] = {}
         unsupported: set[str] = set()
@@ -226,8 +263,16 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 unsupported.add(name)
                 sites[name] = ()
                 continue
+            owner = name.rsplit(".", 1)[0] if "." in name and name.rsplit(".", 1)[0] in classes else None
             targets, symbols[name] = resolve_targets(
-                ssa, scopes, known, _annotated(function, ssa, scopes, table), frozenset(definitions)
+                ssa,
+                scopes,
+                known,
+                _annotated(function, ssa, scopes, table),
+                frozenset(definitions),
+                classes,
+                owner,
+                _typed_with_module_classes(function, ssa, classes),
             )
             found: list[CallSite] = []
             for block in ssa.blocks:
