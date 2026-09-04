@@ -293,17 +293,22 @@ class _Collector:
                 self.expression(base, scope)
             scope.bind(node.name, BindingKind.CLASS, node.span)
             self.body(node.body, self.open(scope, ScopeKind.CLASS, node.name, node.span))
-        elif isinstance(node, nodes.If):
+        elif isinstance(node, nodes.If | nodes.While):
             self.expression(node.condition, scope)
             self.body(node.body, scope)
             self.body(node.orelse, scope)
-        elif isinstance(node, nodes.While):
-            self.expression(node.condition, scope)
-            self.body(node.body, scope)
         elif isinstance(node, nodes.For):
             self.expression(node.iterable, scope)
             scope.bind(node.target.identifier, BindingKind.LOCAL, node.target.span)
             self.body(node.body, scope)
+            self.body(node.orelse, scope)
+        elif isinstance(node, nodes.Match):
+            self.expression(node.subject, scope)
+            for case in node.cases:
+                self.pattern(case.pattern, scope)
+                if case.guard is not None:
+                    self.expression(case.guard, scope)
+                self.body(case.body, scope)
         elif isinstance(node, nodes.Raise):
             if node.exception is not None:
                 self.expression(node.exception, scope)
@@ -378,6 +383,17 @@ class _Collector:
             self.expression(node.body, inner)
         else:
             raise TypeError(f"unknown expression: {node!r}")
+
+    def pattern(self, node: nodes.Pattern, scope: _ScopeBuilder) -> None:
+        if isinstance(node, nodes.ValuePattern):
+            self.expression(node.value, scope)
+        elif isinstance(node, nodes.CapturePattern):
+            scope.bind(node.name, BindingKind.LOCAL, node.span)
+            if node.pattern is not None:
+                self.pattern(node.pattern, scope)
+        elif isinstance(node, nodes.OrPattern):
+            for alternative in node.alternatives:
+                self.pattern(alternative, scope)
 
     def target(self, node: nodes.Target, scope: _ScopeBuilder) -> None:
         if isinstance(node, nodes.Name):

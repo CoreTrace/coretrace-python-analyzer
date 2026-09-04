@@ -267,6 +267,72 @@ class Delete:
 
 
 @dataclass(frozen=True, slots=True)
+class ValuePattern:
+    """``case <expression>``: equality with a value."""
+
+    value: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class SingletonPattern:
+    """``case None`` / ``True`` / ``False``: identity with a singleton."""
+
+    value: object
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class WildcardPattern:
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class CapturePattern:
+    """``case name`` or ``case <pattern> as name``: binds the subject."""
+
+    name: str
+    pattern: Pattern | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class OrPattern:
+    alternatives: tuple[Pattern, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class UnsupportedPattern:
+    """A sequence, mapping, class or star pattern; the CFG builder reports it."""
+
+    kind: str
+    span: SourceSpan
+
+
+Pattern: TypeAlias = (
+    ValuePattern | SingletonPattern | WildcardPattern | CapturePattern | OrPattern | UnsupportedPattern
+)
+
+
+@dataclass(frozen=True, slots=True)
+class MatchCase:
+    pattern: Pattern
+    guard: Expression | None
+    body: tuple[Statement, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Match:
+    """``match subject:``; the CFG builder lays it out as an ``if`` chain."""
+
+    subject: Expression
+    cases: tuple[MatchCase, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class Assert:
     test: Expression
     message: Expression | None
@@ -286,6 +352,7 @@ class While:
     condition: Expression
     body: tuple[Statement, ...]
     span: SourceSpan
+    orelse: tuple[Statement, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +362,7 @@ class For:
     body: tuple[Statement, ...]
     is_async: bool
     span: SourceSpan
+    orelse: tuple[Statement, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -431,6 +499,7 @@ Statement: TypeAlias = (
     | ExpressionStatement
     | Pass
     | Delete
+    | Match
     | Assert
     | If
     | While

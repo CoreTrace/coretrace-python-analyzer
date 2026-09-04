@@ -98,7 +98,9 @@ repeated. The repository ships a first set under `plugins/`: security models for
 standard library, Flask, FastAPI, Django, SQLAlchemy and the Requests and httpx clients (`models/`), taint detectors for SQL
 injection, command injection, path traversal, SSRF and XSS (`security/`), and syntactic
 detectors for `eval`/`exec` and weak hashes (`syntax/`). Route handlers of Flask and
-FastAPI receive their parameters as HTTP input; `request.args` and its siblings are HTTP
+FastAPI receive their parameters as HTTP input, whether the application is created
+directly (`app = Flask(__name__)`) or by a project factory whose summary returns it
+(`app = create_app()`); `request.args` and its siblings are HTTP
 sources. Django views are undecorated, so a parameter annotated with a request class
 (`request: HttpRequest`), a method of a class-based view and a view decorated by one of
 Django's or Django REST framework's view decorators receive HTTP input; a bare
@@ -145,8 +147,10 @@ with name or tuple targets, `break`, `continue` and `raise`, `from` clause inclu
 conditional expressions and comprehensions, laid out as real branches and loops over a
 synthetic local, set literals, chained assignments, assignments to `global` names, and
 lambdas and nested function definitions as function values whose bodies are not analysed
-yet, and `del`. Not yet: `match`, `nonlocal` assignments, classes defined inside functions,
-and a conditional expression or comprehension inside a `while` condition. Blocks inside a `try`
+yet, `del`, loop `else` clauses, and `match` over literal, singleton, capture, wildcard
+and or-patterns with guards, laid out as an `if` chain. Not yet: sequence, mapping and
+class patterns, `nonlocal` assignments, classes defined inside functions, and a
+conditional expression or comprehension inside a `while` condition. Blocks inside a `try`
 body carry exception edges to the handlers; `finally` is modelled on the normal path only. Methods of module-level classes are analysed like functions; other module-level
 code is skipped. An import inside a function is shown where it runs, as an `import`
 instruction naming the module, the bound name and the canonical symbol. A function using syntax outside this subset is reported by `--check` as
