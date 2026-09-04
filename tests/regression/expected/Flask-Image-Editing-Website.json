@@ -1,0 +1,52 @@
+{
+  "coverage": {
+    "files": 1,
+    "files_analysed": 1,
+    "functions": 4,
+    "functions_analysed": 4
+  },
+  "findings": [
+    {
+      "file": "main.py",
+      "line": 15,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "main.py",
+      "line": 29,
+      "rule": "reachable-vulnerability",
+      "function": "processImage"
+    },
+    {
+      "file": "main.py",
+      "line": 79,
+      "rule": "exploitable-vulnerability",
+      "function": "edit"
+    },
+    {
+      "file": "main.py",
+      "line": 91,
+      "rule": "debug-enabled",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 9,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 10,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 10,
+      "rule": "vulnerable-dependency",
+      "function": null
+    }
+  ]
+}

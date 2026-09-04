@@ -1,0 +1,16 @@
+{
+  "coverage": {
+    "files": 1,
+    "files_analysed": 1,
+    "functions": 9,
+    "functions_analysed": 9
+  },
+  "findings": [
+    {
+      "file": "model.json",
+      "line": 1,
+      "rule": "hardcoded-credential",
+      "function": null
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "coverage": {
+    "files": 6,
+    "files_analysed": 6,
+    "functions": 40,
+    "functions_analysed": 40
+  },
+  "findings": [
+    {
+      "file": "app.py",
+      "line": 69,
+      "rule": "path-traversal",
+      "function": "get_img"
+    },
+    {
+      "file": "app.py",
+      "line": 100,
+      "rule": "exploitable-vulnerability",
+      "function": "new_book"
+    },
+    {
+      "file": "config-example.json",
+      "line": 3,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "config-example.json",
+      "line": 4,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "docs/insomnia/insomnia_config_file.yaml",
+      "line": 71,
+      "rule": "high-entropy-string",
+      "function": null
+    },
+    {
+      "file": "docs/insomnia/insomnia_config_file.yaml",
+      "line": 231,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "docs/insomnia/insomnia_config_file.yaml",
+      "line": 232,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 10,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "res.py",
+      "line": 29,
+      "rule": "reachable-vulnerability",
+      "function": "store_pic_from_base64"
+    }
+  ]
+}

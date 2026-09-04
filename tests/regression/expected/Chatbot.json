@@ -1,0 +1,22 @@
+{
+  "coverage": {
+    "files": 16,
+    "files_analysed": 16,
+    "functions": 176,
+    "functions_analysed": 176
+  },
+  "findings": [
+    {
+      "file": "chatbot/__init__.py",
+      "line": 224,
+      "rule": "missing-timeout",
+      "function": "train"
+    },
+    {
+      "file": "setup.py",
+      "line": 48,
+      "rule": "command-injection",
+      "function": "install_ollama"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "coverage": {
+    "files": 15,
+    "files_analysed": 15,
+    "functions": 15,
+    "functions_analysed": 15
+  },
+  "findings": [
+    {
+      "file": "app/admin.py",
+      "line": 45,
+      "rule": "insecure-deserialization",
+      "function": "insecure_deserialize"
+    },
+    {
+      "file": "app/auth.py",
+      "line": 40,
+      "rule": "hardcoded-credential",
+      "function": "login"
+    },
+    {
+      "file": "app/command.py",
+      "line": 12,
+      "rule": "command-injection",
+      "function": "execute"
+    },
+    {
+      "file": "app/config.py",
+      "line": 4,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "app/config.py",
+      "line": 6,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "app/redirect.py",
+      "line": 11,
+      "rule": "open-redirect",
+      "function": "redirect"
+    },
+    {
+      "file": "app/ssrf.py",
+      "line": 12,
+      "rule": "ssrf",
+      "function": "proxy"
+    },
+    {
+      "file": "app/upload.py",
+      "line": 36,
+      "rule": "path-traversal",
+      "function": "upload"
+    },
+    {
+      "file": "app/users.py",
+      "line": 36,
+      "rule": "sql-injection",
+      "function": "search_users"
+    }
+  ]
+}

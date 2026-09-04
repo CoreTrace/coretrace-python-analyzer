@@ -46,7 +46,10 @@ coretrace-python-analyzer = "coretrace_python.cli:main"
 packages = ["src/coretrace_python"]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m 'not regression'"
+markers = [
+  "regression: analyses the pinned public repositories of tests/regression (network, slow)",
+]
 testpaths = ["tests"]
 
 [tool.ruff]

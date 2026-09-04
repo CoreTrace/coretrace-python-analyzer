@@ -1,0 +1,46 @@
+{
+  "coverage": {
+    "files": 20,
+    "files_analysed": 20,
+    "functions": 27,
+    "functions_analysed": 27
+  },
+  "findings": [
+    {
+      "file": "app/routers/auth.py",
+      "line": 37,
+      "rule": "sql-injection",
+      "function": "login"
+    },
+    {
+      "file": "app/routers/files.py",
+      "line": 27,
+      "rule": "path-traversal",
+      "function": "download"
+    },
+    {
+      "file": "exploit_scripts/csrf_change_email.py",
+      "line": 22,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "exploit_scripts/idor_orders.py",
+      "line": 12,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "exploit_scripts/sqli_login_bypass.py",
+      "line": 24,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "exploit_scripts/stored_xss_profile.py",
+      "line": 19,
+      "rule": "hardcoded-credential",
+      "function": null
+    }
+  ]
+}

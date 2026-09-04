@@ -1,0 +1,28 @@
+{
+  "coverage": {
+    "files": 20,
+    "files_analysed": 19,
+    "functions": 141,
+    "functions_analysed": 141
+  },
+  "findings": [
+    {
+      "file": "src/yt_fts/llm/get_embeddings.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "tests/test_export.py",
+      "line": 48,
+      "rule": "high-entropy-string",
+      "function": "test_export_search"
+    },
+    {
+      "file": "tests/testing_utils.py",
+      "line": 17,
+      "rule": "missing-timeout",
+      "function": "fetch_and_unzip_test_db"
+    }
+  ]
+}
