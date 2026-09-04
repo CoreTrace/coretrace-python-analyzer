@@ -270,12 +270,8 @@ class AstHIRBuilder:
                 self.expression(node.test), self.block(node.body), self.block(node.orelse), span
             )
         if isinstance(node, ast.While):
-            if node.orelse:
-                self.fail(node.orelse[0], "loop else clauses are not supported yet")
-            return nodes.While(self.expression(node.test), self.block(node.body), span)
+            return nodes.While(self.expression(node.test), self.block(node.body), span, self.block(node.orelse))
         if isinstance(node, (ast.For, ast.AsyncFor)):
-            if node.orelse:
-                self.fail(node.orelse[0], "loop else clauses are not supported yet")
             body = self.block(node.body)
             if isinstance(node.target, ast.Name):
                 target = nodes.Name(node.target.id, self.span(node.target))
@@ -290,11 +286,23 @@ class AstHIRBuilder:
                 body,
                 isinstance(node, ast.AsyncFor),
                 span,
+                self.block(node.orelse),
             )
         if isinstance(node, ast.Break):
             return nodes.Break(span)
         if isinstance(node, ast.Delete):
             return nodes.Delete(tuple(self.target(target) for target in node.targets), span)
+        if isinstance(node, ast.Match):
+            cases = tuple(
+                nodes.MatchCase(
+                    self.pattern(case.pattern),
+                    self.expression(case.guard) if case.guard is not None else None,
+                    self.block(case.body),
+                    self.span(case.pattern),
+                )
+                for case in node.cases
+            )
+            return nodes.Match(self.expression(node.subject), cases, span)
         if isinstance(node, ast.Continue):
             return nodes.Continue(span)
         if isinstance(node, ast.Raise):
@@ -328,6 +336,21 @@ class AstHIRBuilder:
         if isinstance(node, ast.ClassDef):
             return self.class_definition(node)
         self.fail(node)
+
+    def pattern(self, node: ast.pattern) -> nodes.Pattern:
+        span = self.span(node)
+        if isinstance(node, ast.MatchValue):
+            return nodes.ValuePattern(self.expression(node.value), span)
+        if isinstance(node, ast.MatchSingleton):
+            return nodes.SingletonPattern(node.value, span)
+        if isinstance(node, ast.MatchAs):
+            if node.name is None:
+                return nodes.WildcardPattern(span)
+            inner = self.pattern(node.pattern) if node.pattern is not None else None
+            return nodes.CapturePattern(node.name, inner, span)
+        if isinstance(node, ast.MatchOr):
+            return nodes.OrPattern(tuple(self.pattern(p) for p in node.patterns), span)
+        return nodes.UnsupportedPattern(type(node).__name__, span)
 
     def block(self, statements: list[ast.stmt]) -> tuple[nodes.Statement, ...]:
         return tuple(found for statement in statements for found in self.statements(statement))

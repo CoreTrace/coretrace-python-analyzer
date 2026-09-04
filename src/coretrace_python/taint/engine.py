@@ -61,7 +61,7 @@ from coretrace_python.ir.model import (
 )
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeTable
-from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolTable
+from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
 from coretrace_python.source import SourceSpan
 from coretrace_python.taint.models import (
     EntryPoint,
@@ -375,12 +375,62 @@ class _TaintProblem(DataflowProblem[State]):
             )
 
 
+Instances = Mapping[str, tuple[SymbolId, ...]]
+
+
+def factory_instances(
+    module: nodes.Module,
+    scopes: ScopeTable,
+    symbols: SymbolTable,
+    summaries: SummaryTable,
+    project: SummaryIndex,
+) -> Instances:
+    """Module-level names bound to the result of a project function whose summary
+    returns known symbols: ``app = create_app()`` is a ``flask.Flask`` like
+    ``app = Flask(__name__)``, so its decorators resolve."""
+
+    found: dict[str, tuple[SymbolId, ...]] = {}
+    module_scope = scopes.module_scope.id
+    for statement in module.body:
+        if not (
+            isinstance(statement, nodes.Assign)
+            and isinstance(statement.target, nodes.Name)
+            and isinstance(statement.value, nodes.Call)
+        ):
+            continue
+        callee = statement.value.callee
+        externals: frozenset[SymbolId] = frozenset()
+        if isinstance(callee, nodes.Name) and callee.identifier in summaries.names:
+            externals = summaries.summary(callee.identifier).return_externals
+        else:
+            symbol = symbols.resolve_expression(module_scope, callee)
+            summary = project.summary(symbol) if symbol is not None else None
+            if summary is not None:
+                externals = summary.return_externals
+        if externals:
+            found[statement.target.identifier] = tuple(sorted(externals, key=str))
+    return found
+
+
+def _instance_symbols(expression: nodes.Expression, instances: Instances) -> tuple[SymbolId, ...]:
+    """The symbols an expression rooted at a factory instance may denote."""
+
+    if isinstance(expression, nodes.Name):
+        return instances.get(expression.identifier, ())
+    if isinstance(expression, nodes.Attribute):
+        return tuple(s.attribute(expression.name) for s in _instance_symbols(expression.value, instances))
+    if isinstance(expression, nodes.Call):
+        return _instance_symbols(expression.callee, instances)
+    return ()
+
+
 def entry_point_of(
     function: nodes.Function,
     models: ModelTable,
     scopes: ScopeTable,
     symbols: SymbolTable,
     owner: nodes.Class | None = None,
+    instances: Instances | None = None,
 ) -> EntryPoint | None:
     """The entry-point model matching one of the function's decorators or, for a
     method, one of the bases of ``owner``, if any."""
@@ -397,8 +447,11 @@ def entry_point_of(
         enclosing_of = {}
     for expression in candidates:
         symbol = symbols.resolve_expression(enclosing_of.get(id(expression), enclosing), expression)
-        if symbol is not None:
-            entry = models.entry_point(symbol)
+        # ``app = create_app()`` resolves to the factory's symbol; the instance symbols
+        # say what the factory returns.
+        found = (*((symbol,) if symbol is not None else ()), *_instance_symbols(expression, instances or {}))
+        for candidate in found:
+            entry = models.entry_point(candidate)
             if entry is not None:
                 return entry
     return None
@@ -410,6 +463,7 @@ def parameter_sources(
     models: ModelTable,
     scopes: ScopeTable,
     symbols: SymbolTable,
+    instances: Instances | None = None,
 ) -> Mapping[int, Source]:
     """The attacker-controlled parameters of ``function``, by index: every parameter of an
     entry point (``self`` excepted for a method) and every parameter annotated with a
@@ -420,7 +474,7 @@ def parameter_sources(
         None,
     )
     sources: dict[int, Source] = {}
-    entry = entry_point_of(function, models, scopes, symbols, owner)
+    entry = entry_point_of(function, models, scopes, symbols, owner, instances)
     if entry is not None:
         first = 1 if owner is not None else 0
         for index in range(first, len(function.parameters)):
@@ -490,7 +544,18 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             graph,
             ctx.get(SummaryAnalysis),
             parameter_sources(
-                function, ctx.module, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)
+                function,
+                ctx.module,
+                models,
+                ctx.get(ScopeAnalysis),
+                ctx.get(SymbolAnalysis),
+                factory_instances(
+                    ctx.module,
+                    ctx.get(ScopeAnalysis),
+                    ctx.get(SymbolAnalysis),
+                    ctx.get(SummaryAnalysis),
+                    ctx.get(ProjectSummaries),
+                ),
             ),
             ctx.get(ProjectSummaries),
             ctx.get(HeapAnalysis, function),

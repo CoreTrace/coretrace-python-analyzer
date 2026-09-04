@@ -234,6 +234,8 @@ class _Builder:
             return self.conditional(node, block, continuation)
         if isinstance(node, nodes.While | nodes.For):
             return self.loop_statement(node, block, continuation)
+        if isinstance(node, nodes.Match):
+            return self.match_statement(node, block, continuation)
         if isinstance(node, nodes.With):
             return self.with_statement(node, block)
         if isinstance(node, nodes.Try):
@@ -308,18 +310,63 @@ class _Builder:
     ) -> _Open | None:
         header_id = self.new_id("loop")
         body_id = self.new_id("body")
-        exit_id = continuation if continuation is not None else self.new_id("exit")
+        after_id = continuation if continuation is not None else self.new_id("exit")
+        # An ``else`` clause runs when the loop is exhausted; ``break`` skips it.
+        exit_id = self.new_id("else") if node.orelse else after_id
         self.finish(block, Jump(header_id, node.span))
         if isinstance(node, nodes.While):
             self.header(header_id, Branch(node.condition, body_id, exit_id, node.span))
         else:
             self.header(header_id, ForEach(node.target, node.iterable, body_id, exit_id, node.span))
-        self.loops.append((header_id, exit_id))
+        self.loops.append((header_id, after_id))
         try:
             self.sequence(node.body, _Open(body_id), header_id, node.span)
         finally:
             self.loops.pop()
-        return None if continuation is not None else _Open(exit_id)
+        if node.orelse:
+            self.sequence(node.orelse, _Open(exit_id), after_id, node.span)
+        return None if continuation is not None else _Open(after_id)
+
+    def match_statement(
+        self, node: nodes.Match, block: _Open, continuation: BlockId | None
+    ) -> _Open | None:
+        """``match`` as an ``if`` chain over a hidden subject: literal, singleton, capture,
+        wildcard and or-patterns, with guards; other patterns are reported."""
+
+        subject = self.hidden("match", node.span)
+        statements: tuple[nodes.Statement, ...] = ()
+        for case in reversed(node.cases):
+            condition, bindings = self.pattern(case.pattern, subject)
+            if case.guard is not None:
+                condition = nodes.BoolOp("and", (condition, case.guard), case.span)
+            statements = (*bindings, nodes.If(condition, case.body, statements, case.span))
+        chain = (nodes.Assign(subject, node.subject, node.span), *statements)
+        return self.sequence(chain, block, continuation, node.span)
+
+    def pattern(self, node: nodes.Pattern, subject: nodes.Name) -> tuple[nodes.Expression, tuple[nodes.Statement, ...]]:
+        """The condition a pattern tests on ``subject`` and the names it binds."""
+
+        if isinstance(node, nodes.ValuePattern):
+            return nodes.Compare("eq", subject, node.value, node.span), ()
+        if isinstance(node, nodes.SingletonPattern):
+            return nodes.Compare("is", subject, nodes.Constant(node.value, node.span), node.span), ()
+        if isinstance(node, nodes.WildcardPattern):
+            return nodes.Constant(True, node.span), ()
+        if isinstance(node, nodes.CapturePattern):
+            binding = nodes.Assign(nodes.Name(node.name, node.span), subject, node.span)
+            if node.pattern is None:
+                return nodes.Constant(True, node.span), (binding,)
+            condition, inner = self.pattern(node.pattern, subject)
+            return condition, (*inner, binding)
+        if isinstance(node, nodes.OrPattern):
+            conditions: list[nodes.Expression] = []
+            bindings: list[nodes.Statement] = []
+            for alternative in node.alternatives:
+                condition, inner = self.pattern(alternative, subject)
+                conditions.append(condition)
+                bindings.extend(inner)
+            return nodes.BoolOp("or", tuple(conditions), node.span), tuple(bindings)
+        raise CFGError(f"{node.span.display()}: match pattern {node.kind} is not supported yet")
 
     def loop(self, keyword: str, span: SourceSpan) -> tuple[BlockId, BlockId]:
         if not self.loops:
