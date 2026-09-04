@@ -1,0 +1,9 @@
+name = "vulnerable-dependency"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["dependency.graph"]
+provides = ["vulnerability.vulnerable-dependency"]
+
+[entrypoint]
+module = "vulnerable_dependency"
+class = "VulnerableDependencyPlugin"

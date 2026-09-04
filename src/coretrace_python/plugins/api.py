@@ -9,7 +9,7 @@ room for out-of-process isolation later.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, ClassVar, overload
 
 from coretrace_python.analysis import (
@@ -20,9 +20,12 @@ from coretrace_python.analysis import (
     UndeclaredDependencyError,
 )
 from coretrace_python.analysis.provider import R
+from coretrace_python.dependency import Advisory, DependencyGraph
 from coretrace_python.findings import Finding
 from coretrace_python.hir import nodes
+from coretrace_python.interprocedural import CallGraph, CallGraphAnalysis, ModuleGraph
 from coretrace_python.ir.lowering import analyzable_functions
+from coretrace_python.semantic.imports import ImportAnalysis, ImportTable
 from coretrace_python.taint import Model
 
 PLUGIN_API_VERSION = 1
@@ -35,6 +38,7 @@ class Plugin(ABC):
     name: ClassVar[str]
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset()
     models: ClassVar[tuple[Model, ...]] = ()
+    advisories: ClassVar[tuple[Advisory, ...]] = ()
 
     @abstractmethod
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
@@ -42,10 +46,48 @@ class Plugin(ABC):
 
 
 class ModelPlugin(Plugin):
-    """A plugin that only contributes security models (architecture §15 providers)."""
+    """A plugin that only contributes security models or advisories (§15 providers)."""
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         return ()
+
+
+class ProjectContext:
+    """What a project-scoped plugin sees: the module graph, the dependency graph, the
+    advisories every plugin contributed, and each module's imports and call graph."""
+
+    def __init__(
+        self,
+        graph: ModuleGraph,
+        dependencies: DependencyGraph,
+        advisories: tuple[Advisory, ...],
+        managers: Mapping[str, AnalysisManager],
+    ) -> None:
+        self.graph = graph
+        self.dependencies = dependencies
+        self.advisories = advisories
+        self._managers = managers
+
+    @property
+    def modules(self) -> tuple[str, ...]:
+        return tuple(self._managers)
+
+    def imports(self, module: str) -> ImportTable:
+        return self._managers[module].get(ImportAnalysis)
+
+    def call_graph(self, module: str) -> CallGraph:
+        return self._managers[module].get(CallGraphAnalysis)
+
+
+class ProjectPlugin(Plugin):
+    """A plugin that runs once per project rather than once per module (§26)."""
+
+    def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
+        return ()
+
+    @abstractmethod
+    def analyze_project(self, ctx: ProjectContext) -> Sequence[Finding]:
+        raise NotImplementedError
 
 
 class PluginContext:

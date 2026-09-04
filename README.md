@@ -35,6 +35,11 @@ Given a directory, every Python file below it is analysed as one project: module
 named after their packages, and taint follows calls into functions defined in other files
 through a project-wide index of function summaries iterated to a fixpoint. Hidden and
 tooling directories (`.venv`, `node_modules`, `__pycache__`, `build`, `dist`) are skipped.
+The dependency files at the root (`requirements*.txt`, `pyproject.toml`, `poetry.lock`,
+`uv.lock`) are resolved into a dependency graph. Plugins may contribute advisories; the
+shipped `dependency/` plugins report a requirement that allows a vulnerable version at
+its line, and every call in the project to an API the advisory affects. The shipped
+advisory database is a small offline sample; a live OSV feed is future work.
 
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
 repeated. The repository ships a first set under `plugins/`: security models for the
