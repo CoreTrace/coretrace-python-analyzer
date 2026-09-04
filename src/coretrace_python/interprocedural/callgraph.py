@@ -158,10 +158,16 @@ class CallGraphAnalysis(Analysis[CallGraph]):
     @classmethod
     def compute(cls, ctx: AnalysisContext) -> CallGraph:
         scopes = ctx.get(ScopeAnalysis)
-        definitions = {
-            qualified_name(scopes, function): function
-            for function in analyzable_functions(ctx.module)
-        }
+        definitions: dict[str, nodes.Function] = {}
+        for function in analyzable_functions(ctx.module):
+            # A property and its setter, or a redefinition, share a qualified name; each
+            # definition still needs a name of its own.
+            base = unique = qualified_name(scopes, function)
+            ordinal = 2
+            while unique in definitions:
+                unique = f"{base}__{ordinal}"
+                ordinal += 1
+            definitions[unique] = function
         known = frozenset(
             name for name, function in definitions.items() if function in ctx.module.body
         )

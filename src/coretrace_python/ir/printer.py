@@ -8,6 +8,7 @@ from coretrace_python.ir.model import (
     Branch,
     BuildDict,
     BuildList,
+    BuildSet,
     BuildSlice,
     BuildString,
     BuildTuple,
@@ -24,11 +25,13 @@ from coretrace_python.ir.model import (
     Instruction,
     Jump,
     LoadLocal,
+    MakeFunction,
     ModuleIR,
     Phi,
     Raise,
     Return,
     SetAttr,
+    SetGlobal,
     SetItem,
     StoreLocal,
     Symbol,
@@ -85,6 +88,13 @@ def _instruction(instruction: Instruction) -> str:
         parts = [f"{_value(k)}: {_value(v)}" for k, v in instruction.items]
         parts.extend(f"**{_value(v)}" for v in instruction.unpacked)
         return f"{_value(instruction.result)} = build_dict {', '.join(parts)}".rstrip()
+    if isinstance(instruction, BuildSet):
+        parts = [_value(v) for v in instruction.elements] + [f"*{_value(v)}" for v in instruction.unpacked]
+        return f"{_value(instruction.result)} = build_set {', '.join(parts)}".rstrip()
+    if isinstance(instruction, MakeFunction):
+        return f'{_value(instruction.result)} = make_function "{instruction.name}"'
+    if isinstance(instruction, SetGlobal):
+        return f'set_global "{instruction.name}", {_value(instruction.value)}'
     if isinstance(instruction, BuildString):
         return f"{_value(instruction.result)} = build_string {', '.join(_value(v) for v in instruction.parts)}".rstrip()
     if isinstance(instruction, BuildSlice):

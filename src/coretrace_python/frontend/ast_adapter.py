@@ -29,7 +29,7 @@ _BINARY_OPERATORS = {
     ast.MatMult: "matmul",
 }
 _UNARY_OPERATORS = {ast.Invert: "invert", ast.Not: "not", ast.UAdd: "pos", ast.USub: "neg"}
-_COMPREHENSIONS = {ast.ListComp: "list", ast.SetComp: "set", ast.GeneratorExp: "generator"}
+_COMPREHENSIONS = {ast.ListComp: "list", ast.SetComp: "set", ast.GeneratorExp: "generator", ast.DictComp: "dict"}
 _COMPARE_OPERATORS = {
     ast.Eq: "eq",
     ast.NotEq: "not_eq",
@@ -118,6 +118,17 @@ class AstHIRBuilder:
             )
         if isinstance(node, ast.Starred):
             return nodes.Starred(self.expression(node.value), span)
+        if isinstance(node, ast.Set):
+            return nodes.Set(self.elements(node.elts), span)
+        if isinstance(node, ast.IfExp):
+            return nodes.Conditional(
+                self.expression(node.test), self.expression(node.body), self.expression(node.orelse), span
+            )
+        if isinstance(node, ast.Lambda):
+            return nodes.Lambda(self.parameters(node.args), self.expression(node.body), span)
+        if isinstance(node, ast.DictComp):
+            generators = tuple(self.generator(generator) for generator in node.generators)
+            return nodes.Comprehension("dict", self.expression(node.value), generators, span, self.expression(node.key))
         if isinstance(node, ast.Attribute):
             return nodes.Attribute(self.expression(node.value), node.attr, span)
         if isinstance(node, ast.Subscript):
@@ -176,9 +187,7 @@ class AstHIRBuilder:
     def generator(self, node: ast.comprehension) -> nodes.ComprehensionGenerator:
         if node.is_async:
             self.fail(node.target, "async comprehensions are not supported yet")
-        if not isinstance(node.target, ast.Name):
-            self.fail(node.target, "only a single name is supported as a comprehension target")
-        target = nodes.Name(node.target.id, self.span(node.target))
+        target = self.target(node.target)
         conditions = tuple(self.expression(condition) for condition in node.ifs)
         # ``ast.comprehension`` carries no location; span it from the target to the last clause.
         last = self.span(node.ifs[-1] if node.ifs else node.iter)
@@ -191,11 +200,21 @@ class AstHIRBuilder:
         )
         return nodes.ComprehensionGenerator(target, self.expression(node.iter), conditions, span)
 
+    def statements(self, node: ast.stmt) -> list[nodes.Statement]:
+        """The HIR statements of one source statement: several for ``a = b = value``,
+        which assigns a hidden local once and every target from it."""
+
+        span = self.span(node)
+        if isinstance(node, ast.Assign) and len(node.targets) > 1:
+            hidden = nodes.Name(f"_coretrace_chain_{span.start_line}_{span.start_column}", span)
+            found: list[nodes.Statement] = [nodes.Assign(hidden, self.expression(node.value), span)]
+            found.extend(nodes.Assign(self.target(target), hidden, self.span(target)) for target in node.targets)
+            return found
+        return [self.statement(node)]
+
     def statement(self, node: ast.stmt) -> nodes.Statement:
         span = self.span(node)
         if isinstance(node, ast.Assign):
-            if len(node.targets) != 1:
-                self.fail(node, "chained assignment is not supported yet")
             return nodes.Assign(self.target(node.targets[0]), self.expression(node.value), span)
         if isinstance(node, ast.AnnAssign):
             # The annotation never affects behaviour; a bare declaration does nothing.
@@ -309,18 +328,18 @@ class AstHIRBuilder:
         self.fail(node)
 
     def block(self, statements: list[ast.stmt]) -> tuple[nodes.Statement, ...]:
-        return tuple(self.statement(statement) for statement in statements)
+        return tuple(found for statement in statements for found in self.statements(statement))
 
     def class_definition(self, node: ast.ClassDef) -> nodes.Class:
         if node.keywords:
             self.fail(node, "class keyword arguments are not supported yet")
         bases = tuple(self.expression(base) for base in node.bases)
-        body = tuple(self.statement(statement) for statement in node.body)
+        body = self.block(node.body)
         decorators = tuple(self.expression(d) for d in node.decorator_list)
         return nodes.Class(node.name, bases, body, self.span(node), decorators)
 
     def function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> nodes.Function:
-        body = tuple(self.statement(statement) for statement in node.body)
+        body = self.block(node.body)
         return nodes.Function(
             name=node.name,
             parameters=self.parameters(node.args),
@@ -357,7 +376,7 @@ class AstHIRBuilder:
         return nodes.Parameter(argument.arg, self.span(argument), value, kind, annotation)
 
     def module(self, tree: ast.Module) -> nodes.Module:
-        body = tuple(self.statement(statement) for statement in tree.body)
+        body = self.block(tree.body)
         if tree.body:
             first_span = self.span(tree.body[0])
             last_span = self.span(tree.body[-1])

@@ -42,6 +42,7 @@ from coretrace_python.ir.model import (
     Branch,
     BuildDict,
     BuildList,
+    BuildSet,
     BuildTuple,
     Call,
     Compare,
@@ -254,7 +255,7 @@ class _TaintProblem(DataflowProblem[State]):
             return taint
         for operand in instruction.operands():
             taint = taint.join(state.get(operand, Taint.none()))
-        if isinstance(instruction, BuildList | BuildTuple | BuildDict):
+        if isinstance(instruction, BuildList | BuildTuple | BuildDict | BuildSet):
             # ``[*xs]`` and ``{**d}`` copy the contents of what they unpack.
             for unpacked in instruction.unpacked:
                 taint = taint.join(self.deep(unpacked, state))

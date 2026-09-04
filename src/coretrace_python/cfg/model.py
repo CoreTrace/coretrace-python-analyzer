@@ -92,6 +92,9 @@ class BasicBlock:
 class CFG:
     entry: BlockId
     blocks: Mapping[BlockId, BasicBlock]
+    # Locals the builder introduced while laying out expression-level control flow
+    # (conditional expressions, comprehensions); the lowering treats them as locals.
+    synthetic_locals: frozenset[str] = frozenset()
     _successors: Mapping[BlockId, tuple[BlockId, ...]] = field(
         init=False, repr=False, compare=False
     )

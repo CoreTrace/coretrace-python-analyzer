@@ -140,9 +140,12 @@ forms, decorators, assignments to names, attributes, items and unpacked tuples, 
 assignment, list, tuple and dict literals with `*` and `**` unpacking, f-strings, slices,
 `and`/`or`, chained comparisons, keyword and starred arguments, `with`, `assert`,
 `try`/`except`/`else`/`finally`, `await`, `yield`, `if`/`elif`/`else`, `while`, `for`
-with name or tuple targets, `break`, `continue` and `raise`, `from` clause included. Not
-yet: conditional expressions, lambdas, comprehensions, nested function definitions and
-assignments to `global` names. Blocks inside a `try`
+with name or tuple targets, `break`, `continue` and `raise`, `from` clause included,
+conditional expressions and comprehensions, laid out as real branches and loops over a
+synthetic local, set literals, chained assignments, assignments to `global` names, and
+lambdas and nested function definitions as function values whose bodies are not analysed
+yet. Not yet: `match`, `del`, `nonlocal` assignments, classes defined inside functions, and
+a conditional expression or comprehension inside a `while` condition. Blocks inside a `try`
 body carry exception edges to the handlers; `finally` is modelled on the normal path only. Methods of module-level classes are analysed like functions; other module-level
 code is skipped. An import inside a function is shown where it runs, as an `import`
 instruction naming the module, the bound name and the canonical symbol. A function using syntax outside this subset is reported by `--check` as

@@ -131,6 +131,31 @@ class Starred:
 
 
 @dataclass(frozen=True, slots=True)
+class Set:
+    elements: tuple[Expression, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Conditional:
+    """``body if test else orelse``; the CFG builder lays it out as a branch."""
+
+    test: Expression
+    body: Expression
+    orelse: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Lambda:
+    """An anonymous function; its body is a scope of its own and is not lowered."""
+
+    parameters: tuple[Parameter, ...]
+    body: Expression
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class Await:
     value: Expression
     span: SourceSpan
@@ -146,7 +171,7 @@ class Yield:
 class ComprehensionGenerator:
     """One ``for target in iterable if condition...`` clause of a comprehension."""
 
-    target: Name
+    target: Target
     iterable: Expression
     conditions: tuple[Expression, ...]
     span: SourceSpan
@@ -154,12 +179,14 @@ class ComprehensionGenerator:
 
 @dataclass(frozen=True, slots=True)
 class Comprehension:
-    """A list, set or generator comprehension; ``kind`` names which one."""
+    """A list, set, dict or generator comprehension; ``kind`` names which one. A dict
+    comprehension's ``element`` is the value and ``key`` its key."""
 
     kind: str
     element: Expression
     generators: tuple[ComprehensionGenerator, ...]
     span: SourceSpan
+    key: Expression | None = None
 
 
 Expression: TypeAlias = (
@@ -178,6 +205,9 @@ Expression: TypeAlias = (
     | FormattedString
     | Slice
     | Starred
+    | Set
+    | Conditional
+    | Lambda
     | Await
     | Yield
     | Comprehension

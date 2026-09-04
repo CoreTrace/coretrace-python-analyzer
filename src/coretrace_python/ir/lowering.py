@@ -25,6 +25,7 @@ from coretrace_python.ir.model import (
     Branch,
     BuildDict,
     BuildList,
+    BuildSet,
     BuildSlice,
     BuildString,
     BuildTuple,
@@ -43,10 +44,12 @@ from coretrace_python.ir.model import (
     Instruction,
     Jump,
     LoadLocal,
+    MakeFunction,
     ModuleIR,
     Raise,
     Return,
     SetAttr,
+    SetGlobal,
     SetItem,
     StoreLocal,
     Symbol,
@@ -108,6 +111,8 @@ class _FunctionLowerer:
         self.instructions.append(instruction)
 
     def resolve(self, name: str) -> Resolution:
+        if name in self.cfg.synthetic_locals:
+            return Resolution(ResolutionKind.LOCAL, self.scope.id)
         return self.scopes.resolve(self.scope.id, name)
 
     # ------------------------------------------------------------------ expressions
@@ -170,6 +175,13 @@ class _FunctionLowerer:
             return self.emit(BuildSlice(self.new_value(), node.span, bounds[0], bounds[1], bounds[2]))
         if isinstance(node, nodes.Starred):
             self.fail(node, "a starred expression is only supported in calls, lists and tuples")
+        if isinstance(node, nodes.Set):
+            elements, unpacked = self.spread(node.elements)
+            return self.emit(BuildSet(self.new_value(), node.span, elements, unpacked))
+        if isinstance(node, nodes.Lambda):
+            return self.emit(MakeFunction(self.new_value(), node.span, "<lambda>"))
+        if isinstance(node, nodes.Conditional | nodes.Comprehension):
+            self.fail(node, "expression-level control flow must be laid out by the CFG builder")
         if isinstance(node, nodes.Await):
             return self.emit(Await(self.new_value(), node.span, self.expression(node.value)))
         if isinstance(node, nodes.Yield):
@@ -200,8 +212,12 @@ class _FunctionLowerer:
 
     def store(self, target: nodes.Target, value: Value) -> None:
         if isinstance(target, nodes.Name):
-            if self.resolve(target.identifier).kind is not ResolutionKind.LOCAL:
-                self.fail(target, "assignment to a global or nonlocal name is not supported yet")
+            resolution = self.resolve(target.identifier)
+            if resolution.kind is ResolutionKind.GLOBAL:
+                self.emit_effect(SetGlobal(None, target.span, target.identifier, value))
+                return
+            if resolution.kind is not ResolutionKind.LOCAL:
+                self.fail(target, "assignment to a nonlocal name is not supported yet")
             self.emit_effect(StoreLocal(None, target.span, target.identifier, value))
         elif isinstance(target, nodes.Attribute):
             object_value = self.expression(target.value)
@@ -220,6 +236,17 @@ class _FunctionLowerer:
     def statement(self, node: nodes.Statement) -> None:
         if isinstance(node, nodes.Assign):
             self.store(node.target, self.expression(node.value))
+            return
+        if isinstance(node, nodes.Function):
+            # A nested definition is a value bound to its name; its body is its own
+            # scope and is not lowered here.
+            for decorator in node.decorators:
+                self.expression(decorator)
+            for parameter in node.parameters:
+                if parameter.default is not None:
+                    self.expression(parameter.default)
+            made = self.emit(MakeFunction(self.new_value(), node.span, node.name))
+            self.store(nodes.Name(node.name, node.span), made)
             return
         if isinstance(node, nodes.AugAssign):
             current = self.expression(node.target)
@@ -365,7 +392,7 @@ def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:
             names(node.target)
         elif isinstance(node, nodes.ExceptHandler) and node.name is not None:
             assigned.add(node.name)
-        if isinstance(node, nodes.Function | nodes.Class | nodes.Comprehension):
+        if isinstance(node, nodes.Function | nodes.Class | nodes.Comprehension | nodes.Lambda):
             return
         for child in children(node):
             walk(child)

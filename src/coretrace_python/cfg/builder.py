@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from dataclasses import fields, is_dataclass, replace
+from typing import Any, ClassVar
 
 from coretrace_python.analysis import AnalysisContext, FunctionAnalysis
 from coretrace_python.cfg.model import (
@@ -36,13 +37,137 @@ class _Builder:
         self.counters: dict[str, int] = {}
         self.loops: list[tuple[BlockId, BlockId]] = []
         self.handlers: list[tuple[BlockId, ...]] = []
+        self.synthetic: set[str] = set()
 
     def build(self) -> CFG:
         entry = BlockId("entry")
         end = self.sequence(self.function.body, _Open(entry), None, self.function.span)
         if end is not None:
             self.finish(end, Return(None, self.function.span))
-        return CFG(entry, self.blocks)
+        return CFG(entry, self.blocks, frozenset(self.synthetic))
+
+    # ------------------------------------------------------------------ expression-level control flow
+
+    def hidden(self, kind: str, span: SourceSpan) -> nodes.Name:
+        name = f"_coretrace_{kind}_{span.start_line}_{span.start_column}_{len(self.synthetic)}"
+        self.synthetic.add(name)
+        return nodes.Name(name, span)
+
+    def desugared(self, node: nodes.Statement, block: _Open) -> tuple[nodes.Statement, _Open]:
+        """``node`` with its conditional expressions and comprehensions replaced by reads
+        of synthetic locals, after laying out the statements that compute them."""
+
+        pending: list[nodes.Statement] = []
+        if isinstance(node, nodes.While):
+            if _has_control_flow(node.condition):
+                raise CFGError(
+                    f"{node.span.display()}: conditional expressions and comprehensions in a "
+                    "loop condition are not supported yet"
+                )
+            return node, block
+        if isinstance(node, nodes.Assign | nodes.AugAssign):
+            node = replace(node, target=self.hoist(node.target, pending), value=self.hoist(node.value, pending))
+        elif isinstance(node, nodes.ExpressionStatement):
+            node = replace(node, expression=self.hoist(node.expression, pending))
+        elif isinstance(node, nodes.Return | nodes.Raise) and node.__class__ is nodes.Return:
+            if node.value is not None:
+                node = replace(node, value=self.hoist(node.value, pending))
+        elif isinstance(node, nodes.Raise):
+            exception = self.hoist(node.exception, pending) if node.exception is not None else None
+            cause = self.hoist(node.cause, pending) if node.cause is not None else None
+            node = replace(node, exception=exception, cause=cause)
+        elif isinstance(node, nodes.Assert):
+            message = self.hoist(node.message, pending) if node.message is not None else None
+            node = replace(node, test=self.hoist(node.test, pending), message=message)
+        elif isinstance(node, nodes.If):
+            node = replace(node, condition=self.hoist(node.condition, pending))
+        elif isinstance(node, nodes.For):
+            node = replace(node, iterable=self.hoist(node.iterable, pending))
+        elif isinstance(node, nodes.With):
+            items = tuple(replace(item, context=self.hoist(item.context, pending)) for item in node.items)
+            node = replace(node, items=items)
+        if not pending:
+            return node, block
+        laid_out = self.sequence(tuple(pending), block, None, node.span)
+        assert laid_out is not None, "hoisted statements always fall through"
+        return node, laid_out
+
+    def hoist(self, node: Any, pending: list[nodes.Statement]) -> Any:
+        """Rewrite one expression tree, appending the statements it needs to ``pending``."""
+
+        if isinstance(node, nodes.Conditional):
+            test = self.hoist(node.test, pending)
+            result = self.hidden("cond", node.span)
+            pending.append(
+                nodes.If(
+                    test,
+                    (nodes.Assign(result, node.body, node.span),),
+                    (nodes.Assign(result, node.orelse, node.span),),
+                    node.span,
+                )
+            )
+            return result
+        if isinstance(node, nodes.Comprehension):
+            return self.comprehension(node, pending)
+        if isinstance(node, nodes.Lambda):
+            defaults = tuple(
+                replace(p, default=self.hoist(p.default, pending)) if p.default is not None else p
+                for p in node.parameters
+            )
+            return replace(node, parameters=defaults)
+        if isinstance(node, tuple):
+            return tuple(self.hoist(item, pending) for item in node)
+        if is_dataclass(node) and not isinstance(node, type):
+            changes = {
+                f.name: self.hoist(getattr(node, f.name), pending)
+                for f in fields(node)
+                if f.name != "span" and _may_hold_expressions(getattr(node, f.name))
+            }
+            return replace(node, **changes) if changes else node
+        return node
+
+    def comprehension(self, node: nodes.Comprehension, pending: list[nodes.Statement]) -> nodes.Name:
+        """Lay a comprehension out as loops filling a synthetic collection."""
+
+        span = node.span
+        result = self.hidden("comp", span)
+        renames: dict[str, str] = {}
+        for generator in node.generators:
+            for name in _bound_names(generator.target):
+                renames[name] = self.hidden(f"var_{name}", generator.target.span).identifier
+        if node.kind == "set":
+            initial: nodes.Expression = nodes.Call(nodes.Name("set", span), (), (), span)
+        elif node.kind == "dict":
+            initial = nodes.Dict((), span)
+        else:
+            initial = nodes.List((), span)
+        pending.append(nodes.Assign(result, initial, span))
+
+        element = _rename(node.element, renames)
+        if node.kind == "dict":
+            assert node.key is not None
+            innermost: nodes.Statement = nodes.Assign(
+                nodes.Subscript(result, _rename(node.key, renames), span), element, span
+            )
+        else:
+            method = "add" if node.kind == "set" else "append"
+            call = nodes.Call(nodes.Attribute(result, method, span), (element,), (), span)
+            innermost = nodes.ExpressionStatement(call, span)
+
+        body: tuple[nodes.Statement, ...] = (innermost,)
+        for index in range(len(node.generators) - 1, -1, -1):
+            generator = node.generators[index]
+            for condition in reversed(generator.conditions):
+                body = (nodes.If(_rename(condition, renames), body, (), condition.span),)
+            iterable = _rename(generator.iterable, renames) if index else self.hoist(generator.iterable, pending)
+            if isinstance(generator.target, nodes.Name):
+                target = nodes.Name(renames[generator.target.identifier], generator.target.span)
+            else:
+                target = self.hidden("item", generator.target.span)
+                body = (nodes.Assign(_rename_target(generator.target, renames), target, generator.target.span), *body)
+            body = (nodes.For(target, iterable, body, False, generator.span),)
+        pending.extend(body)
+        return result
 
     # ------------------------------------------------------------------ blocks
 
@@ -92,6 +217,7 @@ class _Builder:
     def statement(
         self, node: nodes.Statement, block: _Open, continuation: BlockId | None
     ) -> _Open | None:
+        node, block = self.desugared(node, block)
         if isinstance(node, nodes.Return):
             self.finish(block, Return(node.value, node.span))
             return None
@@ -199,6 +325,72 @@ class _Builder:
         if not self.loops:
             raise CFGError(f"{span.display()}: '{keyword}' outside loop")
         return self.loops[-1]
+
+
+def _may_hold_expressions(value: object) -> bool:
+    return isinstance(value, tuple) or (is_dataclass(value) and not isinstance(value, type))
+
+
+def _has_control_flow(node: object) -> bool:
+    if isinstance(node, nodes.Conditional | nodes.Comprehension):
+        return True
+    if isinstance(node, nodes.Lambda):
+        return False
+    if isinstance(node, tuple):
+        return any(_has_control_flow(item) for item in node)
+    if is_dataclass(node) and not isinstance(node, type):
+        return any(_has_control_flow(getattr(node, f.name)) for f in fields(node) if f.name != "span")
+    return False
+
+
+def _bound_names(target: nodes.Target) -> list[str]:
+    if isinstance(target, nodes.Name):
+        return [target.identifier]
+    if isinstance(target, nodes.Tuple):
+        return [name for element in target.elements for name in _bound_names(element)]  # type: ignore[arg-type]
+    return []
+
+
+def _rename(node: Any, renames: dict[str, str]) -> Any:
+    """``node`` with comprehension variables replaced by their synthetic locals, without
+    entering scopes that rebind them."""
+
+    if not renames:
+        return node
+    if isinstance(node, nodes.Name):
+        return nodes.Name(renames[node.identifier], node.span) if node.identifier in renames else node
+    if isinstance(node, nodes.Lambda):
+        inner = {k: v for k, v in renames.items() if k not in {p.name for p in node.parameters}}
+        return replace(node, body=_rename(node.body, inner))
+    if isinstance(node, nodes.Comprehension):
+        shadowed = {name for g in node.generators for name in _bound_names(g.target)}
+        inner = {k: v for k, v in renames.items() if k not in shadowed}
+        generators = tuple(
+            replace(
+                g,
+                iterable=_rename(g.iterable, renames if index == 0 else inner),
+                conditions=_rename(g.conditions, inner),
+            )
+            for index, g in enumerate(node.generators)
+        )
+        key = _rename(node.key, inner) if node.key is not None else None
+        return replace(node, element=_rename(node.element, inner), generators=generators, key=key)
+    if isinstance(node, tuple):
+        return tuple(_rename(item, renames) for item in node)
+    if is_dataclass(node) and not isinstance(node, type):
+        changes = {
+            f.name: _rename(getattr(node, f.name), renames)
+            for f in fields(node)
+            if f.name != "span" and _may_hold_expressions(getattr(node, f.name))
+        }
+        return replace(node, **changes) if changes else node
+    return node
+
+
+def _rename_target(target: nodes.Target, renames: dict[str, str]) -> nodes.Target:
+    renamed = _rename(target, renames)
+    assert isinstance(renamed, nodes.Name | nodes.Tuple | nodes.Attribute | nodes.Subscript)
+    return renamed
 
 
 def build_cfg(function: nodes.Function) -> CFG:
