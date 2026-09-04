@@ -6,11 +6,13 @@ plugins and analyses never import it.
 
 from __future__ import annotations
 
+import concurrent.futures
+import multiprocessing
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from coretrace_python import __version__
 from coretrace_python.abstract import ConstantPropagation
@@ -23,7 +25,11 @@ from coretrace_python.analysis import (
 from coretrace_python.cache import (
     CachedModule,
     ProjectCache,
+    decode,
+    decode_index,
     directory_fingerprint,
+    encode,
+    encode_index,
     fingerprint,
     module_keys,
 )
@@ -128,6 +134,20 @@ class ProjectSummariesUpdated(TransformationPass):
         pass
 
 
+class ResultsEvicted(TransformationPass):
+    """Drops a module's PyIR and every derived result once its summaries, call sites and
+    findings are extracted (§30); the semantic tables and the engine inputs stay."""
+
+    name: ClassVar[str] = "project.results-evicted"
+    preserves: ClassVar[frozenset[AnyAnalysis]] = frozenset(
+        {*SEMANTIC_ANALYSES, SecurityModelAnalysis, ProjectSummaries, DependencyAnalysis}
+    )
+
+    @classmethod
+    def run(cls, ctx: AnalysisContext) -> None:
+        pass
+
+
 def _no_keys() -> Mapping[str, str]:
     return MappingProxyType({})
 
@@ -194,12 +214,17 @@ def analyze_project(
     plugin_roots: Sequence[Path] = (),
     plugins: Sequence[Plugin] = (),
     cache: ProjectCache | None = None,
+    jobs: int = 1,
 ) -> ProjectAnalysis:
     """Analyse every Python file under ``root`` with a shared summary index (§21) and the
     dependency graph of its manifests (§26). ``plugins`` adds plugin instances to the
     ones discovered under ``plugin_roots``. With a ``cache``, modules whose key is
-    unchanged since a previous run are served from it (§11)."""
+    unchanged since a previous run are served from it (§11). Modules are scheduled by
+    strongly connected components of the module graph, imports first; with ``jobs``
+    above one the components of a wave are analysed in that many processes (§29)."""
 
+    if jobs < 1:
+        raise ValueError("jobs must be at least 1")
     sources = SourceManager()
     findings: list[Finding] = []
     dependencies = resolve_dependencies(root, sources)
@@ -244,29 +269,112 @@ def analyze_project(
         graph,
         {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
     )
-    cached: dict[str, CachedModule] = {}
+    results: dict[str, CachedModule] = {}
     if cache is not None:
         for name in analysable:
             entry = cache.load(keys[name])
             if entry is not None:
-                cached[name] = entry
-    fresh = {name: manager for name, manager in analysable.items() if name not in cached}
+                results[name] = entry
+    reused = tuple(sorted(results))
 
-    index = SummaryIndex()
-    cached_summaries = {
-        project_symbol(name, function): summary
-        for name, entry in cached.items()
-        for function, summary in entry.summaries.items()
-    }
-    for manager in fresh.values():
+    module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
+    pool = None
+    if jobs > 1:
+        pool = concurrent.futures.ProcessPoolExecutor(
+            max_workers=jobs, mp_context=multiprocessing.get_context("spawn")
+        )
+    try:
+        for wave in graph.schedule():
+            pending = [c for c in wave if any(m not in results for m in c)]
+            computed: dict[str, CachedModule] = {}
+            if pool is None:
+                for component in pending:
+                    batch = {name: analysable[name] for name in sorted(component)}
+                    computed.update(_analyse_managers(batch, _seed(results, graph, component), module_plugins, affected))
+                    for manager in batch.values():
+                        manager.run(ResultsEvicted)
+            else:
+                futures = [
+                    pool.submit(
+                        _analyse_batch,
+                        _Batch(
+                            root,
+                            tuple(plugin_roots),
+                            tuple(plugins),
+                            {name: _path_of(files[name]) for name in sorted(component)},
+                            encode_index(_seed(results, graph, component)),
+                        ),
+                    )
+                    for component in pending
+                ]
+                for future in futures:
+                    computed.update({name: decode(data) for name, data in future.result().items()})
+            for name, entry in computed.items():
+                if cache is not None:
+                    cache.store(keys[name], entry)
+            results.update(computed)
+    finally:
+        if pool is not None:
+            pool.shutdown()
+
+    index = _seed(results, graph, frozenset())
+    call_graphs: dict[str, CallGraph] = {}
+    for name in sorted(analysable):
+        entry = results[name]
+        findings.extend(entry.findings)
+        sites: dict[str, list[CallSite]] = {function: [] for function in entry.functions}
+        for site in entry.sites:
+            sites.setdefault(site.caller, []).append(site)
+        call_graphs[name] = CallGraph({}, {f: tuple(s) for f, s in sites.items()}, frozenset())
+    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs)
+    for plugin in all_plugins:
+        if isinstance(plugin, ProjectPlugin):
+            findings.extend(plugin.analyze_project(context))
+    return ProjectAnalysis(graph, index, tuple(findings), dependencies, MappingProxyType(keys), reused)
+
+
+def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: frozenset[str]) -> SummaryIndex:
+    """The summaries a component starts from: those of every module it imports,
+    transitively, all final by the time its wave runs; the whole index for no component."""
+
+    if component:
+        wanted: set[str] = set()
+        pending = list(component)
+        while pending:
+            for imported in graph.imports(pending.pop()):
+                if imported in results and imported not in wanted:
+                    wanted.add(imported)
+                    pending.append(imported)
+    else:
+        wanted = set(results)
+    return SummaryIndex(
+        {
+            project_symbol(name, function): summary
+            for name in sorted(wanted)
+            for function, summary in results[name].summaries.items()
+        }
+    )
+
+
+def _analyse_managers(
+    managers: Mapping[str, AnalysisManager],
+    seed: SummaryIndex,
+    plugins: tuple[Plugin, ...],
+    affected: Mapping[SymbolId, Advisory],
+) -> dict[str, CachedModule]:
+    """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
+    then extract what the rest of the run needs from each module."""
+
+    index = seed
+    for manager in managers.values():
         manager.provide(ProjectSummaries, index)
     for _ in range(MAX_PROJECT_ITERATIONS):
         updated = SummaryIndex(
             {
-                **cached_summaries,
+                **seed.summaries,
                 **{
                     project_symbol(name, function): summary
-                    for name, manager in fresh.items()
+                    for name, manager in managers.items()
                     for function, summary in _summaries_of(manager).items()
                 },
             }
@@ -274,31 +382,44 @@ def analyze_project(
         if updated == index:
             break
         index = updated
-        for manager in fresh.values():
+        for manager in managers.values():
             manager.run(ProjectSummariesUpdated)
             manager.provide(ProjectSummaries, index)
+    return {name: _analyse_module(manager, plugins, affected) for name, manager in managers.items()}
 
+
+@dataclass(frozen=True)
+class _Batch:
+    """One component handed to a worker process: it rebuilds the configuration from the
+    project root and the plugin roots, so only paths and the imported summaries travel."""
+
+    root: Path
+    plugin_roots: tuple[Path, ...]
+    plugins: tuple[Plugin, ...]
+    paths: Mapping[str, Path]
+    seed: Mapping[str, Any]
+
+
+def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
+    sources = SourceManager()
+    managers = {name: _register_all(build_hir(sources.load_file(path))) for name, path in batch.paths.items()}
+    registry = load_plugins(batch.plugin_roots, next(iter(managers.values())))
+    all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *batch.plugins)
+    dependencies = resolve_dependencies(batch.root, sources)
+    advisories = tuple(a for plugin in all_plugins for a in plugin.advisories)
+    affected = affected_symbols(dependencies, advisories)
+    models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
+    for manager in managers.values():
+        manager.provide(SecurityModelAnalysis, models)
+        manager.provide(DependencyAnalysis, dependencies)
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
-    call_graphs: dict[str, CallGraph] = {}
-    for name in sorted(analysable):
-        entry = cached.get(name)
-        if entry is None:
-            entry = _analyse_module(analysable[name], module_plugins, affected)
-            if cache is not None:
-                cache.store(keys[name], entry)
-        else:
-            sites: dict[str, list[CallSite]] = {function: [] for function in entry.functions}
-            for site in entry.sites:
-                sites.setdefault(site.caller, []).append(site)
-            call_graphs[name] = CallGraph({}, {f: tuple(s) for f, s in sites.items()}, frozenset())
-        findings.extend(entry.findings)
-    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs)
-    for plugin in all_plugins:
-        if isinstance(plugin, ProjectPlugin):
-            findings.extend(plugin.analyze_project(context))
-    return ProjectAnalysis(
-        graph, index, tuple(findings), dependencies, MappingProxyType(keys), tuple(sorted(cached))
-    )
+    results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected)
+    return {name: encode(entry) for name, entry in results.items()}
+
+
+def _path_of(source: SourceFile) -> Path:
+    assert source.path is not None, "project sources are loaded from files"
+    return source.path
 
 
 def _configuration_key(

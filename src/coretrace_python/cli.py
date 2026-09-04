@@ -79,6 +79,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --check on a directory, keep per-module results under DIR and reuse "
         "them for modules unchanged since the previous run",
     )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="with --check on a directory, analyse independent modules in N processes",
+    )
     return parser
 
 
@@ -93,6 +100,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cache is not None and not (args.check and args.path.is_dir()):
         print("error: --cache only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
+    if args.jobs is not None and not (args.check and args.path.is_dir()):
+        print("error: --jobs only applies to --check on a directory", file=sys.stderr)
+        return EXIT_ERROR
+    if args.jobs is not None and args.jobs < 1:
+        print("error: --jobs must be at least 1", file=sys.stderr)
+        return EXIT_ERROR
 
     if args.path.is_dir() and args.emit_ir:
         print(f"error: {args.path} is a directory; --emit-ir needs a file", file=sys.stderr)
@@ -105,7 +118,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.check:
             if args.path.is_dir():
                 cache = None if args.cache is None else ProjectCache(args.cache)
-                findings = engine.analyze_project(args.path, args.plugins, cache=cache).findings
+                findings = engine.analyze_project(
+                    args.path, args.plugins, cache=cache, jobs=args.jobs or 1
+                ).findings
             else:
                 findings = engine.check(SourceManager().load_file(args.path), args.plugins)
             print(render(args.format or "text", engine.report(findings)), end="")
