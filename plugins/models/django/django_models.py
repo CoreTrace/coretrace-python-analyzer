@@ -17,8 +17,10 @@ from coretrace_python.taint import (
     AuthorizationGuard,
     EntryPoint,
     Model,
+    RouteRegistrar,
     Sanitizer,
     Sink,
+    SuffixSink,
     TaintKind,
     TypedParameter,
 )
@@ -67,6 +69,14 @@ _VIEW_DECORATORS = (
     "rest_framework.decorators.action",
 )
 
+_ROUTE_REGISTRARS = (
+    "django.urls.path",
+    "django.urls.re_path",
+    "django.conf.urls.url",
+    "rest_framework.routers.DefaultRouter.register",
+    "rest_framework.routers.SimpleRouter.register",
+)
+
 _AUTHORIZATION_DECORATORS = (
     ("django.contrib.auth.decorators.login_required", "login"),
     ("django.contrib.auth.decorators.permission_required", "permission"),
@@ -103,4 +113,11 @@ class DjangoModels(ModelPlugin):
         Sanitizer(_sym("django.utils.html.escape"), TaintKind.HTML),
         Sanitizer(_sym("django.utils.html.conditional_escape"), TaintKind.HTML),
         *(AuthorizationGuard(_sym(decorator), label) for decorator, label in _AUTHORIZATION_DECORATORS),
+        # ``urlpatterns = [path('login/', views.log_in)]``: the referenced view is an
+        # entry point wherever it is defined; routers register viewsets.
+        *(RouteRegistrar(_sym(registrar), 1, "http") for registrar in _ROUTE_REGISTRARS),
+        # ``Model.objects.raw(sql)`` for any model class: the statement is the first
+        # argument, its parameters are not.
+        SuffixSink("objects.raw", TaintKind.SQL, ((TaintKind.SQL, (0,)),)),
+        SuffixSink("objects.extra", TaintKind.SQL),
     )
