@@ -66,8 +66,7 @@ def _walk(node: Node, name: str | None, function: str | None) -> Iterator[Litera
             yield from _walk(child, None, None)
         return
     if isinstance(node, nodes.Assign):
-        target = node.target.identifier if isinstance(node.target, nodes.Name) else None
-        yield from _walk(node.value, target, function)
+        yield from _walk(node.value, _bound_name(node.target), function)
         return
     if isinstance(node, nodes.Keyword):
         yield from _walk(node.value, node.name, function)
@@ -85,6 +84,18 @@ def _walk(node: Node, name: str | None, function: str | None) -> Iterator[Litera
         return
     for child in children(node):
         yield from _walk(child, None, function)
+
+
+def _bound_name(target: nodes.Target) -> str | None:
+    """The name an assignment binds: ``name``, ``obj.attr`` or ``mapping['key']``."""
+
+    if isinstance(target, nodes.Name):
+        return target.identifier
+    if isinstance(target, nodes.Attribute):
+        return target.name
+    if isinstance(target, nodes.Subscript) and isinstance(target.key, nodes.Constant):
+        return target.key.value if isinstance(target.key.value, str) else None
+    return None
 
 
 @dataclass(frozen=True)

@@ -289,6 +289,12 @@ class _Judge:
                 if found is not None:
                     return found
             return None
+        if isinstance(definition, Compare) and definition.operator in ("in", "not_in"):
+            # ``'logged_in' in session``: membership in an authorization store.
+            if truth != (definition.operator == "in"):
+                return None
+            container = self.symbols.get(definition.right)
+            return self.models.authorization(container) if container is not None else None
         if not truth:
             return None
         symbol = self.symbols.get(condition)

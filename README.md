@@ -68,7 +68,8 @@ component per requirement with its package URL, and the advisories affecting the
 vulnerabilities. The shipped `secrets/` plugin scans every string literal of the Python
 sources for provider-specific secret formats (AWS, GitHub, Slack, Stripe, Google, private
 keys, JWTs, SendGrid, Twilio), for credential-like names bound to a real value
-(`password`, `token`, `api_key` and the like, placeholders excluded) and for opaque
+(`password`, `token`, `api_key` and the like, bound by name, attribute or constant key
+such as `app.config['SECRET_KEY']`, placeholders excluded) and for opaque
 high-entropy tokens; one finding per literal, at high, medium and low confidence
 respectively, with a redacted preview and never the secret itself. Other plugins add
 providers by subclassing `SecretDetector` with their own patterns. Configuration files
@@ -144,8 +145,8 @@ with name or tuple targets, `break`, `continue` and `raise`, `from` clause inclu
 conditional expressions and comprehensions, laid out as real branches and loops over a
 synthetic local, set literals, chained assignments, assignments to `global` names, and
 lambdas and nested function definitions as function values whose bodies are not analysed
-yet. Not yet: `match`, `del`, `nonlocal` assignments, classes defined inside functions, and
-a conditional expression or comprehension inside a `while` condition. Blocks inside a `try`
+yet, and `del`. Not yet: `match`, `nonlocal` assignments, classes defined inside functions,
+and a conditional expression or comprehension inside a `while` condition. Blocks inside a `try`
 body carry exception edges to the handlers; `finally` is modelled on the normal path only. Methods of module-level classes are analysed like functions; other module-level
 code is skipped. An import inside a function is shown where it runs, as an `import`
 instruction naming the module, the bound name and the canonical symbol. A function using syntax outside this subset is reported by `--check` as

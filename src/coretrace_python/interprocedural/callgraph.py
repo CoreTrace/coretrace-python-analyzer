@@ -17,7 +17,16 @@ from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
 from coretrace_python.cfg import CFGError
 from coretrace_python.hir import nodes
 from coretrace_python.ir.lowering import LoweringError, analyzable_functions, qualified_name
-from coretrace_python.ir.model import Call, FunctionIR, GetAttr, Global, Symbol, Value, WithEnter
+from coretrace_python.ir.model import (
+    Call,
+    FunctionIR,
+    GetAttr,
+    GetItem,
+    Global,
+    Symbol,
+    Value,
+    WithEnter,
+)
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.semantic.scopes import BindingKind, ScopeAnalysis, ScopeTable
 from coretrace_python.semantic.symbols import SymbolId
@@ -100,9 +109,10 @@ class CallGraph:
 
 
 def derive_symbols(function: FunctionIR) -> dict[Value, SymbolId]:
-    """Symbols of values: ``Symbol`` results, attributes of symbol values, results of
-    calling a symbol (``sqlite3.connect(p)`` denotes ``python.sqlite3.connect``) and the
-    values a ``with`` on such a result binds. Known functions and parameters derive nothing."""
+    """Symbols of values: ``Symbol`` results, attributes and items of symbol values,
+    results of calling a symbol (``sqlite3.connect(p)`` denotes ``python.sqlite3.connect``)
+    and the values a ``with`` on such a result binds. Known functions and parameters
+    derive nothing."""
 
     symbols: dict[Value, SymbolId] = {}
     changed = True
@@ -117,6 +127,10 @@ def derive_symbols(function: FunctionIR) -> dict[Value, SymbolId]:
                     symbol = instruction.symbol_id
                 elif isinstance(instruction, GetAttr) and instruction.object in symbols:
                     symbol = symbols[instruction.object].attribute(instruction.attribute)
+                elif isinstance(instruction, GetItem) and instruction.object in symbols:
+                    # An item of a symbol-denoted container (``request.files['f']``)
+                    # carries the container's symbol, so its methods resolve.
+                    symbol = symbols[instruction.object]
                 elif isinstance(instruction, Call | WithEnter):
                     origin = (
                         instruction.callee if isinstance(instruction, Call) else instruction.context

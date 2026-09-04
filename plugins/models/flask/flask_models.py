@@ -37,9 +37,12 @@ class FlaskModels(ModelPlugin):
         Sink(_sym("flask.Response"), TaintKind.HTML),
         Sink(_sym("flask.Markup"), TaintKind.HTML),
         Sink(_sym("flask.send_file"), TaintKind.PATH),
+        Sink(_sym("flask.request.files.save"), TaintKind.PATH),
+        Sanitizer(_sym("werkzeug.utils.secure_filename"), TaintKind.PATH),
         Sanitizer(_sym("flask.escape"), TaintKind.HTML),
         Sanitizer(_sym("markupsafe.escape"), TaintKind.HTML),
         AuthorizationGuard(_sym("flask_login.login_required"), "login"),
         AuthorizationGuard(_sym("flask_login.fresh_login_required"), "login"),
         AuthorizationGuard(_sym("flask_login.current_user.is_authenticated"), "login"),
+        AuthorizationGuard(_sym("flask.session"), "session"),
     )

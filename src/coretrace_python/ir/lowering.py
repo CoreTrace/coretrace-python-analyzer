@@ -33,6 +33,8 @@ from coretrace_python.ir.model import (
     Catch,
     Compare,
     Constant,
+    DelAttr,
+    DelItem,
     EffectInstruction,
     ForNext,
     FunctionIR,
@@ -236,6 +238,15 @@ class _FunctionLowerer:
     def statement(self, node: nodes.Statement) -> None:
         if isinstance(node, nodes.Assign):
             self.store(node.target, self.expression(node.value))
+            return
+        if isinstance(node, nodes.Delete):
+            for target in node.targets:
+                if isinstance(target, nodes.Subscript):
+                    obj, key = self.expression(target.value), self.expression(target.key)
+                    self.emit_effect(DelItem(None, target.span, obj, key))
+                elif isinstance(target, nodes.Attribute):
+                    self.emit_effect(DelAttr(None, target.span, self.expression(target.value), target.name))
+                # ``del name`` unbinds a local; the SSA form has no slot to clear.
             return
         if isinstance(node, nodes.Function):
             # A nested definition is a value bound to its name; its body is its own

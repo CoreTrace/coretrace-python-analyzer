@@ -16,6 +16,8 @@ from coretrace_python.ir.model import (
     Catch,
     Compare,
     Constant,
+    DelAttr,
+    DelItem,
     ForNext,
     GetAttr,
     GetItem,
@@ -93,6 +95,10 @@ def _instruction(instruction: Instruction) -> str:
         return f"{_value(instruction.result)} = build_set {', '.join(parts)}".rstrip()
     if isinstance(instruction, MakeFunction):
         return f'{_value(instruction.result)} = make_function "{instruction.name}"'
+    if isinstance(instruction, DelItem):
+        return f"del_item {_value(instruction.object)}, {_value(instruction.key)}"
+    if isinstance(instruction, DelAttr):
+        return f'del_attr {_value(instruction.object)}, "{instruction.attribute}"'
     if isinstance(instruction, SetGlobal):
         return f'set_global "{instruction.name}", {_value(instruction.value)}'
     if isinstance(instruction, BuildString):

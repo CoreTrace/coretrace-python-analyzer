@@ -312,6 +312,22 @@ class Assert(Operands):
 
 
 @dataclass(frozen=True)
+class DelItem(Operands):
+    result: None
+    location: SourceSpan
+    object: Value
+    key: Value
+
+
+@dataclass(frozen=True)
+class DelAttr(Operands):
+    result: None
+    location: SourceSpan
+    object: Value
+    attribute: str
+
+
+@dataclass(frozen=True)
 class SetGlobal(Operands):
     """Assignment to a name declared ``global``."""
 
@@ -360,7 +376,9 @@ ValueInstruction: TypeAlias = (
     | Await
     | Yield
 )
-EffectInstruction: TypeAlias = StoreLocal | SetAttr | SetItem | WithExit | Assert | Import | SetGlobal
+EffectInstruction: TypeAlias = (
+    StoreLocal | SetAttr | SetItem | WithExit | Assert | Import | SetGlobal | DelItem | DelAttr
+)
 Instruction: TypeAlias = ValueInstruction | EffectInstruction
 
 
