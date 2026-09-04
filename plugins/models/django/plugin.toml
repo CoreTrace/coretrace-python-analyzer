@@ -1,0 +1,9 @@
+name = "django-models"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["model.http-sources", "model.django-views", "model.sql-sinks"]
+
+[entrypoint]
+module = "django_models"
+class = "DjangoModels"

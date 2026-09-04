@@ -1,0 +1,9 @@
+name = "http-client-models"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["model.ssrf-sinks", "model.http-response-sources"]
+
+[entrypoint]
+module = "http_client_models"
+class = "HttpClientModels"

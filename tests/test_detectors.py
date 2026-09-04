@@ -164,8 +164,10 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
     assert set(by_name) == {
         "command-injection",
         "dangerous-eval",
+        "django-models",
         "fastapi-models",
         "flask-models",
+        "http-client-models",
         "path-traversal",
         "python-stdlib-models",
         "reachable-vulnerability",

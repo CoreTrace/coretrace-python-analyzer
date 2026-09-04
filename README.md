@@ -63,11 +63,16 @@ memory.
 
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
 repeated. The repository ships a first set under `plugins/`: security models for the
-standard library, Flask, FastAPI and SQLAlchemy (`models/`), taint detectors for SQL
+standard library, Flask, FastAPI, Django, SQLAlchemy and the Requests and httpx clients (`models/`), taint detectors for SQL
 injection, command injection, path traversal, SSRF and XSS (`security/`), and syntactic
 detectors for `eval`/`exec` and weak hashes (`syntax/`). Route handlers of Flask and
 FastAPI receive their parameters as HTTP input; `request.args` and its siblings are HTTP
-sources. Model plugins contribute sources, sinks and sanitizers;
+sources. Django views are undecorated, so a parameter annotated with a request class
+(`request: HttpRequest`), a method of a class-based view and a view decorated by one of
+Django's or Django REST framework's view decorators receive HTTP input; a bare
+`request` parameter without any of these is not recognised, and URL configurations are
+not read. Requests and httpx calls are SSRF sinks whose responses are untrusted
+`http-response` sources. Model plugins contribute sources, sinks and sanitizers;
 detectors consume the shared taint result, so adding a framework model makes every
 detector aware of it. Taint follows calls between functions of the same module through
 function summaries: a tainted argument passed to a helper that reaches a sink is reported

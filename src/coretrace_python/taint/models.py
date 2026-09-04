@@ -60,14 +60,24 @@ class Sanitizer:
 
 @dataclass(frozen=True)
 class EntryPoint:
-    """Functions decorated by ``symbol`` receive attacker-controlled parameters."""
+    """Functions decorated by ``symbol``, and methods of classes deriving from it,
+    receive attacker-controlled parameters."""
 
     symbol: SymbolId
     label: str
     kinds: TaintKind = TaintKind.ALL
 
 
-Model = Source | Sink | Sanitizer | EntryPoint
+@dataclass(frozen=True)
+class TypedParameter:
+    """A parameter annotated with ``symbol`` is attacker-controlled."""
+
+    symbol: SymbolId
+    label: str
+    kinds: TaintKind = TaintKind.ALL
+
+
+Model = Source | Sink | Sanitizer | EntryPoint | TypedParameter
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,7 @@ class ModelTable:
     sinks: tuple[Sink, ...]
     sanitizers: tuple[Sanitizer, ...]
     entry_points: tuple[EntryPoint, ...] = ()
+    typed_parameters: tuple[TypedParameter, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -86,12 +97,17 @@ class ModelTable:
             Sink: {m.symbol: m for m in self.sinks},
             Sanitizer: {m.symbol: m for m in self.sanitizers},
             EntryPoint: {m.symbol: m for m in self.entry_points},
+            TypedParameter: {m.symbol: m for m in self.typed_parameters},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
 
     def entry_point(self, symbol: SymbolId) -> EntryPoint | None:
         found = self._by_symbol[EntryPoint].get(symbol)
         return found if isinstance(found, EntryPoint) else None
+
+    def typed_parameter(self, symbol: SymbolId) -> TypedParameter | None:
+        found = self._by_symbol[TypedParameter].get(symbol)
+        return found if isinstance(found, TypedParameter) else None
 
     def source(self, symbol: SymbolId) -> Source | None:
         found = self._by_symbol[Source].get(symbol)
@@ -121,7 +137,13 @@ class ModelTable:
             merged[sink.symbol] = (
                 Sink(sink.symbol, current.kinds | sink.kinds) if current is not None else sink
             )
-        return ModelTable(self.sources, tuple(merged.values()), self.sanitizers, self.entry_points)
+        return ModelTable(
+            self.sources,
+            tuple(merged.values()),
+            self.sanitizers,
+            self.entry_points,
+            self.typed_parameters,
+        )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
         found = self._by_symbol[Sanitizer].get(symbol)
@@ -150,6 +172,7 @@ class SecurityModelRegistry:
             sinks=tuple(m for m in models if isinstance(m, Sink)),
             sanitizers=tuple(m for m in models if isinstance(m, Sanitizer)),
             entry_points=tuple(m for m in models if isinstance(m, EntryPoint)),
+            typed_parameters=tuple(m for m in models if isinstance(m, TypedParameter)),
         )
 
 

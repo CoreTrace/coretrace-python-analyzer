@@ -18,6 +18,7 @@ from coretrace_python.taint.models import (
     Sink,
     Source,
     TaintKind,
+    TypedParameter,
 )
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     "TaintFacts",
     "TaintFlow",
     "TaintKind",
+    "TypedParameter",
     "propagate_taint",
 ]

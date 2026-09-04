@@ -112,7 +112,7 @@ class _TaintProblem(DataflowProblem[State]):
         models: ModelTable,
         graph: CallGraph,
         summaries: SummaryTable,
-        entry: EntryPoint | None = None,
+        parameters: Mapping[int, Source] | None = None,
         project: SummaryIndex | None = None,
     ) -> None:
         self.name = name
@@ -120,17 +120,19 @@ class _TaintProblem(DataflowProblem[State]):
         self.models = models
         self.graph = graph
         self.summaries = summaries
-        self.entry = entry
+        self.parameters = parameters or {}
         self.project = project or SummaryIndex()
         self.blocks = {block.id: block for block in function.blocks}
         self.symbols = graph.symbols(name)
 
     def initial(self) -> State:
-        if self.entry is None:
-            return MappingProxyType({})
-        source = Source(self.entry.symbol, self.entry.label, self.entry.kinds)
-        seed = Taint(self.entry.kinds, frozenset({source}))
-        return MappingProxyType({p: seed for p in self.function.parameters})
+        return MappingProxyType(
+            {
+                self.function.parameters[index]: Taint(source.kinds, frozenset({source}))
+                for index, source in self.parameters.items()
+                if index < len(self.function.parameters)
+            }
+        )
 
     def join(self, a: State, b: State) -> State:
         merged = dict(a)
@@ -292,19 +294,65 @@ class _TaintProblem(DataflowProblem[State]):
 
 
 def entry_point_of(
-    function: nodes.Function, models: ModelTable, scopes: ScopeTable, symbols: SymbolTable
+    function: nodes.Function,
+    models: ModelTable,
+    scopes: ScopeTable,
+    symbols: SymbolTable,
+    owner: nodes.Class | None = None,
 ) -> EntryPoint | None:
-    """The entry-point model matching one of the function's decorators, if any."""
+    """The entry-point model matching one of the function's decorators or, for a
+    method, one of the bases of ``owner``, if any."""
 
     scope = scopes.scope_for(function)
     enclosing = scope.parent if scope.parent is not None else scope.id
-    for decorator in function.decorators:
-        symbol = symbols.resolve_expression(enclosing, decorator)
+    candidates = list(function.decorators)
+    if owner is not None:
+        class_scope = scopes.scope_for(owner)
+        outside = class_scope.parent if class_scope.parent is not None else class_scope.id
+        candidates.extend(owner.bases)
+        enclosing_of = {id(base): outside for base in owner.bases}
+    else:
+        enclosing_of = {}
+    for expression in candidates:
+        symbol = symbols.resolve_expression(enclosing_of.get(id(expression), enclosing), expression)
         if symbol is not None:
             entry = models.entry_point(symbol)
             if entry is not None:
                 return entry
     return None
+
+
+def parameter_sources(
+    function: nodes.Function,
+    module: nodes.Module,
+    models: ModelTable,
+    scopes: ScopeTable,
+    symbols: SymbolTable,
+) -> Mapping[int, Source]:
+    """The attacker-controlled parameters of ``function``, by index: every parameter of an
+    entry point (``self`` excepted for a method) and every parameter annotated with a
+    typed-parameter symbol."""
+
+    owner = next(
+        (s for s in module.body if isinstance(s, nodes.Class) and any(f is function for f in s.body)),
+        None,
+    )
+    sources: dict[int, Source] = {}
+    entry = entry_point_of(function, models, scopes, symbols, owner)
+    if entry is not None:
+        first = 1 if owner is not None else 0
+        for index in range(first, len(function.parameters)):
+            sources[index] = Source(entry.symbol, entry.label, entry.kinds)
+    scope = scopes.scope_for(function)
+    enclosing = scope.parent if scope.parent is not None else scope.id
+    for index, parameter in enumerate(function.parameters):
+        if parameter.annotation is None:
+            continue
+        symbol = symbols.resolve_expression(enclosing, parameter.annotation)
+        typed = models.typed_parameter(symbol) if symbol is not None else None
+        if typed is not None:
+            sources[index] = Source(typed.symbol, typed.label, typed.kinds)
+    return sources
 
 
 def propagate_taint(
@@ -314,10 +362,10 @@ def propagate_taint(
     models: ModelTable,
     graph: CallGraph,
     summaries: SummaryTable,
-    entry: EntryPoint | None = None,
+    parameters: Mapping[int, Source] | None = None,
     project: SummaryIndex | None = None,
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, entry, project)
+    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project)
     solution = solve(problem, cfg)
     taints: dict[Value, Taint] = {}
     flows: list[TaintFlow] = []
@@ -357,6 +405,8 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             models,
             graph,
             ctx.get(SummaryAnalysis),
-            entry_point_of(function, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)),
+            parameter_sources(
+                function, ctx.module, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)
+            ),
             ctx.get(ProjectSummaries),
         )
