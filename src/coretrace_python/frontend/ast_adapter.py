@@ -293,6 +293,8 @@ class AstHIRBuilder:
             )
         if isinstance(node, ast.Break):
             return nodes.Break(span)
+        if isinstance(node, ast.Delete):
+            return nodes.Delete(tuple(self.target(target) for target in node.targets), span)
         if isinstance(node, ast.Continue):
             return nodes.Continue(span)
         if isinstance(node, ast.Raise):

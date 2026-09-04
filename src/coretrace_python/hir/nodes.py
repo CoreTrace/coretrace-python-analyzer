@@ -261,6 +261,12 @@ class Pass:
 
 
 @dataclass(frozen=True, slots=True)
+class Delete:
+    targets: tuple[Target, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class Assert:
     test: Expression
     message: Expression | None
@@ -424,6 +430,7 @@ Statement: TypeAlias = (
     | Return
     | ExpressionStatement
     | Pass
+    | Delete
     | Assert
     | If
     | While

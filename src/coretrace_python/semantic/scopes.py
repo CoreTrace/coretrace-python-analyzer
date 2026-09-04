@@ -309,6 +309,9 @@ class _Collector:
                 self.expression(node.exception, scope)
             if node.cause is not None:
                 self.expression(node.cause, scope)
+        elif isinstance(node, nodes.Delete):
+            for target in node.targets:
+                self.target(target, scope)
         elif not isinstance(node, nodes.Pass | nodes.Break | nodes.Continue):
             raise TypeError(f"unknown statement: {node!r}")
 
