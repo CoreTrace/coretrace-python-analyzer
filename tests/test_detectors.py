@@ -164,6 +164,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
     assert set(by_name) == {
         "command-injection",
         "config-secrets",
+        "credential-models",
         "dangerous-eval",
         "dependency-policy",
         "django-models",
@@ -174,6 +175,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "http-client-models",
         "missing-timeout",
         "path-traversal",
+        "plaintext-credentials",
         "python-stdlib-models",
         "reachable-vulnerability",
         "sample-advisories",

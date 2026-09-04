@@ -294,6 +294,7 @@ def test_detectors_stay_generic() -> None:
     assert sorted(p.name for p in (PLUGINS / "security").iterdir() if p.is_dir()) == [
         "command_injection",
         "path_traversal",
+        "plaintext_credentials",
         "sql_injection",
         "ssrf",
         "xss",
