@@ -12,6 +12,7 @@ from coretrace_python.interprocedural.callgraph import (
 from coretrace_python.interprocedural.modulegraph import (
     ModuleGraph,
     build_module_graph,
+    discover_files,
     discover_sources,
     project_symbol,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "Target",
     "UnknownTarget",
     "build_module_graph",
+    "discover_files",
     "discover_sources",
     "project_symbol",
 ]

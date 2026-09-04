@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, ClassVar, overload
 
 from coretrace_python.analysis import (
@@ -66,7 +67,9 @@ class ProjectContext:
         managers: Mapping[str, AnalysisManager],
         call_graphs: Mapping[str, CallGraph] | None = None,
         policy: Policy | None = None,
+        root: Path | None = None,
     ) -> None:
+        self.root = root
         self.graph = graph
         self.dependencies = dependencies
         self.advisories = advisories

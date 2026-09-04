@@ -33,4 +33,16 @@ def render_json(report: Report) -> str:
         "tool": {"name": report.tool_name, "version": report.tool_version},
         "findings": [finding_record(finding) for finding in report.findings],
     }
+    if report.coverage is not None:
+        coverage = report.coverage
+        document["coverage"] = {
+            "files": coverage.files,
+            "files_analysed": coverage.files_analysed,
+            "functions": coverage.functions,
+            "functions_analysed": coverage.functions_analysed,
+            "details": [
+                {"path": d.path, "status": d.status, "functions": d.functions, "analysed": d.analysed}
+                for d in coverage.details
+            ],
+        }
     return json.dumps(document, indent=2) + "\n"

@@ -46,6 +46,7 @@ def test_check_reports_findings_from_loaded_plugins(tmp_path, capsys) -> None:
         f"{source}:2:5: high dangerous-eval: call to python.builtins.eval executes"
         " dynamically built code [run]\n"
         "1 finding\n"
+        "coverage: 1/1 files, 1/1 functions\n"
     )
 
 
@@ -53,14 +54,14 @@ def test_check_is_clean_when_nothing_is_found(tmp_path, capsys) -> None:
     source = write(tmp_path, "def run(code):\n    return code\n")
 
     assert main(["--check", str(source), "--plugins", str(PLUGINS)]) == 0
-    assert capsys.readouterr().out == "no findings\n"
+    assert capsys.readouterr().out == "no findings\ncoverage: 1/1 files, 1/1 functions\n"
 
 
 def test_check_without_plugins_finds_nothing(tmp_path, capsys) -> None:
     source = write(tmp_path, "def run(code):\n    eval(code)\n")
 
     assert main(["--check", str(source)]) == 0
-    assert capsys.readouterr().out == "no findings\n"
+    assert capsys.readouterr().out == "no findings\ncoverage: 1/1 files, 1/1 functions\n"
 
 
 def test_check_json_format(tmp_path, capsys) -> None:

@@ -20,6 +20,16 @@ def module_name_for(path: Path) -> str:
     return ".".join(reversed(parts)) or path.stem
 
 
+def decode_text(data: bytes) -> str:
+    """Decode a text file, honouring a UTF-8 or UTF-16 byte order mark; Windows tools
+    such as ``pip freeze`` write UTF-16 with one."""
+
+    for mark, encoding in ((b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16")):
+        if data.startswith(mark):
+            return data.decode(encoding)
+    return data.decode("utf-8")
+
+
 class SourceManager:
     """Own source text and return one canonical object for each source ID."""
 
@@ -49,8 +59,7 @@ class SourceManager:
         if existing is not None:
             return existing
 
-        # utf-8-sig accepts ordinary UTF-8 and strips a leading UTF-8 BOM.
-        text = resolved_path.read_text(encoding="utf-8-sig")
+        text = decode_text(resolved_path.read_bytes())
         source = SourceFile(
             source_id=source_id,
             text=text,

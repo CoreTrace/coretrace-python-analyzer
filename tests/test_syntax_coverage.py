@@ -282,7 +282,7 @@ def test_check_reports_unsupported_functions_and_keeps_going(tmp_path, capsys) -
     assert f"{source}:3:1: info unsupported-syntax: " in output
     assert "Class" in output
     assert f"{source}:10:9: high dangerous-eval:" in output
-    assert output.endswith("2 findings\n")
+    assert output.endswith("2 findings\ncoverage: 1/1 files, 1/2 functions\n")
 
 
 def test_unsupported_syntax_findings_are_notes() -> None:
