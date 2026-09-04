@@ -168,9 +168,12 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "flask-models",
         "path-traversal",
         "python-stdlib-models",
+        "reachable-vulnerability",
+        "sample-advisories",
         "sql-injection",
         "sqlalchemy-models",
         "ssrf",
+        "vulnerable-dependency",
         "weak-crypto",
         "xss",
     }

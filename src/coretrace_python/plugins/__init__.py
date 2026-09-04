@@ -5,6 +5,8 @@ from coretrace_python.plugins.api import (
     ModelPlugin,
     Plugin,
     PluginContext,
+    ProjectContext,
+    ProjectPlugin,
     run_plugins,
 )
 from coretrace_python.plugins.detectors import SymbolCallDetector, TaintDetector
@@ -34,6 +36,8 @@ __all__ = [
     "PluginContext",
     "PluginManifest",
     "PluginRegistry",
+    "ProjectContext",
+    "ProjectPlugin",
     "SymbolCallDetector",
     "TaintDetector",
     "VersionRange",

@@ -1,0 +1,9 @@
+name = "sample-advisories"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["advisories.sample"]
+
+[entrypoint]
+module = "sample_advisories"
+class = "SampleAdvisories"

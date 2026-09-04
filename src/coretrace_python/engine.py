@@ -6,8 +6,8 @@ plugins and analyses never import it.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
@@ -20,6 +20,12 @@ from coretrace_python.analysis import (
     TransformationPass,
 )
 from coretrace_python.cfg import CFGAnalysis, CFGError, DominanceAnalysis, PostDominanceAnalysis
+from coretrace_python.dependency import (
+    DEPENDENCY_FILES,
+    DependencyAnalysis,
+    DependencyGraph,
+    parse_dependencies,
+)
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -43,7 +49,14 @@ from coretrace_python.ir.lowering import (
     analyzable_functions,
 )
 from coretrace_python.ir.ssa import SSAAnalysis
-from coretrace_python.plugins import LoadedPlugin, PluginRegistry, discover_plugins, run_plugins
+from coretrace_python.plugins import (
+    Plugin,
+    PluginRegistry,
+    ProjectContext,
+    ProjectPlugin,
+    discover_plugins,
+    run_plugins,
+)
 from coretrace_python.reporters import Report
 from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.imports import ImportAnalysis, ImportResolutionError, ImportTable
@@ -74,6 +87,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     SecurityModelAnalysis,
     TaintAnalysis,
     RefutationAnalysis,
+    DependencyAnalysis,
 )
 
 
@@ -105,6 +119,7 @@ class ProjectAnalysis:
     graph: ModuleGraph
     index: SummaryIndex
     findings: tuple[Finding, ...]
+    dependencies: DependencyGraph = field(default_factory=DependencyGraph)
 
 
 def build_manager(
@@ -126,10 +141,10 @@ def load_plugins(plugin_roots: Sequence[Path], manager: AnalysisManager) -> Plug
     return registry
 
 
-def plugin_models(registry: PluginRegistry) -> ModelTable:
+def plugin_models(plugins: Iterable[Plugin]) -> ModelTable:
     models = SecurityModelRegistry()
-    for loaded in registry:
-        models.register(*loaded.plugin.models)
+    for plugin in plugins:
+        models.register(*plugin.models)
     return models.freeze()
 
 
@@ -138,16 +153,34 @@ def check(source: SourceFile, plugin_roots: Sequence[Path]) -> tuple[Finding, ..
 
     manager = _register_all(build_hir(source))
     registry = load_plugins(plugin_roots, manager)
-    manager.provide(SecurityModelAnalysis, plugin_models(registry))
+    manager.provide(SecurityModelAnalysis, plugin_models(loaded.plugin for loaded in registry))
     manager.provide(ProjectSummaries, SummaryIndex())
-    return _check_module(manager, tuple(registry))
+    return _check_module(manager, tuple(loaded.plugin for loaded in registry))
 
 
-def analyze_project(root: Path, plugin_roots: Sequence[Path] = ()) -> ProjectAnalysis:
-    """Analyse every Python file under ``root`` with a shared summary index (§21)."""
+def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
+    """The requirements declared or pinned by the dependency files at ``root`` (§26)."""
+
+    graph = DependencyGraph()
+    candidates = sorted(root.glob("requirements*.txt")) + [root / name for name in DEPENDENCY_FILES]
+    for path in candidates:
+        if path.is_file():
+            graph = graph.merge(parse_dependencies(sources.load_file(path)))
+    return graph
+
+
+def analyze_project(
+    root: Path, plugin_roots: Sequence[Path] = (), plugins: Sequence[Plugin] = ()
+) -> ProjectAnalysis:
+    """Analyse every Python file under ``root`` with a shared summary index (§21) and the
+    dependency graph of its manifests (§26). ``plugins`` adds plugin instances to the
+    ones discovered under ``plugin_roots``."""
 
     sources = SourceManager()
     findings: list[Finding] = []
+    dependencies = resolve_dependencies(root, sources)
+    for error in dependencies.errors:
+        findings.append(_note("syntax-error", error, sources.add_source(error.split(":")[0], ""), 1))
     modules: dict[str, nodes.Module] = {}
     files: dict[str, SourceFile] = {}
     for source in discover_sources(root, sources):
@@ -161,11 +194,14 @@ def analyze_project(root: Path, plugin_roots: Sequence[Path] = ()) -> ProjectAna
     managers = {name: _register_all(module) for name, module in modules.items()}
     probe = next(iter(managers.values()), None) or _register_all(build_hir(sources.add_source("<empty>", "")))
     registry = load_plugins(plugin_roots, probe)
-    models = plugin_models(registry)
+    all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *plugins)
+    models = plugin_models(all_plugins)
+    advisories = tuple(a for plugin in all_plugins for a in plugin.advisories)
     index = SummaryIndex()
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(ProjectSummaries, index)
+        manager.provide(DependencyAnalysis, dependencies)
 
     imports: dict[str, ImportTable] = {}
     analysable: dict[str, AnalysisManager] = {}
@@ -195,10 +231,14 @@ def analyze_project(root: Path, plugin_roots: Sequence[Path] = ()) -> ProjectAna
             manager.run(ProjectSummariesUpdated)
             manager.provide(ProjectSummaries, index)
 
-    plugins = tuple(registry)
+    module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
     for name in sorted(analysable):
-        findings.extend(_check_module(analysable[name], plugins))
-    return ProjectAnalysis(graph, index, tuple(findings))
+        findings.extend(_check_module(analysable[name], module_plugins))
+    context = ProjectContext(graph, dependencies, advisories, analysable)
+    for plugin in all_plugins:
+        if isinstance(plugin, ProjectPlugin):
+            findings.extend(plugin.analyze_project(context))
+    return ProjectAnalysis(graph, index, tuple(findings), dependencies)
 
 
 def _summaries_of(manager: AnalysisManager) -> dict[str, FunctionSummary]:
@@ -206,7 +246,7 @@ def _summaries_of(manager: AnalysisManager) -> dict[str, FunctionSummary]:
     return {name: table.summary(name) for name in table.names}
 
 
-def _check_module(manager: AnalysisManager, plugins: tuple[LoadedPlugin, ...]) -> tuple[Finding, ...]:
+def _check_module(manager: AnalysisManager, plugins: tuple[Plugin, ...]) -> tuple[Finding, ...]:
     supported: list[nodes.Function] = []
     notes: list[Finding] = []
     for function in analyzable_functions(manager.module):
@@ -225,7 +265,7 @@ def _check_module(manager: AnalysisManager, plugins: tuple[LoadedPlugin, ...]) -
             )
         else:
             supported.append(function)
-    findings = run_plugins(manager, [loaded.plugin for loaded in plugins], tuple(supported))
+    findings = run_plugins(manager, plugins, tuple(supported))
     return (*findings, *notes)
 
 
