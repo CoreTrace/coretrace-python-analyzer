@@ -303,15 +303,60 @@ class OrPattern:
 
 
 @dataclass(frozen=True, slots=True)
+class StarPattern:
+    """``*rest`` inside a sequence pattern; ``name`` is ``None`` for ``*_``."""
+
+    name: str | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class SequencePattern:
+    patterns: tuple[Pattern, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class MappingPattern:
+    """``{key: pattern, ..., **rest}``; keys are expressions, ``rest`` a name or ``None``."""
+
+    keys: tuple[Expression, ...]
+    patterns: tuple[Pattern, ...]
+    rest: str | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class ClassPattern:
+    """``Cls(p, ..., name=pattern, ...)``: positional sub-patterns need the class's
+    ``__match_args__``; keyword ones match attributes."""
+
+    cls: Expression
+    patterns: tuple[Pattern, ...]
+    keyword_names: tuple[str, ...]
+    keyword_patterns: tuple[Pattern, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class UnsupportedPattern:
-    """A sequence, mapping, class or star pattern; the CFG builder reports it."""
+    """A pattern the HIR does not represent; the CFG builder reports it."""
 
     kind: str
     span: SourceSpan
 
 
 Pattern: TypeAlias = (
-    ValuePattern | SingletonPattern | WildcardPattern | CapturePattern | OrPattern | UnsupportedPattern
+    ValuePattern
+    | SingletonPattern
+    | WildcardPattern
+    | CapturePattern
+    | OrPattern
+    | StarPattern
+    | SequencePattern
+    | MappingPattern
+    | ClassPattern
+    | UnsupportedPattern
 )
 
 

@@ -343,7 +343,9 @@ class _Builder:
         chain = (nodes.Assign(subject, node.subject, node.span), *statements)
         return self.sequence(chain, block, continuation, node.span)
 
-    def pattern(self, node: nodes.Pattern, subject: nodes.Name) -> tuple[nodes.Expression, tuple[nodes.Statement, ...]]:
+    def pattern(
+        self, node: nodes.Pattern, subject: nodes.Expression
+    ) -> tuple[nodes.Expression, tuple[nodes.Statement, ...]]:
         """The condition a pattern tests on ``subject`` and the names it binds."""
 
         if isinstance(node, nodes.ValuePattern):
@@ -366,12 +368,91 @@ class _Builder:
                 conditions.append(condition)
                 bindings.extend(inner)
             return nodes.BoolOp("or", tuple(conditions), node.span), tuple(bindings)
+        if isinstance(node, nodes.SequencePattern):
+            return self.sequence_pattern(node, subject)
+        if isinstance(node, nodes.MappingPattern):
+            return self.mapping_pattern(node, subject)
+        if isinstance(node, nodes.ClassPattern):
+            return self.class_pattern(node, subject)
+        if isinstance(node, nodes.StarPattern):
+            raise CFGError(f"{node.span.display()}: a star pattern only belongs in a sequence pattern")
         raise CFGError(f"{node.span.display()}: match pattern {node.kind} is not supported yet")
+
+    def sequence_pattern(
+        self, node: nodes.SequencePattern, subject: nodes.Expression
+    ) -> tuple[nodes.Expression, tuple[nodes.Statement, ...]]:
+        """``[a, 0, *rest, b]``: the length fits, each item matches its sub-pattern and
+        the star captures the middle slice."""
+
+        span = node.span
+        count = len(node.patterns)
+        star = next((i for i, p in enumerate(node.patterns) if isinstance(p, nodes.StarPattern)), None)
+        length = nodes.Call(nodes.Name("len", span), (subject,), (), span)
+        if star is None:
+            conditions: list[nodes.Expression] = [nodes.Compare("eq", length, nodes.Constant(count, span), span)]
+        else:
+            conditions = [nodes.Compare("gt_eq", length, nodes.Constant(count - 1, span), span)]
+        bindings: list[nodes.Statement] = []
+        for index, sub in enumerate(node.patterns):
+            if isinstance(sub, nodes.StarPattern):
+                if sub.name is not None:
+                    upper = None if index == count - 1 else nodes.Constant(index - count + 1, span)
+                    piece = nodes.Subscript(subject, nodes.Slice(nodes.Constant(index, span), upper, None, span), span)
+                    bindings.append(nodes.Assign(nodes.Name(sub.name, sub.span), piece, sub.span))
+                continue
+            position = index if star is None or index < star else index - count
+            item = nodes.Subscript(subject, nodes.Constant(position, span), span)
+            condition, inner = self.pattern(sub, item)
+            conditions.append(condition)
+            bindings.extend(inner)
+        return _conjunction(conditions, span), tuple(bindings)
+
+    def mapping_pattern(
+        self, node: nodes.MappingPattern, subject: nodes.Expression
+    ) -> tuple[nodes.Expression, tuple[nodes.Statement, ...]]:
+        """``{key: pattern, **rest}``: every key is present and its value matches."""
+
+        span = node.span
+        conditions: list[nodes.Expression] = []
+        bindings: list[nodes.Statement] = []
+        for key, sub in zip(node.keys, node.patterns, strict=True):
+            conditions.append(nodes.Compare("in", key, subject, span))
+            condition, inner = self.pattern(sub, nodes.Subscript(subject, key, span))
+            conditions.append(condition)
+            bindings.extend(inner)
+        if node.rest is not None:
+            bindings.append(nodes.Assign(nodes.Name(node.rest, span), subject, span))
+        return _conjunction(conditions, span), tuple(bindings)
+
+    def class_pattern(
+        self, node: nodes.ClassPattern, subject: nodes.Expression
+    ) -> tuple[nodes.Expression, tuple[nodes.Statement, ...]]:
+        """``Cls(name=pattern)``: an instance of the class whose attributes match."""
+
+        span = node.span
+        if node.patterns:
+            raise CFGError(
+                f"{span.display()}: positional class patterns need the class's __match_args__ "
+                "and are not supported yet"
+            )
+        conditions: list[nodes.Expression] = [
+            nodes.Call(nodes.Name("isinstance", span), (subject, node.cls), (), span)
+        ]
+        bindings: list[nodes.Statement] = []
+        for name, sub in zip(node.keyword_names, node.keyword_patterns, strict=True):
+            condition, inner = self.pattern(sub, nodes.Attribute(subject, name, span))
+            conditions.append(condition)
+            bindings.extend(inner)
+        return _conjunction(conditions, span), tuple(bindings)
 
     def loop(self, keyword: str, span: SourceSpan) -> tuple[BlockId, BlockId]:
         if not self.loops:
             raise CFGError(f"{span.display()}: '{keyword}' outside loop")
         return self.loops[-1]
+
+
+def _conjunction(conditions: list[nodes.Expression], span: SourceSpan) -> nodes.Expression:
+    return conditions[0] if len(conditions) == 1 else nodes.BoolOp("and", tuple(conditions), span)
 
 
 def _may_hold_expressions(value: object) -> bool:

@@ -394,6 +394,23 @@ class _Collector:
         elif isinstance(node, nodes.OrPattern):
             for alternative in node.alternatives:
                 self.pattern(alternative, scope)
+        elif isinstance(node, nodes.StarPattern):
+            if node.name is not None:
+                scope.bind(node.name, BindingKind.LOCAL, node.span)
+        elif isinstance(node, nodes.SequencePattern):
+            for sub in node.patterns:
+                self.pattern(sub, scope)
+        elif isinstance(node, nodes.MappingPattern):
+            for key in node.keys:
+                self.expression(key, scope)
+            for sub in node.patterns:
+                self.pattern(sub, scope)
+            if node.rest is not None:
+                scope.bind(node.rest, BindingKind.LOCAL, node.span)
+        elif isinstance(node, nodes.ClassPattern):
+            self.expression(node.cls, scope)
+            for sub in (*node.patterns, *node.keyword_patterns):
+                self.pattern(sub, scope)
 
     def target(self, node: nodes.Target, scope: _ScopeBuilder) -> None:
         if isinstance(node, nodes.Name):
