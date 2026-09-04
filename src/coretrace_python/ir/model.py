@@ -8,6 +8,9 @@ from coretrace_python.cfg import BlockId
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceSpan
 
+# Bumped whenever the instruction set or its meaning changes; part of the cache key.
+PYIR_SCHEMA_VERSION = 1
+
 
 @dataclass(frozen=True)
 class Value:
@@ -266,6 +269,18 @@ class Assert(Operands):
     message: Value | None
 
 
+@dataclass(frozen=True)
+class Import(Operands):
+    """An import executed where it stands: ``module`` as written (relative dots
+    included), the canonical ``symbol_id`` bound and the local ``name`` it binds."""
+
+    result: None
+    location: SourceSpan
+    module: str
+    symbol_id: SymbolId
+    name: str
+
+
 ValueInstruction: TypeAlias = (
     Constant
     | Global
@@ -289,7 +304,7 @@ ValueInstruction: TypeAlias = (
     | Await
     | Yield
 )
-EffectInstruction: TypeAlias = StoreLocal | SetAttr | SetItem | WithExit | Assert
+EffectInstruction: TypeAlias = StoreLocal | SetAttr | SetItem | WithExit | Assert | Import
 Instruction: TypeAlias = ValueInstruction | EffectInstruction
 
 

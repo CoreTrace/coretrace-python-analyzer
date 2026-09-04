@@ -66,6 +66,7 @@ from coretrace_python.interprocedural import (
     discover_sources,
     project_symbol,
 )
+from coretrace_python.ir import PYIR_SCHEMA_VERSION
 from coretrace_python.ir.defuse import DefUseAnalysis
 from coretrace_python.ir.lowering import (
     LoweringError,
@@ -501,6 +502,7 @@ def _configuration_key(
     return fingerprint(
         __version__,
         str(HIR_SCHEMA_VERSION),
+        str(PYIR_SCHEMA_VERSION),
         str(FINDING_SCHEMA_VERSION),
         str(PLUGIN_API_VERSION),
         *(

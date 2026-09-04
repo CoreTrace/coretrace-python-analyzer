@@ -37,6 +37,7 @@ from coretrace_python.ir.model import (
     GetItem,
     GetIter,
     Global,
+    Import,
     Instruction,
     Jump,
     LoadLocal,
@@ -230,8 +231,20 @@ class _FunctionLowerer:
         if isinstance(node, nodes.ExpressionStatement):
             self.expression(node.expression)
             return
-        if isinstance(node, nodes.Pass | nodes.Global | nodes.Import | nodes.ImportFrom):
-            # Declarations and imports are already applied by the semantic analyses.
+        if isinstance(node, nodes.Import | nodes.ImportFrom):
+            # The binding is already applied by the semantic analyses; the instruction
+            # records that the import runs here (§39 rule 3).
+            module = "." * node.level + (node.module or "") if isinstance(node, nodes.ImportFrom) else ""
+            for alias in node.names:
+                bound = alias.as_name or alias.name.partition(".")[0]
+                symbol = self.symbols.resolve(self.scope.id, bound)
+                if symbol is None:
+                    self.fail(node, f"unresolved import of {bound!r}")
+                written = alias.name if isinstance(node, nodes.Import) else module
+                self.emit_effect(Import(None, alias.span, written, symbol, bound))
+            return
+        if isinstance(node, nodes.Pass | nodes.Global):
+            # Declarations are already applied by the semantic analyses.
             return
         self.fail(node)
 

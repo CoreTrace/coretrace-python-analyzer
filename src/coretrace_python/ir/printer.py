@@ -18,6 +18,7 @@ from coretrace_python.ir.model import (
     GetItem,
     GetIter,
     Global,
+    Import,
     Instruction,
     Jump,
     LoadLocal,
@@ -99,6 +100,8 @@ def _instruction(instruction: Instruction) -> str:
             f"set_item {_value(instruction.object)}, {_value(instruction.key)}, "
             f"{_value(instruction.value)}"
         )
+    if isinstance(instruction, Import):
+        return f'import "{instruction.module}" as "{instruction.name}" @{instruction.symbol_id}'
     if isinstance(instruction, Assert):
         message = "" if instruction.message is None else f", {_value(instruction.message)}"
         return f"assert {_value(instruction.test)}{message}"

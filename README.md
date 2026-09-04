@@ -139,7 +139,8 @@ assignment, list, tuple and dict literals, `and`/`or`, chained comparisons, keyw
 arguments, `with`, `assert`, `try`/`except`/`else`/`finally`, `await`, `yield`,
 `if`/`elif`/`else`, `while`, `for`, `break`, `continue` and `raise`. Blocks inside a `try`
 body carry exception edges to the handlers; `finally` is modelled on the normal path only. Methods of module-level classes are analysed like functions; other module-level
-code is skipped. A function using syntax outside this subset is reported by `--check` as
+code is skipped. An import inside a function is shown where it runs, as an `import`
+instruction naming the module, the bound name and the canonical symbol. A function using syntax outside this subset is reported by `--check` as
 an `unsupported-syntax` note and the other functions are still analysed. Each function is
 emitted as its control-flow graph: one block per basic block, ending in an explicit
 terminator (`branch`, `jump`, `return`, `raise`, `for_next`). Add `--ssa` to print the
