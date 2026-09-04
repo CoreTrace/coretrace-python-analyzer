@@ -6,7 +6,15 @@ from typing import ClassVar
 
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import EntryPoint, Model, Sanitizer, Sink, Source, TaintKind
+from coretrace_python.taint import (
+    AuthorizationGuard,
+    EntryPoint,
+    Model,
+    Sanitizer,
+    Sink,
+    Source,
+    TaintKind,
+)
 
 _REQUEST_ATTRIBUTES = (
     "args", "form", "values", "json", "data", "cookies", "headers", "files",
@@ -31,4 +39,7 @@ class FlaskModels(ModelPlugin):
         Sink(_sym("flask.send_file"), TaintKind.PATH),
         Sanitizer(_sym("flask.escape"), TaintKind.HTML),
         Sanitizer(_sym("markupsafe.escape"), TaintKind.HTML),
+        AuthorizationGuard(_sym("flask_login.login_required"), "login"),
+        AuthorizationGuard(_sym("flask_login.fresh_login_required"), "login"),
+        AuthorizationGuard(_sym("flask_login.current_user.is_authenticated"), "login"),
     )

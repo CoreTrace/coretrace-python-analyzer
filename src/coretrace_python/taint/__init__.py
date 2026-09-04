@@ -8,6 +8,7 @@ from coretrace_python.taint.engine import (
     propagate_taint,
 )
 from coretrace_python.taint.models import (
+    AuthorizationGuard,
     EntryPoint,
     Model,
     ModelError,
@@ -19,9 +20,11 @@ from coretrace_python.taint.models import (
     Source,
     TaintKind,
     TypedParameter,
+    Validator,
 )
 
 __all__ = [
+    "AuthorizationGuard",
     "EntryPoint",
     "Model",
     "ModelError",
@@ -37,5 +40,6 @@ __all__ = [
     "TaintFlow",
     "TaintKind",
     "TypedParameter",
+    "Validator",
     "propagate_taint",
 ]
