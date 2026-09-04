@@ -158,12 +158,14 @@ Target: TypeAlias = Name | Attribute | Subscript | Tuple
 
 @dataclass(frozen=True, slots=True)
 class Parameter:
-    """``kind`` is ``positional``, ``keyword``, ``var_positional`` or ``var_keyword``."""
+    """``kind`` is ``positional``, ``keyword``, ``var_positional`` or ``var_keyword``.
+    ``annotation`` is kept when it is an expression the HIR can represent."""
 
     name: str
     span: SourceSpan
     default: Expression | None = None
     kind: str = "positional"
+    annotation: Expression | None = None
 
 
 @dataclass(frozen=True, slots=True)

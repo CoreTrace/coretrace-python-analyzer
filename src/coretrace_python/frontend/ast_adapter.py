@@ -322,7 +322,14 @@ class AstHIRBuilder:
 
     def parameter(self, argument: ast.arg, default: ast.expr | None, kind: str) -> nodes.Parameter:
         value = self.expression(default) if default is not None else None
-        return nodes.Parameter(argument.arg, self.span(argument), value, kind)
+        annotation: nodes.Expression | None = None
+        if argument.annotation is not None:
+            # Annotations never affect behaviour; one the HIR cannot represent is dropped.
+            try:
+                annotation = self.expression(argument.annotation)
+            except HIRBuildError:
+                annotation = None
+        return nodes.Parameter(argument.arg, self.span(argument), value, kind, annotation)
 
     def module(self, tree: ast.Module) -> nodes.Module:
         body = tuple(self.statement(statement) for statement in tree.body)
