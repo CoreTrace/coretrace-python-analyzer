@@ -234,6 +234,7 @@ def test_advisory_files_are_passed_explicitly_and_feed_the_correlation(tmp_path:
 
     assert rules(findings) == [
         ("app.py", "exploitable-vulnerability", 4),
+        ("app.py", "insecure-deserialization", 4),
         ("app.py", "reachable-vulnerability", 4),
         ("requirements.txt", "vulnerable-dependency", 1),
     ]
@@ -326,7 +327,8 @@ def test_policies_silence_accepted_advisories_in_a_project(tmp_path: Path) -> No
         },
     )
 
-    assert engine.analyze_project(root, [PLUGINS]).findings == ()
+    # The accepted advisory is silenced; the deserialization itself is not an advisory.
+    assert [f.rule_id for f in engine.analyze_project(root, [PLUGINS]).findings] == ["insecure-deserialization"]
 
 
 def test_policy_plugin_is_shipped_and_sees_the_policy() -> None:

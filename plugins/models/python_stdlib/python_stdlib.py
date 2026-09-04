@@ -18,7 +18,8 @@ class PythonStdlibModels(ModelPlugin):
     models: ClassVar[tuple[Model, ...]] = (
         Source(_sym("builtins.input"), "stdin"),
         Source(_sym("sys.stdin"), "stdin"),
-        Source(_sym("sys.argv"), "argv"),
+        # A command-line tool is expected to open the paths it is given.
+        Source(_sym("sys.argv"), "argv", TaintKind.ALL & ~TaintKind.PATH),
         Source(_sym("os.environ"), "environment"),
         Source(_sym("subprocess.run.stdout"), "process-output"),
         Source(_sym("subprocess.check_output"), "process-output"),
@@ -40,12 +41,27 @@ class PythonStdlibModels(ModelPlugin):
         Sink(_sym("shutil.rmtree"), TaintKind.PATH),
         Sink(_sym("urllib.request.urlopen"), TaintKind.SSRF),
         *(
-            Sink(_sym(f"sqlite3.connect{cursor}.{method}"), TaintKind.SQL | TaintKind.CREDENTIAL)
+            Sink(
+                _sym(f"sqlite3.connect{cursor}.{method}"),
+                TaintKind.SQL | TaintKind.CREDENTIAL,
+                ((TaintKind.SQL, (0,)),),
+            )
             for cursor in ("", ".cursor")
             for method in ("execute", "executemany", "executescript")
         ),
         Sanitizer(_sym("shlex.quote"), TaintKind.COMMAND),
         Sanitizer(_sym("html.escape"), TaintKind.HTML),
+        Sink(_sym("pickle.loads"), TaintKind.DESERIALIZATION),
+        Sink(_sym("pickle.load"), TaintKind.DESERIALIZATION),
+        Sink(_sym("pickle.Unpickler"), TaintKind.DESERIALIZATION),
+        Sink(_sym("marshal.loads"), TaintKind.DESERIALIZATION),
+        Sink(_sym("marshal.load"), TaintKind.DESERIALIZATION),
+        Sink(_sym("shelve.open"), TaintKind.DESERIALIZATION),
+        Sink(_sym("dill.loads"), TaintKind.DESERIALIZATION),
+        Sink(_sym("jsonpickle.decode"), TaintKind.DESERIALIZATION),
+        Sink(_sym("yaml.load"), TaintKind.DESERIALIZATION),
+        Sink(_sym("yaml.unsafe_load"), TaintKind.DESERIALIZATION),
+        Sink(_sym("yaml.full_load"), TaintKind.DESERIALIZATION),
         Sanitizer(_sym("os.path.basename"), TaintKind.PATH),
         Validator(_sym("re.fullmatch"), argument=1),
         Validator(_sym("re.compile.fullmatch")),

@@ -1,0 +1,9 @@
+name = "open-redirect"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows", "findings.refutation"]
+provides = ["vulnerability.open-redirect"]
+
+[entrypoint]
+module = "open_redirect"
+class = "OpenRedirectPlugin"

@@ -1,0 +1,9 @@
+name = "cli-models"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["model.cli-sources"]
+
+[entrypoint]
+module = "cli_models"
+class = "CliModels"

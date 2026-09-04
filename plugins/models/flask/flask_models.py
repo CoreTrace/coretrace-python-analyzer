@@ -37,6 +37,8 @@ class FlaskModels(ModelPlugin):
         Sink(_sym("flask.Response"), TaintKind.HTML),
         Sink(_sym("flask.Markup"), TaintKind.HTML),
         Sink(_sym("flask.send_file"), TaintKind.PATH),
+        Sink(_sym("flask.redirect"), TaintKind.REDIRECT),
+        Sink(_sym("werkzeug.utils.redirect"), TaintKind.REDIRECT),
         Sink(_sym("flask.request.files.save"), TaintKind.PATH),
         Sanitizer(_sym("werkzeug.utils.secure_filename"), TaintKind.PATH),
         Sanitizer(_sym("flask.escape"), TaintKind.HTML),

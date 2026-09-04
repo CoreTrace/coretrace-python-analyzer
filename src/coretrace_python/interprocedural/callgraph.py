@@ -29,7 +29,7 @@ from coretrace_python.ir.model import (
 )
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.semantic.scopes import BindingKind, ScopeAnalysis, ScopeTable
-from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
 from coretrace_python.source import SourceSpan
 
 
@@ -108,13 +108,15 @@ class CallGraph:
         return self._callers.get(name, frozenset())
 
 
-def derive_symbols(function: FunctionIR) -> dict[Value, SymbolId]:
+def derive_symbols(
+    function: FunctionIR, initial: Mapping[Value, SymbolId] | None = None
+) -> dict[Value, SymbolId]:
     """Symbols of values: ``Symbol`` results, attributes and items of symbol values,
     results of calling a symbol (``sqlite3.connect(p)`` denotes ``python.sqlite3.connect``)
-    and the values a ``with`` on such a result binds. Known functions and parameters
-    derive nothing."""
+    and the values a ``with`` on such a result binds. Known functions derive nothing;
+    parameters only through ``initial``, their annotated classes."""
 
-    symbols: dict[Value, SymbolId] = {}
+    symbols: dict[Value, SymbolId] = dict(initial or {})
     changed = True
     while changed:
         changed = False
@@ -143,12 +145,15 @@ def derive_symbols(function: FunctionIR) -> dict[Value, SymbolId]:
 
 
 def resolve_targets(
-    function: FunctionIR, scopes: ScopeTable, known: frozenset[str]
+    function: FunctionIR,
+    scopes: ScopeTable,
+    known: frozenset[str],
+    parameters: Mapping[Value, SymbolId] | None = None,
 ) -> tuple[dict[Value, Target], dict[Value, SymbolId]]:
     """Map every callee value of ``function`` to its target, and every symbol value."""
 
     module = scopes.module_scope
-    symbols = derive_symbols(function)
+    symbols = derive_symbols(function, parameters)
     targets: dict[Value, Target] = {
         value: ExternalSymbol(symbol) for value, symbol in symbols.items()
     }
@@ -165,13 +170,31 @@ def resolve_targets(
     return targets, symbols
 
 
+def _annotated(
+    function: nodes.Function, ssa: FunctionIR, scopes: ScopeTable, table: SymbolTable
+) -> dict[Value, SymbolId]:
+    """Parameters annotated with a resolvable class denote that class (``db: Session``)."""
+
+    scope = scopes.scope_for(function)
+    enclosing = scope.parent if scope.parent is not None else scope.id
+    found: dict[Value, SymbolId] = {}
+    for value, parameter in zip(ssa.parameters, function.parameters, strict=True):
+        if parameter.annotation is None:
+            continue
+        symbol = table.resolve_expression(enclosing, parameter.annotation)
+        if symbol is not None:
+            found[value] = symbol
+    return found
+
+
 class CallGraphAnalysis(Analysis[CallGraph]):
     name: ClassVar[str] = "interprocedural.callgraph"
-    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis, ScopeAnalysis})
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis, ScopeAnalysis, SymbolAnalysis})
 
     @classmethod
     def compute(cls, ctx: AnalysisContext) -> CallGraph:
         scopes = ctx.get(ScopeAnalysis)
+        table = ctx.get(SymbolAnalysis)
         definitions: dict[str, nodes.Function] = {}
         for function in analyzable_functions(ctx.module):
             # A property and its setter, or a redefinition, share a qualified name; each
@@ -195,7 +218,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 unsupported.add(name)
                 sites[name] = ()
                 continue
-            targets, symbols[name] = resolve_targets(ssa, scopes, known)
+            targets, symbols[name] = resolve_targets(ssa, scopes, known, _annotated(function, ssa, scopes, table))
             found: list[CallSite] = []
             for block in ssa.blocks:
                 for instruction in block.instructions:

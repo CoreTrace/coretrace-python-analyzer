@@ -279,7 +279,12 @@ class _TaintProblem(DataflowProblem[State]):
             if project is not None:
                 through = target.symbol.canonical_name.removeprefix("python.")
                 return self.known(project, through, arguments, keywords, everything, call, flows, state)
-            return self.external(target.symbol, everything, call, state, flows)
+            symbol = target.symbol
+            if not self.modelled(symbol):
+                # ``get_conn().execute`` derived ``app.database.get_conn.execute``; what
+                # the project function returns says what ``execute`` really is.
+                symbol = self.returned_symbol(call) or symbol
+            return self.external(symbol, everything, call, state, flows)
         if isinstance(target, KnownFunction):
             summary = self.summaries.summary(target.name)
             return self.known(summary, target.name, arguments, keywords, everything, call, flows, state)
@@ -288,6 +293,13 @@ class _TaintProblem(DataflowProblem[State]):
             return self.external(returned, everything, call, state, flows)
         return everything.join(state.get(call.callee, Taint.none()))
 
+    def modelled(self, symbol: SymbolId) -> bool:
+        return (
+            self.models.sink(symbol) is not None
+            or self.models.sanitizer(symbol) is not None
+            or self.models.source_covering(symbol) is not None
+        )
+
     def external(
         self, symbol: SymbolId, everything: Taint, call: Call, state: Mapping[Key, Taint], flows: list[TaintFlow]
     ) -> Taint:
@@ -295,8 +307,10 @@ class _TaintProblem(DataflowProblem[State]):
 
         sink = self.models.sink(symbol)
         if sink is not None:
-            for argument in call.argument_values():
-                self.report(flows, sink, self.deep(argument, state), argument, call, None, None)
+            for position, argument in enumerate(call.arguments):
+                self.report(flows, sink, self.deep(argument, state), argument, call, None, None, position)
+            for argument in (*call.starred, *(value for _, value in call.keywords)):
+                self.report(flows, sink, self.deep(argument, state), argument, call, None, None, None)
         sanitizer = self.models.sanitizer(symbol)
         if sanitizer is not None:
             return everything.without(sanitizer.kinds)
@@ -329,11 +343,7 @@ class _TaintProblem(DataflowProblem[State]):
         # function may return, the one the models know about is the one that matters.
         for returned in sorted(summary.return_externals, key=str):
             candidate = returned.attribute(callee.attribute)
-            if (
-                self.models.sink(candidate) is not None
-                or self.models.sanitizer(candidate) is not None
-                or self.models.source_covering(candidate) is not None
-            ):
+            if self.modelled(candidate):
                 return candidate
         return None
 
@@ -369,10 +379,11 @@ class _TaintProblem(DataflowProblem[State]):
             sink = self.models.sink(reached.symbol)
             if sink is None:
                 continue
-            for deps in (*reached.argument_dependencies, reached.keyword_dependencies):
+            positions: list[int | None] = [*range(len(reached.argument_dependencies)), None]
+            for position, deps in zip(positions, (*reached.argument_dependencies, reached.keyword_dependencies), strict=True):
                 taint, witness = mapped(deps)
                 if witness is not None:
-                    self.report(flows, sink, taint, witness, call, through, reached.location)
+                    self.report(flows, sink, taint, witness, call, through, reached.location, position)
         for mutation in summary.mutations:
             if mutation.parameter < len(call.arguments):
                 stored = mapped(mutation.dependencies)[0]
@@ -397,8 +408,9 @@ class _TaintProblem(DataflowProblem[State]):
         call: Call,
         through: str | None,
         sink_location: SourceSpan | None,
+        position: int | None = None,
     ) -> None:
-        reaching = taint.kinds & sink.kinds
+        reaching = taint.kinds & sink.kinds_at(position)
         if not reaching:
             return
         for source in sorted(taint.sources, key=lambda s: str(s.symbol)):
@@ -432,6 +444,17 @@ def factory_instances(
     found: dict[str, tuple[SymbolId, ...]] = {}
     module_scope = scopes.module_scope.id
     for statement in module.body:
+        if isinstance(statement, nodes.Function) and statement.decorators:
+            # ``@click.group() def cli``: the function is what its decorator returns, so
+            # ``@cli.command()`` resolves to ``click.group.command``.
+            decorated = tuple(
+                s
+                for d in statement.decorators
+                if (s := symbols.resolve_expression(module_scope, d)) is not None
+            )
+            if decorated:
+                found[statement.name] = decorated
+            continue
         if not (
             isinstance(statement, nodes.Assign)
             and isinstance(statement.target, nodes.Name)

@@ -28,7 +28,9 @@ class TaintKind(Flag):
     SSRF = auto()
     CODE = auto()
     ADVISORY = auto()
-    ALL = SQL | COMMAND | HTML | PATH | SSRF | CODE | ADVISORY
+    DESERIALIZATION = auto()
+    REDIRECT = auto()
+    ALL = SQL | COMMAND | HTML | PATH | SSRF | CODE | ADVISORY | DESERIALIZATION | REDIRECT
     # Outside ALL on purpose: only credential-named parameters carry it, so a database
     # write reached by ordinary input is not a plaintext credential.
     CREDENTIAL = auto()
@@ -49,10 +51,23 @@ class Source:
 
 @dataclass(frozen=True)
 class Sink:
-    """A callable whose arguments must not carry the given taint kinds."""
+    """A callable whose arguments must not carry the given taint kinds. ``positions``
+    restricts some kinds to argument positions: a SQL statement is the first argument
+    of ``execute``, its parameter tuple is not a statement."""
 
     symbol: SymbolId
     kinds: TaintKind
+    positions: tuple[tuple[TaintKind, tuple[int, ...]], ...] = ()
+
+    def kinds_at(self, position: int | None) -> TaintKind:
+        """The kinds that must not reach the argument at ``position`` (``None`` for a
+        keyword or starred argument)."""
+
+        kinds = self.kinds
+        for restricted, allowed in self.positions:
+            if position is None or position not in allowed:
+                kinds &= ~restricted
+        return kinds
 
 
 @dataclass(frozen=True)
@@ -191,7 +206,9 @@ class ModelTable:
         for sink in sinks:
             current = merged.get(sink.symbol)
             merged[sink.symbol] = (
-                Sink(sink.symbol, current.kinds | sink.kinds) if current is not None else sink
+                Sink(sink.symbol, current.kinds | sink.kinds, current.positions + sink.positions)
+                if current is not None
+                else sink
             )
         return ModelTable(
             self.sources,

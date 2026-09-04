@@ -161,6 +161,7 @@ def test_parallel_analysis_serves_project_plugins_and_correlation(tmp_path: Path
     assert rules(findings) == [
         ("config.py", "reachable-vulnerability", 4),
         ("main.py", "exploitable-vulnerability", 4),
+        ("main.py", "insecure-deserialization", 4),
         ("requirements.txt", "vulnerable-dependency", 1),
     ]
 

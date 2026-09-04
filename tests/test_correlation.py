@@ -110,6 +110,7 @@ def test_tainted_call_to_an_affected_api_is_exploitable(tmp_path: Path) -> None:
 
     assert rules(findings) == [
         ("app.py", "exploitable-vulnerability", 4),
+        ("app.py", "insecure-deserialization", 4),
         ("app.py", "reachable-vulnerability", 4),
         ("requirements.txt", "vulnerable-dependency", 1),
     ]
@@ -141,7 +142,8 @@ def test_safe_versions_produce_nothing(tmp_path: Path) -> None:
         tmp_path,
         {"requirements.txt": "pyyaml==6.0\n", "app.py": "import yaml\n\ndef load():\n    return yaml.load(input())\n"},
     )
-    assert engine.analyze_project(root, [PLUGINS]).findings == ()
+    # No advisory applies; untrusted ``yaml.load`` stays an insecure deserialization.
+    assert [f.rule_id for f in engine.analyze_project(root, [PLUGINS]).findings] == ["insecure-deserialization"]
 
 
 def test_correlation_crosses_functions_and_files(tmp_path: Path) -> None:
@@ -211,7 +213,7 @@ def test_single_files_have_no_dependency_context() -> None:
         SourceManager().add_source("one.py", "import yaml\n\ndef load():\n    return yaml.load(input())\n"),
         [PLUGINS],
     )
-    assert findings == ()
+    assert [f.rule_id for f in findings] == ["insecure-deserialization"]
 
 
 def test_correlate_is_a_pure_function() -> None:
