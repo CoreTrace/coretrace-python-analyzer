@@ -106,6 +106,12 @@ detectors consume the shared taint result, so adding a framework model makes eve
 detector aware of it. Taint follows calls between functions of the same module through
 function summaries: a tainted argument passed to a helper that reaches a sink is reported
 at the call site, and a helper returning attacker-controlled data taints its result.
+Taint also follows objects, not only values: a coarse heap abstraction gives every
+allocation site one abstract object with an `elements` and an `attributes` location, so
+`b = a; b.append(user_input); sink(a[0])`, dictionary and attribute stores, `extend`,
+`insert`, `add`, `update` and iteration all carry taint through the container. Function
+summaries record the parameters a function mutates and the module globals it touches, so
+a helper that fills a list taints the caller's list, across files too.
 Each flow is then judged: a dominating guard that proves the value safe (`isdigit()`,
 membership in a constant allowlist, equality with a constant) refutes it and it is not
 reported; a guard that only mentions the value makes it a hotspot with medium confidence;
