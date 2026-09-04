@@ -22,7 +22,8 @@ PARSER_MODULES = {"ast", "tree_sitter", "tree_sitter_python"}
 
 # Dependency direction of the pipeline (§2, §37). A package may import only packages
 # with a strictly lower layer number, or itself. ``analysis`` is infrastructure every
-# provider subclasses, so it sits below the analyses it manages (§8).
+# provider subclasses, so it sits below the analyses it manages (§8). Function summaries
+# consume the heap domain (§22), so ``interprocedural`` sits above ``abstract``.
 LAYERS = {
     "source": 0,
     "hir": 1,
@@ -33,12 +34,12 @@ LAYERS = {
     "ir": 5,
     "dataflow": 6,
     "abstract": 7,
-    "interprocedural": 7,
-    "taint": 8,
-    "findings": 9,
-    "dependency": 10,
-    "plugins": 11,
-    "reporters": 12,
+    "interprocedural": 8,
+    "taint": 9,
+    "findings": 10,
+    "dependency": 11,
+    "plugins": 12,
+    "reporters": 13,
 }
 
 # Top-level modules that wire the pipeline together and may import any layer.
