@@ -24,6 +24,16 @@ python -m pytest
 python -m ruff check .
 ```
 
+The non-regression suite analyses the public repositories pinned in
+[`tests/regression/repositories.toml`](tests/regression/repositories.toml) and compares
+findings and coverage with the snapshots in `tests/regression/expected/`. It clones on
+first use, needs the network and runs in its own CI job:
+
+```bash
+python -m pytest -m regression
+CORETRACE_REGRESSION_UPDATE=1 python -m pytest -m regression   # record an intended change
+```
+
 ## Install
 
 ```bash

@@ -1,0 +1,83 @@
+# Public repositories analysed by the non-regression suite, pinned by commit. Each one is
+# checked out at that commit, analysed with the bundled plugins and compared with the
+# snapshot in expected/<name>.json. See tests/test_regression.py.
+
+[[repository]]
+name = "Chatbot"
+url = "https://github.com/ahmadfaizalbh/Chatbot.git"
+commit = "6e78f7c071172fdf8f5d8880aa7903415b0e7463"
+
+[[repository]]
+name = "DjangoGoat"
+url = "https://github.com/red-and-black/DjangoGoat.git"
+commit = "b5123eba8c002adb4f5513197e7e69a724385d29"
+
+[[repository]]
+name = "Flask-Image-Editing-Website"
+url = "https://github.com/vickytilotia/Flask-Image-Editing-Website.git"
+commit = "9e7d0f46e778cbe6901643a1555be4b3ff77f4db"
+
+[[repository]]
+name = "InsecureGram"
+url = "https://github.com/Osama2012/InsecureGram.git"
+commit = "e61786fa2d8ddc2ed364809d52f566f459c29b19"
+
+[[repository]]
+name = "MiniBookApiServer"
+url = "https://github.com/ViniciusFM/MiniBookApiServer.git"
+commit = "e72af68bf4b0a0799cc39ffaa58b5caea5f647bf"
+
+[[repository]]
+name = "my_gdb"
+url = "https://github.com/thedreamteam240/my_gdb.git"
+commit = "d158faf012a602df36698bd8d289ddb3eb3bc691"
+
+[[repository]]
+name = "network-topologer"
+url = "https://github.com/clement-antoine-xavier/network-topologer.git"
+commit = "9b1a1fb62e33affba24090f62a1bd387e10a4b78"
+
+[[repository]]
+name = "NPL-IA"
+url = "https://github.com/SizzleUnrlsd/NPL-IA.git"
+commit = "eb85aecb7f9bd44c1d1ad35af5871bd13e5f3a8d"
+
+[[repository]]
+name = "Pylinkit"
+url = "https://github.com/SizzleUnrlsd/Pylinkit.git"
+commit = "aa5b5737c1de745bc77e6a8dd76c0f33edacb106"
+
+[[repository]]
+name = "Spam-Detection-Project"
+url = "https://github.com/Vatshayan/Spam-Detection-Project.git"
+commit = "7defac6bb13616e525bc34a65dbcf2f21e53693f"
+
+[[repository]]
+name = "tag-collector-server"
+url = "https://github.com/arribada/tag-collector-server.git"
+commit = "78f72776eb96e4511e8d327689cbd9c3bcf521c3"
+
+[[repository]]
+name = "uploadbox-cloud-storage-solution"
+url = "https://github.com/lakshman-chaudhary/uploadbox-cloud-storage-solution.git"
+commit = "6263b58d4295e71f705b2f6d2691732a6d734fe7"
+
+[[repository]]
+name = "VideoSubtitles"
+url = "https://github.com/SizzleUnrlsd/VideoSubtitles.git"
+commit = "37243e8631c14f4aa00e0c0014de471e7845255c"
+
+[[repository]]
+name = "Vulnerable_fastapi"
+url = "https://github.com/Thalin19/Vulnerable_fastapi.git"
+commit = "0028a3dc3d5646f4f6a098374f59e5dbe6a41303"
+
+[[repository]]
+name = "yt-fts"
+url = "https://github.com/NotJoeMartinez/yt-fts.git"
+commit = "7fbc0088f30672b6fbfe2ea7351fa42bafe1f886"
+
+# Intentionally vulnerable Flask fixture kept in the tree.
+[[repository]]
+name = "vulnerable-flask"
+path = "fixtures/vulnerable-flask"

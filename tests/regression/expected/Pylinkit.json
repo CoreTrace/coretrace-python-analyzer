@@ -1,0 +1,22 @@
+{
+  "coverage": {
+    "files": 11,
+    "files_analysed": 11,
+    "functions": 213,
+    "functions_analysed": 213
+  },
+  "findings": [
+    {
+      "file": "pylinkit/gui.py",
+      "line": 525,
+      "rule": "hardcoded-secret",
+      "function": "_sync_pass_predict"
+    },
+    {
+      "file": "pylinkit/gui.py",
+      "line": 526,
+      "rule": "missing-timeout",
+      "function": "_sync_pass_predict"
+    }
+  ]
+}

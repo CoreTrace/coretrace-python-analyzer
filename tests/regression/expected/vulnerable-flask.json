@@ -1,0 +1,64 @@
+{
+  "coverage": {
+    "files": 2,
+    "files_analysed": 2,
+    "functions": 12,
+    "functions_analysed": 12
+  },
+  "findings": [
+    {
+      "file": "app.py",
+      "line": 20,
+      "rule": "hardcoded-secret",
+      "function": null
+    },
+    {
+      "file": "app.py",
+      "line": 21,
+      "rule": "hardcoded-secret",
+      "function": null
+    },
+    {
+      "file": "app.py",
+      "line": 44,
+      "rule": "command-injection",
+      "function": "command_injection"
+    },
+    {
+      "file": "app.py",
+      "line": 50,
+      "rule": "sql-injection",
+      "function": "sql_injection"
+    },
+    {
+      "file": "app.py",
+      "line": 55,
+      "rule": "path-traversal",
+      "function": "path_traversal"
+    },
+    {
+      "file": "app.py",
+      "line": 60,
+      "rule": "ssrf",
+      "function": "server_side_request_forgery"
+    },
+    {
+      "file": "app.py",
+      "line": 66,
+      "rule": "xss",
+      "function": "cross_site_scripting"
+    },
+    {
+      "file": "app.py",
+      "line": 71,
+      "rule": "dangerous-eval",
+      "function": "code_injection"
+    },
+    {
+      "file": "app.py",
+      "line": 78,
+      "rule": "weak-crypto",
+      "function": "weak_cryptography"
+    }
+  ]
+}

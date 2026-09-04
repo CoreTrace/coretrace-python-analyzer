@@ -1,0 +1,16 @@
+{
+  "coverage": {
+    "files": 1,
+    "files_analysed": 1,
+    "functions": 2,
+    "functions_analysed": 2
+  },
+  "findings": [
+    {
+      "file": "app.py",
+      "line": 50,
+      "rule": "debug-enabled",
+      "function": null
+    }
+  ]
+}

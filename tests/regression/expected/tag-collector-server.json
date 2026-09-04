@@ -1,0 +1,16 @@
+{
+  "coverage": {
+    "files": 5,
+    "files_analysed": 5,
+    "functions": 68,
+    "functions_analysed": 68
+  },
+  "findings": [
+    {
+      "file": "MQTT-client/influx_writer.py",
+      "line": 17,
+      "rule": "hardcoded-credential",
+      "function": "get_influx_client"
+    }
+  ]
+}

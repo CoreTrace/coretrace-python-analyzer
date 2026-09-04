@@ -1,0 +1,52 @@
+{
+  "coverage": {
+    "files": 2,
+    "files_analysed": 2,
+    "functions": 17,
+    "functions_analysed": 17
+  },
+  "findings": [
+    {
+      "file": "app.py",
+      "line": 10,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "app.py",
+      "line": 139,
+      "rule": "path-traversal",
+      "function": "upload_file"
+    },
+    {
+      "file": "app.py",
+      "line": 150,
+      "rule": "path-traversal",
+      "function": "download_file"
+    },
+    {
+      "file": "app.py",
+      "line": 161,
+      "rule": "path-traversal",
+      "function": "delete_file"
+    },
+    {
+      "file": "db.py",
+      "line": 24,
+      "rule": "plaintext-credential-storage",
+      "function": "register_user"
+    },
+    {
+      "file": "db.py",
+      "line": 31,
+      "rule": "plaintext-credential-storage",
+      "function": "login_user"
+    },
+    {
+      "file": "requirements.txt",
+      "line": 3,
+      "rule": "vulnerable-dependency",
+      "function": null
+    }
+  ]
+}
