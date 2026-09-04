@@ -14,6 +14,14 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import ClassVar
 
+from coretrace_python.abstract import (
+    ATTRIBUTES,
+    ELEMENTS,
+    HeapAnalysis,
+    HeapFacts,
+    HeapLocation,
+    mutated_by,
+)
 from coretrace_python.analysis import AnalysisContext, AnyAnalysis, FunctionAnalysis
 from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.dataflow import DataflowProblem, Direction, solve
@@ -36,9 +44,14 @@ from coretrace_python.ir.model import (
     Compare,
     ForNext,
     FunctionIR,
+    GetAttr,
+    GetItem,
+    GetIter,
     Instruction,
     Jump,
     Phi,
+    SetAttr,
+    SetItem,
     Symbol,
     Value,
 )
@@ -90,16 +103,24 @@ class TaintFlow:
     sink_location: SourceSpan | None = None
 
 
+Key = Value | HeapLocation
+
+
 class TaintFacts:
-    def __init__(self, taints: Mapping[Value, Taint], flows: tuple[TaintFlow, ...]) -> None:
+    def __init__(self, taints: Mapping[Key, Taint], flows: tuple[TaintFlow, ...]) -> None:
         self._taints = MappingProxyType(dict(taints))
         self.flows = flows
 
     def taint(self, value: Value) -> Taint:
         return self._taints.get(value, Taint.none())
 
+    def heap(self, location: HeapLocation) -> Taint:
+        """The taint stored in one field of one abstract object (§22)."""
 
-State = Mapping[Value, Taint]
+        return self._taints.get(location, Taint.none())
+
+
+State = Mapping[Key, Taint]
 
 
 class _TaintProblem(DataflowProblem[State]):
@@ -114,6 +135,7 @@ class _TaintProblem(DataflowProblem[State]):
         summaries: SummaryTable,
         parameters: Mapping[int, Source] | None = None,
         project: SummaryIndex | None = None,
+        heap: HeapFacts | None = None,
     ) -> None:
         self.name = name
         self.function = function
@@ -122,8 +144,39 @@ class _TaintProblem(DataflowProblem[State]):
         self.summaries = summaries
         self.parameters = parameters or {}
         self.project = project or SummaryIndex()
+        self.heap = heap or HeapFacts({})
         self.blocks = {block.id: block for block in function.blocks}
+        self.defs: dict[Value, Instruction] = {
+            i.result: i for block in function.blocks for i in block.instructions if i.result
+        }
         self.symbols = graph.symbols(name)
+
+    # ------------------------------------------------------------------ heap
+
+    def deep(self, value: Value, state: Mapping[Key, Taint]) -> Taint:
+        """The taint of a value and of the contents of the objects it points to."""
+
+        taint = state.get(value, Taint.none())
+        for field in (ELEMENTS, ATTRIBUTES):
+            for location in self.heap.locations(value, field):
+                taint = taint.join(state.get(location, Taint.none()))
+        return taint
+
+    def store(self, state: dict[Key, Taint], receiver: Value, field: str, taint: Taint) -> None:
+        for location in self.heap.locations(receiver, field):
+            state[location] = state.get(location, Taint.none()).join(taint)
+
+    def loaded(self, instruction: GetAttr | GetItem | GetIter, state: Mapping[Key, Taint]) -> Taint:
+        if isinstance(instruction, GetAttr):
+            receiver, field = instruction.object, ATTRIBUTES
+        elif isinstance(instruction, GetItem):
+            receiver, field = instruction.object, ELEMENTS
+        else:
+            receiver, field = instruction.iterable, ELEMENTS
+        taint = Taint.none()
+        for location in self.heap.locations(receiver, field):
+            taint = taint.join(state.get(location, Taint.none()))
+        return taint
 
     def initial(self) -> State:
         return MappingProxyType(
@@ -144,11 +197,15 @@ class _TaintProblem(DataflowProblem[State]):
         self, block: BasicBlock, incoming: Mapping[BlockId, State]
     ) -> tuple[State, list[TaintFlow]]:
         states = list(incoming.values())
-        state: dict[Value, Taint] = dict(states[0]) if states else {}
+        state: dict[Key, Taint] = dict(states[0]) if states else {}
         for other in states[1:]:
             state = dict(self.join(state, other))
         flows: list[TaintFlow] = []
         for instruction in block.instructions:
+            if isinstance(instruction, SetAttr):
+                self.store(state, instruction.object, ATTRIBUTES, state.get(instruction.value, Taint.none()))
+            elif isinstance(instruction, SetItem):
+                self.store(state, instruction.object, ELEMENTS, state.get(instruction.value, Taint.none()))
             if instruction.result is None:
                 continue
             if isinstance(instruction, Phi):
@@ -160,10 +217,12 @@ class _TaintProblem(DataflowProblem[State]):
                 taint = self.call(instruction, state, flows)
             else:
                 taint = self.instruction(instruction, state)
+                if isinstance(instruction, GetAttr | GetItem | GetIter):
+                    taint = taint.join(self.loaded(instruction, state))
             state[instruction.result] = taint
         terminator = block.terminator
         if isinstance(terminator, ForNext) and terminator.result is not None:
-            state[terminator.result] = state.get(terminator.iterator, Taint.none())
+            state[terminator.result] = self.deep(terminator.iterator, state)
         return MappingProxyType(state), flows
 
     def flow(self, cfg: CFG, block_id: BlockId, incoming: Mapping[BlockId, State]) -> Mapping[BlockId, State]:
@@ -181,7 +240,7 @@ class _TaintProblem(DataflowProblem[State]):
 
     # ------------------------------------------------------------------ transfer
 
-    def instruction(self, instruction: Instruction, state: Mapping[Value, Taint]) -> Taint:
+    def instruction(self, instruction: Instruction, state: Mapping[Key, Taint]) -> Taint:
         taint = Taint.none()
         symbol = self.symbols.get(instruction.result) if instruction.result else None
         if symbol is not None:
@@ -194,25 +253,28 @@ class _TaintProblem(DataflowProblem[State]):
             taint = taint.join(state.get(operand, Taint.none()))
         return taint
 
-    def call(self, call: Call, state: Mapping[Value, Taint], flows: list[TaintFlow]) -> Taint:
-        arguments = tuple(state.get(a, Taint.none()) for a in call.arguments)
+    def call(self, call: Call, state: dict[Key, Taint], flows: list[TaintFlow]) -> Taint:
+        arguments = tuple(self.deep(a, state) for a in call.arguments)
         keywords = Taint.none()
         for _, value in call.keywords:
-            keywords = keywords.join(state.get(value, Taint.none()))
+            keywords = keywords.join(self.deep(value, state))
         everything = keywords
         for taint in arguments:
             everything = everything.join(taint)
+        receiver = mutated_by(call, self.defs)
+        if receiver is not None:
+            self.store(state, receiver, ELEMENTS, everything)
 
         target = self.graph.target_at(self.name, call.location)
         if isinstance(target, ExternalSymbol):
             project = self.project.summary(target.symbol)
             if project is not None:
                 through = target.symbol.canonical_name.removeprefix("python.")
-                return self.known(project, through, arguments, keywords, everything, call, flows)
+                return self.known(project, through, arguments, keywords, everything, call, flows, state)
             sink = self.models.sink(target.symbol)
             if sink is not None:
                 for argument in call.argument_values():
-                    self.report(flows, sink, state.get(argument, Taint.none()), argument, call, None, None)
+                    self.report(flows, sink, self.deep(argument, state), argument, call, None, None)
             sanitizer = self.models.sanitizer(target.symbol)
             if sanitizer is not None:
                 return everything.without(sanitizer.kinds)
@@ -224,7 +286,7 @@ class _TaintProblem(DataflowProblem[State]):
             return everything
         if isinstance(target, KnownFunction):
             summary = self.summaries.summary(target.name)
-            return self.known(summary, target.name, arguments, keywords, everything, call, flows)
+            return self.known(summary, target.name, arguments, keywords, everything, call, flows, state)
         return everything.join(state.get(call.callee, Taint.none()))
 
     def known(
@@ -236,6 +298,7 @@ class _TaintProblem(DataflowProblem[State]):
         everything: Taint,
         call: Call,
         flows: list[TaintFlow],
+        state: dict[Key, Taint],
     ) -> Taint:
         """Flows and result taint of a call to a function whose summary is known."""
 
@@ -259,6 +322,14 @@ class _TaintProblem(DataflowProblem[State]):
                 taint, witness = mapped(deps)
                 if witness is not None:
                     self.report(flows, sink, taint, witness, call, through, reached.location)
+        for mutation in summary.mutations:
+            if mutation.parameter < len(call.arguments):
+                stored = mapped(mutation.dependencies)[0]
+                for symbol in sorted(mutation.externals, key=str):
+                    stored_source = self.models.source(symbol)
+                    if stored_source is not None:
+                        stored = stored.join(Taint(stored_source.kinds, frozenset({stored_source})))
+                self.store(state, call.arguments[mutation.parameter], mutation.field, stored)
         result = mapped(summary.return_dependencies)[0]
         for symbol in sorted(summary.return_externals, key=str):
             returned_source = self.models.source(symbol)
@@ -364,10 +435,11 @@ def propagate_taint(
     summaries: SummaryTable,
     parameters: Mapping[int, Source] | None = None,
     project: SummaryIndex | None = None,
+    heap: HeapFacts | None = None,
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project)
+    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap)
     solution = solve(problem, cfg)
-    taints: dict[Value, Taint] = {}
+    taints: dict[Key, Taint] = {}
     flows: list[TaintFlow] = []
     for block in function.blocks:
         if solution.reached(block.id):
@@ -391,6 +463,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             ScopeAnalysis,
             SymbolAnalysis,
             ProjectSummaries,
+            HeapAnalysis,
         }
     )
 
@@ -409,4 +482,5 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
                 function, ctx.module, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)
             ),
             ctx.get(ProjectSummaries),
+            ctx.get(HeapAnalysis, function),
         )

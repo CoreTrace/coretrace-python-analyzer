@@ -28,6 +28,7 @@ from coretrace_python.interprocedural import (
     FunctionSummary,
     KnownFunction,
     ModuleGraph,
+    Mutation,
     SummaryIndex,
     Target,
     UnknownTarget,
@@ -35,7 +36,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 1
+CACHE_FORMAT = 2
 
 
 @dataclass(frozen=True)
@@ -236,6 +237,16 @@ def _encode_summary(summary: FunctionSummary) -> dict[str, Any]:
         "external_calls": [_encode_call(call) for call in summary.external_calls],
         "unsupported": summary.unsupported,
         "return_externals": sorted(str(s) for s in summary.return_externals),
+        "mutations": [
+            {
+                "parameter": m.parameter,
+                "field": m.field,
+                "dependencies": sorted(m.dependencies),
+                "externals": sorted(str(s) for s in m.externals),
+            }
+            for m in summary.mutations
+        ],
+        "side_effects": sorted(summary.side_effects),
     }
 
 
@@ -247,6 +258,16 @@ def _decode_summary(data: Mapping[str, Any]) -> FunctionSummary:
         tuple(_decode_call(call) for call in data["external_calls"]),
         bool(data["unsupported"]),
         frozenset(SymbolId(_string(s)) for s in data["return_externals"]),
+        tuple(
+            Mutation(
+                _integer(m["parameter"]),
+                _string(m["field"]),
+                _indices(m["dependencies"]),
+                frozenset(SymbolId(_string(s)) for s in m["externals"]),
+            )
+            for m in data["mutations"]
+        ),
+        frozenset(_string(name) for name in data["side_effects"]),
     )
 
 

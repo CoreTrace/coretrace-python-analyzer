@@ -18,6 +18,7 @@ from coretrace_python.interprocedural.modulegraph import (
 from coretrace_python.interprocedural.summaries import (
     ExternalCall,
     FunctionSummary,
+    Mutation,
     ProjectSummaries,
     SummaryAnalysis,
     SummaryIndex,
@@ -33,6 +34,7 @@ __all__ = [
     "FunctionSummary",
     "KnownFunction",
     "ModuleGraph",
+    "Mutation",
     "ProjectSummaries",
     "SummaryAnalysis",
     "SummaryIndex",
