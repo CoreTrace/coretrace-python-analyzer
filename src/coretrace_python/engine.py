@@ -35,10 +35,17 @@ from coretrace_python.cache import (
 )
 from coretrace_python.cfg import CFGAnalysis, CFGError, DominanceAnalysis, PostDominanceAnalysis
 from coretrace_python.dependency import (
+    ADVISORY_FILE,
     DEPENDENCY_FILES,
+    POLICY_FILE,
     Advisory,
+    AdvisoryFileError,
     DependencyAnalysis,
     DependencyGraph,
+    Policy,
+    apply_policy,
+    load_advisories,
+    load_policy,
     parse_dependencies,
 )
 from coretrace_python.dependency.correlation import advisory_sinks, affected_symbols, correlate
@@ -217,13 +224,17 @@ def analyze_project(
     plugins: Sequence[Plugin] = (),
     cache: ProjectCache | None = None,
     jobs: int = 1,
+    advisory_files: Sequence[Path] = (),
+    policy_file: Path | None = None,
 ) -> ProjectAnalysis:
     """Analyse every Python file under ``root`` with a shared summary index (§21) and the
     dependency graph of its manifests (§26). ``plugins`` adds plugin instances to the
     ones discovered under ``plugin_roots``. With a ``cache``, modules whose key is
     unchanged since a previous run are served from it (§11). Modules are scheduled by
     strongly connected components of the module graph, imports first; with ``jobs``
-    above one the components of a wave are analysed in that many processes (§29)."""
+    above one the components of a wave are analysed in that many processes (§29).
+    ``advisory_files`` add to the ``advisories.json`` at ``root``; ``policy_file``
+    replaces the ``coretrace-policy.toml`` there."""
 
     if jobs < 1:
         raise ValueError("jobs must be at least 1")
@@ -232,6 +243,20 @@ def analyze_project(
     dependencies = resolve_dependencies(root, sources)
     for error in dependencies.errors:
         findings.append(_note("syntax-error", error, sources.add_source(error.split(":")[0], ""), 1))
+    advisory_paths = _advisory_paths(root, advisory_files)
+    file_advisories: list[Advisory] = []
+    for path in advisory_paths:
+        try:
+            file_advisories.extend(load_advisories(path))
+        except AdvisoryFileError as error:
+            findings.append(_note("syntax-error", str(error), sources.add_source(str(path), ""), 1))
+    policy = Policy()
+    policy_path = policy_file if policy_file is not None else root / POLICY_FILE
+    if policy_path.is_file():
+        try:
+            policy = load_policy(policy_path)
+        except AdvisoryFileError as error:
+            findings.append(_note("syntax-error", str(error), sources.add_source(str(policy_path), ""), 1))
     modules: dict[str, nodes.Module] = {}
     files: dict[str, SourceFile] = {}
     for source in discover_sources(root, sources):
@@ -246,7 +271,9 @@ def analyze_project(
     probe = next(iter(managers.values()), None) or _register_all(build_hir(sources.add_source("<empty>", "")))
     registry = load_plugins(plugin_roots, probe)
     all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *plugins)
-    advisories = tuple(a for plugin in all_plugins for a in plugin.advisories)
+    advisories = _merge_advisories(
+        (a for plugin in all_plugins for a in plugin.advisories), file_advisories
+    )
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
     for manager in managers.values():
@@ -305,6 +332,7 @@ def analyze_project(
                             tuple(plugins),
                             {name: _path_of(files[name]) for name in sorted(component)},
                             encode_index(_seed(results, graph, component)),
+                            advisory_paths,
                         ),
                     )
                     for component in pending
@@ -328,13 +356,38 @@ def analyze_project(
         for site in entry.sites:
             sites.setdefault(site.caller, []).append(site)
         call_graphs[name] = CallGraph({}, {f: tuple(s) for f, s in sites.items()}, frozenset())
-    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs)
+    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs, policy)
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
     return ProjectAnalysis(
-        graph, index, tuple(findings), dependencies, MappingProxyType(keys), reused, advisories
+        graph,
+        index,
+        apply_policy(policy, findings),
+        dependencies,
+        MappingProxyType(keys),
+        reused,
+        advisories,
     )
+
+
+def _merge_advisories(
+    from_plugins: Iterable[Advisory], from_files: Iterable[Advisory]
+) -> tuple[Advisory, ...]:
+    """One advisory per identifier, package and range; a local file's version wins over
+    a plugin's, since the file is the project's own curated feed."""
+
+    merged: dict[tuple[str, str, str], Advisory] = {}
+    for advisory in (*from_plugins, *from_files):
+        merged[(advisory.id, advisory.package, advisory.vulnerable)] = advisory
+    return tuple(merged.values())
+
+
+def _advisory_paths(root: Path, advisory_files: Sequence[Path]) -> tuple[Path, ...]:
+    """The advisory file at ``root``, when present, then the explicit ones."""
+
+    default = root / ADVISORY_FILE
+    return (*([default] if default.is_file() else []), *advisory_files)
 
 
 def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: frozenset[str]) -> SummaryIndex:
@@ -402,6 +455,7 @@ class _Batch:
     plugins: tuple[Plugin, ...]
     paths: Mapping[str, Path]
     seed: Mapping[str, Any]
+    advisory_paths: tuple[Path, ...] = ()
 
 
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
@@ -410,7 +464,15 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     registry = load_plugins(batch.plugin_roots, next(iter(managers.values())))
     all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *batch.plugins)
     dependencies = resolve_dependencies(batch.root, sources)
-    advisories = tuple(a for plugin in all_plugins for a in plugin.advisories)
+    file_advisories: list[Advisory] = []
+    for path in batch.advisory_paths:
+        try:
+            file_advisories.extend(load_advisories(path))
+        except AdvisoryFileError:
+            continue
+    advisories = _merge_advisories(
+        (a for plugin in all_plugins for a in plugin.advisories), file_advisories
+    )
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
     for manager in managers.values():
