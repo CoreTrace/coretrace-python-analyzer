@@ -149,9 +149,9 @@ def test_lambdas_have_their_own_scope_and_lower_to_function_values() -> None:
     assert isinstance(returned.value.keywords[0].value, Lambda)
 
     text = printed("def f(items, k):\n    return sorted(items, key=lambda x: x + k)\n")
-    assert 'make_function "<lambda>"' in text
+    assert 'make_function "lambda_2_30" [%1]' in text
     (made,) = [i for b in lower("def f():\n    return lambda: 1\n").blocks for i in b.instructions if isinstance(i, MakeFunction)]
-    assert made.name == "<lambda>"
+    assert made.name == "lambda_2_12"
 
 
 def test_calling_a_lambda_is_conservative() -> None:
@@ -160,7 +160,7 @@ def test_calling_a_lambda_is_conservative() -> None:
 
 def test_nested_functions_become_values_and_the_outer_function_is_analysed() -> None:
     module = hir("def outer():\n    def inner(x):\n        return x\n    os.system(inner(input()))\n")
-    assert [f.name for f in analyzable_functions(module)] == ["outer"]
+    assert [f.name for f in analyzable_functions(module)] == ["outer", "inner"]
 
     text = printed("def outer():\n    def inner(x):\n        return x\n    return inner\n")
     assert 'make_function "inner"' in text and 'store_local "inner"' in text
