@@ -58,6 +58,63 @@ class ModuleGraph:
     def importers(self, name: str) -> frozenset[str]:
         return frozenset(m for m, imported in self._imports.items() if name in imported)
 
+    def schedule(self) -> tuple[tuple[frozenset[str], ...], ...]:
+        """Strongly connected components in waves: every component of a wave imports,
+        outside itself, only components of earlier waves, so one wave can be analysed
+        in parallel and a component's imports are final when it starts (§29)."""
+
+        names = frozenset(self._sources)
+        edges = {name: sorted(m for m in self.imports(name) if m in names) for name in names}
+        component_of: dict[str, int] = {}
+        components: list[frozenset[str]] = []
+        index: dict[str, int] = {}
+        low: dict[str, int] = {}
+        stack: list[str] = []
+
+        def visit(name: str) -> None:
+            index[name] = low[name] = len(index)
+            stack.append(name)
+            for imported in edges[name]:
+                if imported not in index:
+                    visit(imported)
+                    low[name] = min(low[name], low[imported])
+                elif imported in stack:
+                    low[name] = min(low[name], index[imported])
+            if low[name] == index[name]:
+                members: list[str] = []
+                while True:
+                    member = stack.pop()
+                    members.append(member)
+                    if member == name:
+                        break
+                for member in members:
+                    component_of[member] = len(components)
+                components.append(frozenset(members))
+
+        for name in sorted(names):
+            if name not in index:
+                visit(name)
+
+        depth: dict[int, int] = {}
+
+        def level(component: int) -> int:
+            if component not in depth:
+                below = {
+                    component_of[imported]
+                    for member in components[component]
+                    for imported in edges[member]
+                    if component_of[imported] != component
+                }
+                depth[component] = 1 + max((level(c) for c in below), default=-1)
+            return depth[component]
+
+        waves: dict[int, list[frozenset[str]]] = {}
+        for number in range(len(components)):
+            waves.setdefault(level(number), []).append(components[number])
+        return tuple(
+            tuple(sorted(waves[wave], key=min)) for wave in sorted(waves)
+        )
+
 
 def build_module_graph(
     sources: Mapping[str, SourceFile],

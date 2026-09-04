@@ -52,6 +52,15 @@ serve the project plugins and its findings are reported as they were, so editing
 re-analyses that file and the modules that import it only. Entries are plain data, never
 code; an unreadable entry is simply recomputed.
 
+Modules are analysed by strongly connected components of the module graph, imports
+first, so a module starts with the final summaries of everything it imports and mutually
+importing modules are iterated together. `--jobs N` analyses the components of one wave
+in `N` processes; each worker rebuilds the configuration from the project root and the
+plugin roots and hands back summaries, call sites and findings as plain data, so the
+result is the same whatever `N`. Once a module's results are extracted, its intermediate
+representation and derived results are dropped and only its semantic tables stay in
+memory.
+
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
 repeated. The repository ships a first set under `plugins/`: security models for the
 standard library, Flask, FastAPI and SQLAlchemy (`models/`), taint detectors for SQL
