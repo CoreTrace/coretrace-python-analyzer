@@ -103,7 +103,7 @@ def test_every_repository_has_a_snapshot_and_vice_versa() -> None:
     assert MANIFEST.is_file(), f"{MANIFEST} is missing"
     names = {repository.name for repository in REPOSITORIES}
     assert names == {path.stem for path in EXPECTED.glob("*.json")}
-    assert len(names) >= 16
+    assert len(names) >= 13
     assert all(
         (r.path is None) != (r.url is None and r.commit is None) for r in REPOSITORIES
     )

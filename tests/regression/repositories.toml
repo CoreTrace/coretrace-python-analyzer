@@ -1,4 +1,5 @@
-# Public repositories analysed by the non-regression suite, pinned by commit. Each one is
+# Public repositories analysed by the non-regression suite, pinned by commit. Private
+# repositories cannot be listed: the CI job clones without credentials. Each one is
 # checked out at that commit, analysed with the bundled plugins and compared with the
 # snapshot in expected/<name>.json. See tests/test_regression.py.
 
@@ -43,29 +44,14 @@ url = "https://github.com/SizzleUnrlsd/NPL-IA.git"
 commit = "eb85aecb7f9bd44c1d1ad35af5871bd13e5f3a8d"
 
 [[repository]]
-name = "Pylinkit"
-url = "https://github.com/SizzleUnrlsd/Pylinkit.git"
-commit = "aa5b5737c1de745bc77e6a8dd76c0f33edacb106"
-
-[[repository]]
 name = "Spam-Detection-Project"
 url = "https://github.com/Vatshayan/Spam-Detection-Project.git"
 commit = "7defac6bb13616e525bc34a65dbcf2f21e53693f"
 
 [[repository]]
-name = "tag-collector-server"
-url = "https://github.com/arribada/tag-collector-server.git"
-commit = "78f72776eb96e4511e8d327689cbd9c3bcf521c3"
-
-[[repository]]
 name = "uploadbox-cloud-storage-solution"
 url = "https://github.com/lakshman-chaudhary/uploadbox-cloud-storage-solution.git"
 commit = "6263b58d4295e71f705b2f6d2691732a6d734fe7"
-
-[[repository]]
-name = "VideoSubtitles"
-url = "https://github.com/SizzleUnrlsd/VideoSubtitles.git"
-commit = "37243e8631c14f4aa00e0c0014de471e7845255c"
 
 [[repository]]
 name = "Vulnerable_fastapi"
