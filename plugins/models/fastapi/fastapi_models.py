@@ -22,4 +22,6 @@ class FastApiModels(ModelPlugin):
         *(EntryPoint(_sym(f"fastapi.APIRouter.{method}"), "http") for method in _METHODS),
         Sink(_sym("fastapi.responses.HTMLResponse"), TaintKind.HTML),
         Sink(_sym("fastapi.responses.FileResponse"), TaintKind.PATH),
+        Sink(_sym("fastapi.responses.RedirectResponse"), TaintKind.REDIRECT),
+        Sink(_sym("starlette.responses.RedirectResponse"), TaintKind.REDIRECT),
     )

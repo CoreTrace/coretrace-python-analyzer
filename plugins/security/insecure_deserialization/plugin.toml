@@ -1,0 +1,9 @@
+name = "insecure-deserialization"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows", "findings.refutation"]
+provides = ["vulnerability.insecure-deserialization"]
+
+[entrypoint]
+module = "insecure_deserialization"
+class = "InsecureDeserializationPlugin"
