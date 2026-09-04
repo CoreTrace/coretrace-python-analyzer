@@ -181,6 +181,11 @@ class AstHIRBuilder:
             if len(node.targets) != 1:
                 self.fail(node, "chained assignment is not supported yet")
             return nodes.Assign(self.target(node.targets[0]), self.expression(node.value), span)
+        if isinstance(node, ast.AnnAssign):
+            # The annotation never affects behaviour; a bare declaration does nothing.
+            if node.value is None:
+                return nodes.Pass(span)
+            return nodes.Assign(self.target(node.target), self.expression(node.value), span)
         if isinstance(node, ast.AugAssign):
             operator = _BINARY_OPERATORS.get(type(node.op))
             if operator is None:

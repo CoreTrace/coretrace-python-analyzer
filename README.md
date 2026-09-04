@@ -43,6 +43,17 @@ attacker-controlled data reaches such a call, the engine correlates the four fac
 one critical `exploitable-vulnerability` finding, judged like any other flow. The shipped
 advisory database is a small offline sample; a live OSV feed is future work.
 
+`--sbom PATH` writes a CycloneDX 1.5 bill of materials of the dependency graph, one
+component per requirement with its package URL, and the advisories affecting them as
+vulnerabilities. The shipped `secrets/` plugin scans every string literal of the Python
+sources for provider-specific secret formats (AWS, GitHub, Slack, Stripe, Google, private
+keys, JWTs, SendGrid, Twilio), for credential-like names bound to a real value
+(`password`, `token`, `api_key` and the like, placeholders excluded) and for opaque
+high-entropy tokens; one finding per literal, at high, medium and low confidence
+respectively, with a redacted preview and never the secret itself. Other plugins add
+providers by subclassing `SecretDetector` with their own patterns. Configuration files
+are not scanned.
+
 `--cache DIR` keeps the results of a directory check on disk, one JSON entry per module.
 The entry is keyed by the module's source, the engine and plugin versions, the plugin
 code, the security models, the advisories, the dependency graph and the keys of the
