@@ -42,7 +42,7 @@ LAYERS = {
 }
 
 # Top-level modules that wire the pipeline together and may import any layer.
-ROOT_MODULES = {"__init__", "__main__", "cli", "engine"}
+ROOT_MODULES = {"__init__", "__main__", "cache", "cli", "engine"}
 
 
 def package_files() -> Iterator[tuple[Path, str, str]]:
