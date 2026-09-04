@@ -4,10 +4,14 @@ Every taint flow gets a verdict. Walking the dominators of the sink block, each 
 whose one side alone reaches the sink fixes the truth of its condition there; the
 condition is then interpreted: string validators (``isdigit()`` and friends), membership
 in a constant allowlist and equality with a constant prove a value safe, ``and`` / ``or``
-and ``not`` combine as expected, and anything else that mentions the value is a guard
-that does not prove it. A flow is refuted when every tainted origin of the argument is
-proven safe or the sink is unreachable, a hotspot when an unproven guard mentions it, and
-a vulnerability otherwise.
+and ``not`` combine as expected, a ``Validator`` model names a callable whose truth proves
+one of its arguments, a numeric value (``abstract.ranges``) cannot inject, and anything
+else that mentions the value is a guard that does not prove it. A proof counts for an
+origin when every dependence path from that origin to the sink argument goes through a
+proven value. A flow is refuted when every tainted origin is proven safe or the sink is
+unreachable, a hotspot when it sits behind an ``AuthorizationGuard`` (a decorator or a
+dominating condition) or when an unproven guard mentions it, and a vulnerability
+otherwise.
 """
 
 from __future__ import annotations
@@ -18,10 +22,11 @@ from enum import Enum
 from types import MappingProxyType
 from typing import ClassVar
 
-from coretrace_python.abstract import ConstantPropagation
+from coretrace_python.abstract import ConstantPropagation, RangeAnalysis, RangeFacts
 from coretrace_python.analysis import AnalysisContext, AnyAnalysis, FunctionAnalysis
 from coretrace_python.cfg import CFG, BlockId, CFGAnalysis, DominanceAnalysis, DominatorTree
 from coretrace_python.hir import nodes
+from coretrace_python.interprocedural import CallGraphAnalysis
 from coretrace_python.ir.model import (
     BoolOp,
     Branch,
@@ -37,7 +42,16 @@ from coretrace_python.ir.model import (
     Value,
 )
 from coretrace_python.ir.ssa import SSAAnalysis
-from coretrace_python.taint import TaintAnalysis, TaintFacts, TaintFlow
+from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeTable
+from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
+from coretrace_python.taint import (
+    AuthorizationGuard,
+    ModelTable,
+    SecurityModelAnalysis,
+    TaintAnalysis,
+    TaintFacts,
+    TaintFlow,
+)
 
 VALIDATORS = frozenset(
     {"isdigit", "isnumeric", "isdecimal", "isalnum", "isalpha", "isidentifier", "isascii"}
@@ -82,12 +96,24 @@ class _Guard:
 
 class _Judge:
     def __init__(
-        self, function: FunctionIR, cfg: CFG, tree: DominatorTree, taint: TaintFacts
+        self,
+        function: FunctionIR,
+        cfg: CFG,
+        tree: DominatorTree,
+        taint: TaintFacts,
+        ranges: RangeFacts | None = None,
+        models: ModelTable | None = None,
+        symbols: Mapping[Value, SymbolId] | None = None,
+        authorization: AuthorizationGuard | None = None,
     ) -> None:
         self.function = function
         self.cfg = cfg
         self.tree = tree
         self.taint = taint
+        self.ranges = ranges or RangeFacts({})
+        self.models = models or ModelTable((), (), ())
+        self.symbols = symbols or {}
+        self.authorization = authorization
         self.blocks = {block.id: block for block in function.blocks}
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
@@ -124,6 +150,26 @@ class _Judge:
             if self.taint.taint(v)
             and not any(self.taint.taint(o) for o in self.closure(v))
         )
+
+    def covered(self, origin: Value, argument: Value, proven: Mapping[Value, str]) -> bool:
+        """Whether every dependence path from ``origin`` to ``argument`` goes through a
+        proven value, so nothing of the origin reaches the sink unproven."""
+
+        if origin in proven:
+            return True
+        seen: set[Value] = set()
+        pending = [argument]
+        while pending:
+            value = pending.pop()
+            if value in proven or value in seen:
+                continue
+            if value == origin:
+                return False
+            seen.add(value)
+            definition = self.defs.get(value)
+            if definition is not None:
+                pending.extend(definition.operands())
+        return True
 
     # ------------------------------------------------------------------ guards
 
@@ -190,7 +236,9 @@ class _Judge:
         if truth is None:
             mentioned = set(self.closure(condition)) | {condition}
         elif truth == when_true:
+            # The check proves ``tested``; whatever else it reads is merely mentioned.
             proven[tested] = reason
+            mentioned = set(self.closure(condition)) | {condition}
         return proven, mentioned
 
     def recognise(self, definition: Instruction | None) -> tuple[Value, str, bool] | None:
@@ -200,6 +248,11 @@ class _Judge:
             callee = self.defs.get(definition.callee)
             if isinstance(callee, GetAttr) and callee.attribute in VALIDATORS:
                 return callee.object, f"guarded by {callee.attribute}()", True
+        if isinstance(definition, Call):
+            symbol = self.symbols.get(definition.callee)
+            validator = self.models.validator(symbol) if symbol is not None else None
+            if validator is not None and validator.argument < len(definition.arguments):
+                return definition.arguments[validator.argument], f"validated by {symbol}", True
         if isinstance(definition, Compare):
             left, right = definition.left, definition.right
             if definition.operator in ("in", "not_in") and self.is_constant_collection(right):
@@ -222,6 +275,27 @@ class _Judge:
             return all(isinstance(self.defs.get(e), Constant) for e in definition.elements)
         return False
 
+    # ------------------------------------------------------------------ authorization
+
+    def authorized_by(self, condition: Value, truth: bool) -> AuthorizationGuard | None:
+        """The authorization guard this condition enforces when it is ``truth``."""
+
+        definition = self.defs.get(condition)
+        if isinstance(definition, UnaryOp) and definition.operator == "not":
+            return self.authorized_by(definition.operand, not truth)
+        if isinstance(definition, BoolOp) and (definition.operator == "and") == truth:
+            for value in definition.values:
+                found = self.authorized_by(value, truth)
+                if found is not None:
+                    return found
+            return None
+        if not truth:
+            return None
+        symbol = self.symbols.get(condition)
+        if symbol is None and isinstance(definition, Call):
+            symbol = self.symbols.get(definition.callee)
+        return self.models.authorization(symbol) if symbol is not None else None
+
     # ------------------------------------------------------------------ verdicts
 
     def judge(self, flow: TaintFlow, reachable: bool) -> Verdict:
@@ -229,25 +303,44 @@ class _Judge:
         if sink is None or not reachable:
             return Verdict(flow, Status.REFUTED, "sink unreachable by constant propagation")
         origins = self.origins(flow.argument)
-        chains = {
-            origin: frozenset(
-                w for w in self.closure(flow.argument) | {flow.argument}
-                if w == origin or origin in self.closure(w)
+        chain = self.closure(flow.argument) | {flow.argument}
+        proven: dict[Value, str] = {
+            value: f"numeric value within {interval}"
+            for value, interval in self.ranges.at(sink).items()
+            if value in chain
+        }
+        mentions: dict[Value, int] = {}
+        authorization: str | None = (
+            f"behind authorization ({self.authorization.label}) by decorator"
+            if self.authorization is not None
+            else None
+        )
+        for guard in self.guards(sink):
+            found, mentioned = self.interpret(guard.condition, guard.truth)
+            for value, reason in found.items():
+                if value in chain:
+                    proven.setdefault(value, reason)
+            for origin in origins:
+                if origin not in mentions and mentioned & (
+                    {origin} | {w for w in chain if origin in self.closure(w)}
+                ):
+                    mentions[origin] = guard.line
+            if authorization is None:
+                guard_model = self.authorized_by(guard.condition, guard.truth)
+                if guard_model is not None:
+                    authorization = f"behind authorization ({guard_model.label}) at line {guard.line}"
+        proofs = {
+            origin: sorted(
+                {reason for value, reason in proven.items() if value == origin or origin in self.closure(value)}
             )
             for origin in origins
+            if self.covered(origin, flow.argument, proven)
         }
-        proofs: dict[Value, str] = {}
-        mentions: dict[Value, int] = {}
-        for guard in self.guards(sink):
-            proven, mentioned = self.interpret(guard.condition, guard.truth)
-            for origin, chain in chains.items():
-                for value, reason in proven.items():
-                    if value in chain:
-                        proofs.setdefault(origin, reason)
-                if origin not in mentions and mentioned & chain:
-                    mentions[origin] = guard.line
         if origins and all(origin in proofs for origin in origins):
-            return Verdict(flow, Status.REFUTED, "; ".join(sorted(set(proofs.values()))))
+            reasons = sorted({reason for found in proofs.values() for reason in found})
+            return Verdict(flow, Status.REFUTED, "; ".join(reasons))
+        if authorization is not None:
+            return Verdict(flow, Status.HOTSPOT, authorization)
         unguarded = [origin for origin in origins if origin not in proofs and origin not in mentions]
         if not origins or unguarded:
             return Verdict(flow, Status.VULNERABILITY, "no guard on the path to the sink")
@@ -263,8 +356,12 @@ def judge_flows(
     tree: DominatorTree,
     taint: TaintFacts,
     reachable: frozenset[BlockId],
+    ranges: RangeFacts | None = None,
+    models: ModelTable | None = None,
+    symbols: Mapping[Value, SymbolId] | None = None,
+    authorization: AuthorizationGuard | None = None,
 ) -> Verdicts:
-    judge = _Judge(function, cfg, tree, taint)
+    judge = _Judge(function, cfg, tree, taint, ranges, models, symbols, authorization)
     verdicts = []
     for flow in taint.flows:
         sink = judge.sink_block(flow)
@@ -272,21 +369,53 @@ def judge_flows(
     return Verdicts(tuple(verdicts))
 
 
+def authorization_of(
+    function: nodes.Function, models: ModelTable, scopes: ScopeTable, symbols: SymbolTable
+) -> AuthorizationGuard | None:
+    """The authorization guard among the function's decorators, if any."""
+
+    scope = scopes.scope_for(function)
+    enclosing = scope.parent if scope.parent is not None else scope.id
+    for decorator in function.decorators:
+        symbol = symbols.resolve_expression(enclosing, decorator)
+        guard = models.authorization(symbol) if symbol is not None else None
+        if guard is not None:
+            return guard
+    return None
+
+
 class RefutationAnalysis(FunctionAnalysis[Verdicts]):
     name: ClassVar[str] = "findings.refutation"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {TaintAnalysis, DominanceAnalysis, ConstantPropagation, SSAAnalysis, CFGAnalysis}
+        {
+            TaintAnalysis,
+            DominanceAnalysis,
+            ConstantPropagation,
+            RangeAnalysis,
+            SSAAnalysis,
+            CFGAnalysis,
+            SecurityModelAnalysis,
+            CallGraphAnalysis,
+            ScopeAnalysis,
+            SymbolAnalysis,
+        }
     )
 
     @classmethod
     def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> Verdicts:
         ssa = ctx.get(SSAAnalysis, function)
         constants = ctx.get(ConstantPropagation, function)
+        graph = ctx.get(CallGraphAnalysis)
+        models = ctx.get(SecurityModelAnalysis)
         return judge_flows(
             ssa,
             ctx.get(CFGAnalysis, function),
             ctx.get(DominanceAnalysis, function),
             ctx.get(TaintAnalysis, function),
             frozenset(b.id for b in ssa.blocks if constants.reachable(b.id)),
+            ctx.get(RangeAnalysis, function),
+            models,
+            graph.symbols(graph.name_of(function)),
+            authorization_of(function, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)),
         )
 

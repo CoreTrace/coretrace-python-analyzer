@@ -77,7 +77,25 @@ class TypedParameter:
     kinds: TaintKind = TaintKind.ALL
 
 
-Model = Source | Sink | Sanitizer | EntryPoint | TypedParameter
+@dataclass(frozen=True)
+class Validator:
+    """A callable whose truth proves its ``argument`` safe (refutation evidence, §24)."""
+
+    symbol: SymbolId
+    kinds: TaintKind = TaintKind.ALL
+    argument: int = 0
+
+
+@dataclass(frozen=True)
+class AuthorizationGuard:
+    """A decorator, or a condition, that restricts who reaches the code behind it; a
+    flow behind one is a hotspot rather than a vulnerability (§24)."""
+
+    symbol: SymbolId
+    label: str
+
+
+Model = Source | Sink | Sanitizer | EntryPoint | TypedParameter | Validator | AuthorizationGuard
 
 
 @dataclass(frozen=True)
@@ -87,6 +105,8 @@ class ModelTable:
     sanitizers: tuple[Sanitizer, ...]
     entry_points: tuple[EntryPoint, ...] = ()
     typed_parameters: tuple[TypedParameter, ...] = ()
+    validators: tuple[Validator, ...] = ()
+    authorizations: tuple[AuthorizationGuard, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -98,6 +118,8 @@ class ModelTable:
             Sanitizer: {m.symbol: m for m in self.sanitizers},
             EntryPoint: {m.symbol: m for m in self.entry_points},
             TypedParameter: {m.symbol: m for m in self.typed_parameters},
+            Validator: {m.symbol: m for m in self.validators},
+            AuthorizationGuard: {m.symbol: m for m in self.authorizations},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
 
@@ -108,6 +130,14 @@ class ModelTable:
     def typed_parameter(self, symbol: SymbolId) -> TypedParameter | None:
         found = self._by_symbol[TypedParameter].get(symbol)
         return found if isinstance(found, TypedParameter) else None
+
+    def validator(self, symbol: SymbolId) -> Validator | None:
+        found = self._by_symbol[Validator].get(symbol)
+        return found if isinstance(found, Validator) else None
+
+    def authorization(self, symbol: SymbolId) -> AuthorizationGuard | None:
+        found = self._by_symbol[AuthorizationGuard].get(symbol)
+        return found if isinstance(found, AuthorizationGuard) else None
 
     def source(self, symbol: SymbolId) -> Source | None:
         found = self._by_symbol[Source].get(symbol)
@@ -143,6 +173,8 @@ class ModelTable:
             self.sanitizers,
             self.entry_points,
             self.typed_parameters,
+            self.validators,
+            self.authorizations,
         )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
@@ -173,6 +205,8 @@ class SecurityModelRegistry:
             sanitizers=tuple(m for m in models if isinstance(m, Sanitizer)),
             entry_points=tuple(m for m in models if isinstance(m, EntryPoint)),
             typed_parameters=tuple(m for m in models if isinstance(m, TypedParameter)),
+            validators=tuple(m for m in models if isinstance(m, Validator)),
+            authorizations=tuple(m for m in models if isinstance(m, AuthorizationGuard)),
         )
 
 

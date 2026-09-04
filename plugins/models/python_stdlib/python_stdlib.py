@@ -6,7 +6,7 @@ from typing import ClassVar
 
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import Model, Sanitizer, Sink, Source, TaintKind
+from coretrace_python.taint import Model, Sanitizer, Sink, Source, TaintKind, Validator
 
 
 def _sym(path: str) -> SymbolId:
@@ -43,4 +43,6 @@ class PythonStdlibModels(ModelPlugin):
         Sanitizer(_sym("shlex.quote"), TaintKind.COMMAND),
         Sanitizer(_sym("html.escape"), TaintKind.HTML),
         Sanitizer(_sym("os.path.basename"), TaintKind.PATH),
+        Validator(_sym("re.fullmatch"), argument=1),
+        Validator(_sym("re.compile.fullmatch")),
     )

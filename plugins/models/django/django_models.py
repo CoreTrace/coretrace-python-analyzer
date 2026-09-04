@@ -13,7 +13,15 @@ from typing import ClassVar
 
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import EntryPoint, Model, Sanitizer, Sink, TaintKind, TypedParameter
+from coretrace_python.taint import (
+    AuthorizationGuard,
+    EntryPoint,
+    Model,
+    Sanitizer,
+    Sink,
+    TaintKind,
+    TypedParameter,
+)
 
 _REQUEST_CLASSES = (
     "django.http.HttpRequest",
@@ -59,6 +67,14 @@ _VIEW_DECORATORS = (
     "rest_framework.decorators.action",
 )
 
+_AUTHORIZATION_DECORATORS = (
+    ("django.contrib.auth.decorators.login_required", "login"),
+    ("django.contrib.auth.decorators.permission_required", "permission"),
+    ("django.contrib.auth.decorators.user_passes_test", "test"),
+    ("django.contrib.admin.views.decorators.staff_member_required", "staff"),
+    ("rest_framework.decorators.permission_classes", "permission"),
+)
+
 
 def _sym(path: str) -> SymbolId:
     return SymbolId(f"python.{path}")
@@ -83,4 +99,5 @@ class DjangoModels(ModelPlugin):
         Sink(_sym("django.http.FileResponse"), TaintKind.PATH),
         Sanitizer(_sym("django.utils.html.escape"), TaintKind.HTML),
         Sanitizer(_sym("django.utils.html.conditional_escape"), TaintKind.HTML),
+        *(AuthorizationGuard(_sym(decorator), label) for decorator, label in _AUTHORIZATION_DECORATORS),
     )

@@ -15,7 +15,7 @@ from types import MappingProxyType
 from typing import Any, ClassVar
 
 from coretrace_python import __version__
-from coretrace_python.abstract import ConstantPropagation
+from coretrace_python.abstract import ConstantPropagation, RangeAnalysis
 from coretrace_python.analysis import (
     AnalysisContext,
     AnalysisManager,
@@ -101,6 +101,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     SSAAnalysis,
     DefUseAnalysis,
     ConstantPropagation,
+    RangeAnalysis,
     CallGraphAnalysis,
     SummaryAnalysis,
     ProjectSummaries,

@@ -80,7 +80,14 @@ at the call site, and a helper returning attacker-controlled data taints its res
 Each flow is then judged: a dominating guard that proves the value safe (`isdigit()`,
 membership in a constant allowlist, equality with a constant) refutes it and it is not
 reported; a guard that only mentions the value makes it a hotspot with medium confidence;
-the verdict and its evidence are in the finding metadata. `--format` is `text` (default), `json` or `sarif`. Exit status is 0 when nothing
+the verdict and its evidence are in the finding metadata. Three more kinds of evidence
+apply: a value proven numeric by the range analysis (`int()`, `len()`, arithmetic,
+bounded by the comparisons on the path) cannot inject; a `Validator` model names a
+callable whose truth proves one of its arguments, such as `re.fullmatch`; and an
+`AuthorizationGuard` model names a decorator or a condition that restricts who reaches
+the code, such as `login_required`, behind which a flow is a hotspot rather than a
+vulnerability. Plugins contribute validators and authorization guards through their
+models, like sources and sinks. `--format` is `text` (default), `json` or `sarif`. Exit status is 0 when nothing
 was found, 1 when findings were reported, and 2 on a usage or analysis error.
 
 ## Emit PyIR
