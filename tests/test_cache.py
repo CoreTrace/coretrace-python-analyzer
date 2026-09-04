@@ -37,7 +37,7 @@ def require_cache() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 HELPERS = "import os\n\ndef execute(command):\n    os.system(command)\n"
 MAIN = "from app.helpers import execute\n\ndef run():\n    execute(input())\n"

@@ -50,7 +50,7 @@ def require_closures() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def hir(text: str) -> nodes.Module:

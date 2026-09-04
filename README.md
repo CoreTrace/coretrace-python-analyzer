@@ -24,11 +24,23 @@ python -m pytest
 python -m ruff check .
 ```
 
-## Check a file with plugins
+## Install
 
 ```bash
-coretrace-python-analyzer --check app.py --plugins plugins/
-coretrace-python-analyzer --check src/ --plugins plugins/ --format sarif > report.sarif
+pip install coretrace-python-analyzer
+```
+
+The package has no runtime dependency and ships its plugins: security models for the
+standard library and the supported frameworks, the taint detectors, the secret scanners
+and the dependency checks are loaded by default. `--plugins DIR` adds a directory of your
+own plugins on top, `--no-bundled-plugins` runs without the shipped ones.
+
+## Check a file or a project
+
+```bash
+coretrace-python-analyzer --check app.py
+coretrace-python-analyzer --check src/ --format sarif > report.sarif
+coretrace-python-analyzer --check src/ --plugins my_plugins/ --cache .coretrace --jobs 4
 ```
 
 Given a directory, every Python file below it is analysed as one project: modules are
@@ -95,7 +107,7 @@ representation and derived results are dropped and only its semantic tables stay
 memory.
 
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
-repeated. The repository ships a first set under `plugins/`: security models for the
+repeated. The package ships its set under `coretrace_python/bundled/`: security models for the
 standard library, Flask, FastAPI, Django, SQLAlchemy, the Requests and httpx clients, and the
 click and Typer command-line frameworks (`models/`), taint detectors for SQL
 injection, command injection, path traversal, SSRF, XSS, insecure deserialization, open

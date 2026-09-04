@@ -37,7 +37,7 @@ def require_correlation() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 VULNERABLE = "pyyaml==5.3.1\n"
 

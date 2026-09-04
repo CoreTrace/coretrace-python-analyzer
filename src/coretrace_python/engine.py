@@ -111,6 +111,10 @@ from coretrace_python.taint import (
 
 TOOL_NAME = "coretrace-python-analyzer"
 
+# The plugins shipped with the package: models, detectors, secrets and dependency
+# checks. They are loaded by default; ``--plugins`` adds directories on top.
+BUNDLED_PLUGINS = Path(__file__).resolve().parent / "bundled"
+
 ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     *SEMANTIC_ANALYSES,
     CFGAnalysis,
@@ -217,10 +221,15 @@ def _routes_of(manager: AnalysisManager) -> dict[SymbolId, EntryPoint]:
 
 
 def load_plugins(plugin_roots: Sequence[Path], manager: AnalysisManager) -> PluginRegistry:
+    """Every plugin below the roots, each manifest loaded once even when roots overlap."""
+
     registry = PluginRegistry()
+    seen: set[Path] = set()
     for root in plugin_roots:
         for loaded in discover_plugins(root, manager):
-            registry.add(loaded)
+            if loaded.directory.resolve() not in seen:
+                seen.add(loaded.directory.resolve())
+                registry.add(loaded)
     return registry
 
 

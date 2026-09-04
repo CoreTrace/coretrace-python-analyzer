@@ -23,7 +23,7 @@ from coretrace_python.semantic.scopes import ResolutionKind, analyze_scopes
 from coretrace_python.source import SourceManager
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def build(source_text: str) -> nodes.Module:

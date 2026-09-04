@@ -64,7 +64,7 @@ def test_dashed_packages_are_analysed_instead_of_crashing(tmp_path: Path) -> Non
         },
     )
 
-    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "plugins"])
+    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "src" / "coretrace_python" / "bundled"])
 
     assert set(analysis.keys) == {"network-topologer", "network-topologer.traceroute", "network-topologer.__main__"}
     assert [(f.rule_id, Path(str(f.span.source_id)).name, f.span.start_line) for f in analysis.findings] == [
@@ -77,7 +77,7 @@ def test_undecodable_files_become_notes_and_the_rest_is_analysed(tmp_path: Path)
     root = project(tmp_path, {"app.py": "import os\n\ndef run():\n    os.system(input())\n"})
     (root / "legacy.py").write_bytes(b"print('x')\n\xff")
 
-    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "plugins"])
+    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "src" / "coretrace_python" / "bundled"])
 
     notes = [(f.rule_id, Path(str(f.span.source_id)).name) for f in analysis.findings]
     assert ("syntax-error", "legacy.py") in notes
@@ -90,7 +90,7 @@ def test_utf16_dependency_files_are_read(tmp_path: Path) -> None:
     root = project(tmp_path, {"app.py": "x = 1\n"})
     (root / "requirements.txt").write_bytes("pyyaml==5.3.1\r\nflask==2.0.0\r\n".encode("utf-16"))
 
-    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "plugins"])
+    analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "src" / "coretrace_python" / "bundled"])
 
     assert analysis.dependencies.names == ("flask", "pyyaml")
     assert sorted(f.rule_id for f in analysis.findings) == ["vulnerable-dependency", "vulnerable-dependency"]
@@ -114,5 +114,5 @@ def test_duplicate_qualified_names_get_distinct_call_graph_names() -> None:
     setter = module.body[1].body[1]  # type: ignore[union-attr]
     assert graph.name_of(setter) == "Box.cmd__2"  # type: ignore[arg-type]
     assert manager.get(TaintAnalysis, setter) is not None  # type: ignore[arg-type]
-    findings = engine.check(source, [Path(__file__).resolve().parent.parent / "plugins"])
+    findings = engine.check(source, [Path(__file__).resolve().parent.parent / "src" / "coretrace_python" / "bundled"])
     assert [(f.rule_id, f.span.start_line) for f in findings] == [("command-injection", 11)]

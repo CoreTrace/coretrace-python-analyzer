@@ -44,7 +44,7 @@ def require_models() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 OS_SYSTEM = Sink(SymbolId("python.os.system"), TaintKind.COMMAND)
 

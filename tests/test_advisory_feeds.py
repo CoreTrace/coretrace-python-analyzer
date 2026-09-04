@@ -50,7 +50,7 @@ def require_feeds() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def osv(identifier: str, package: str, events: list[dict[str, str]], **extra: object) -> dict[str, object]:

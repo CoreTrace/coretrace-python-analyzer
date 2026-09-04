@@ -33,7 +33,7 @@ from coretrace_python.interprocedural import CallGraphAnalysis, KnownFunction, S
 from coretrace_python.source import SourceManager
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 APP = (
     "import os\nimport sys\n\n"

@@ -40,7 +40,7 @@ def require_imports() -> None:
 
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGINS = REPO / "plugins"
+PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 
 def lower(text: str, *, ssa: bool = False, name: str = "ir.py") -> FunctionIR:
