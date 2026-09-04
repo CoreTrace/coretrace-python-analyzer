@@ -184,14 +184,16 @@ def main(argv: list[str] | None = None) -> int:
                     policy_file=args.policy,
                 )
                 findings = analysis.findings
+                coverage = analysis.coverage
                 if args.sbom is not None:
                     args.sbom.write_text(
                         render_sbom(analysis.dependencies, analysis.advisories, engine.TOOL_NAME, __version__),
                         encoding="utf-8",
                     )
             else:
-                findings = engine.check(SourceManager().load_file(args.path), args.plugins)
-            print(render(args.format or "text", engine.report(findings)), end="")
+                file_analysis = engine.analyze_file(SourceManager().load_file(args.path), args.plugins)
+                findings, coverage = file_analysis.findings, file_analysis.coverage
+            print(render(args.format or "text", engine.report(findings, coverage)), end="")
             return EXIT_FINDINGS if findings else EXIT_CLEAN
     except _ANALYSIS_ERRORS as error:
         print(f"error: {error}", file=sys.stderr)

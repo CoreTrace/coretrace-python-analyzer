@@ -71,9 +71,10 @@ keys, JWTs, SendGrid, Twilio), for credential-like names bound to a real value
 (`password`, `token`, `api_key` and the like, bound by name, attribute or constant key
 such as `app.config['SECRET_KEY']`, placeholders excluded) and for opaque
 high-entropy tokens; one finding per literal, at high, medium and low confidence
-respectively, with a redacted preview and never the secret itself. Other plugins add
-providers by subclassing `SecretDetector` with their own patterns. Configuration files
-are not scanned.
+respectively, with a redacted preview and never the secret itself. The `config-secrets`
+plugin applies the same rules to the key-value pairs of `.env`, YAML, TOML, JSON, INI and
+properties files under the project root. Other plugins add providers by subclassing
+`SecretDetector` with their own patterns.
 
 `--cache DIR` keeps the results of a directory check on disk, one JSON entry per module.
 The entry is keyed by the module's source, the engine and plugin versions, the plugin
@@ -121,7 +122,9 @@ a helper that fills a list taints the caller's list, across files too.
 Each flow is then judged: a dominating guard that proves the value safe (`isdigit()`,
 membership in a constant allowlist, equality with a constant) refutes it and it is not
 reported; a guard that only mentions the value makes it a hotspot with medium confidence;
-the verdict and its evidence are in the finding metadata. Three more kinds of evidence
+the verdict and its evidence are in the finding metadata. Every check ends with a
+coverage line, `coverage: 3/4 files, 5/6 functions`, and the JSON report carries the
+per-file detail, so "no findings" can be told from "nothing analysed". Three more kinds of evidence
 apply: a value proven numeric by the range analysis (`int()`, `len()`, arithmetic,
 bounded by the comparisons on the path) cannot inject; a `Validator` model names a
 callable whose truth proves one of its arguments, such as `re.fullmatch`; and an

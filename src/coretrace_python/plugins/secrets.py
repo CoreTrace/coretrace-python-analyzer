@@ -11,18 +11,22 @@ secret. Only Python sources are scanned; configuration files are not.
 
 from __future__ import annotations
 
+import json
 import math
 import re
+import tomllib
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import ClassVar
 
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
+from coretrace_python.interprocedural import discover_files
 from coretrace_python.plugins.api import Plugin, PluginContext
-from coretrace_python.source import SourceSpan
+from coretrace_python.source import SourceId, SourceSpan, decode_text
 
 Literal = tuple[str, str | None, SourceSpan, str | None]
 
@@ -131,6 +135,120 @@ class SecretPattern:
 
     def matches(self, text: str) -> bool:
         return re.search(self.regex, text) is not None
+
+
+DEFAULT_PATTERNS: tuple[SecretPattern, ...] = (
+    SecretPattern("aws", r"\b(AKIA|ASIA)[0-9A-Z]{16}\b"),
+    SecretPattern("github", r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"),
+    SecretPattern("github", r"\bgithub_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}\b"),
+    SecretPattern("slack", r"\bxox[abpr]-[0-9]{10,}-[0-9A-Za-z-]{10,}"),
+    SecretPattern("stripe", r"\b[sr]k_(live|test)_[0-9A-Za-z]{24,}\b"),
+    SecretPattern("google", r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    SecretPattern("private-key", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    SecretPattern("jwt", r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+    SecretPattern("sendgrid", r"\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b"),
+    SecretPattern("twilio", r"\bSK[0-9a-fA-F]{32}\b"),
+    SecretPattern(
+        "url",
+        r"://[^/\s:@'\"]+:[^/\s@'\"]+@"
+        r"|[?&](?:password|passwd|pwd|token|api_key|apikey|secret|access_key)=[^&\s'\"]{3,}",
+    ),
+)
+
+DEFAULT_CREDENTIAL_NAMES: tuple[str, ...] = (
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "api-key",
+    "private_key",
+    "access_key",
+    "credential",
+)
+
+CONFIG_SUFFIXES = frozenset({".env", ".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".properties", ".conf"})
+_PAIR = re.compile(r"^\s*(?:-\s+)?([A-Za-z_][\w.-]*)\s*[:=]\s*(.*?)\s*$")
+_MAX_CONFIG_BYTES = 8_000_000
+
+
+def config_literals(root: Path) -> Iterator[Literal]:
+    """Every string value of the configuration files under ``root`` with the key it is
+    bound to: ``.env``, YAML, TOML, JSON, INI and properties files, decoded by their
+    byte order mark. Python files are left to ``literals``."""
+
+    for path in discover_files(root):
+        if not (path.suffix in CONFIG_SUFFIXES or path.name.startswith(".env")):
+            continue
+        try:
+            data = path.read_bytes()
+            if len(data) > _MAX_CONFIG_BYTES:
+                continue
+            text = decode_text(data)
+        except (OSError, UnicodeDecodeError):
+            continue
+        source = SourceId(str(path))
+        if path.suffix == ".json":
+            yield from _structured(source, text, _load_json(text))
+        elif path.suffix == ".toml":
+            yield from _structured(source, text, _load_toml(text))
+        else:
+            yield from _pairs(source, text)
+
+
+def _load_json(text: str) -> object:
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def _load_toml(text: str) -> object:
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return None
+
+
+def _structured(source: SourceId, text: str, data: object) -> Iterator[Literal]:
+    lines = text.splitlines()
+
+    def line_of(key: str) -> int:
+        for number, line in enumerate(lines, start=1):
+            if re.match(rf'^\s*"?{re.escape(key)}"?\s*[:=]', line) or f'"{key}"' in line:
+                return number
+        return 1
+
+    def walk(node: object, key: str | None) -> Iterator[Literal]:
+        if isinstance(node, dict):
+            for name, value in node.items():
+                yield from walk(value, str(name))
+        elif isinstance(node, list):
+            for item in node:
+                yield from walk(item, key)
+        elif isinstance(node, str) and key is not None:
+            yield node, key, SourceSpan(source, line_of(key), 1), None
+
+    yield from walk(data, None)
+
+
+def _pairs(source: SourceId, text: str) -> Iterator[Literal]:
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped or stripped[0] in "#;[":
+            continue
+        match = _PAIR.match(line)
+        if match is None:
+            continue
+        key, value = match.group(1), match.group(2)
+        if value.startswith("#"):
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        if value:
+            yield value, key, SourceSpan(source, number, 1), None
 
 
 def redacted(value: str) -> str:

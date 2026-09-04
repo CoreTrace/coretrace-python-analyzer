@@ -49,7 +49,14 @@ from coretrace_python.dependency import (
     parse_dependencies,
 )
 from coretrace_python.dependency.correlation import advisory_sinks, affected_symbols, correlate
-from coretrace_python.findings import FINDING_SCHEMA_VERSION, Confidence, Finding, Severity
+from coretrace_python.findings import (
+    FINDING_SCHEMA_VERSION,
+    Confidence,
+    Coverage,
+    FileCoverage,
+    Finding,
+    Severity,
+)
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.hir import HIR_SCHEMA_VERSION, nodes
@@ -89,7 +96,7 @@ from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.imports import ImportAnalysis, ImportResolutionError, ImportTable
 from coretrace_python.semantic.scopes import ScopeError
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.source import SourceFile, SourceManager, SourceSpan
+from coretrace_python.source import SourceFile, SourceManager, SourceSpan, decode_text
 from coretrace_python.taint import (
     ModelTable,
     SecurityModelAnalysis,
@@ -171,6 +178,13 @@ class ProjectAnalysis:
     keys: Mapping[str, str] = field(default_factory=_no_keys)
     reused: tuple[str, ...] = ()
     advisories: tuple[Advisory, ...] = ()
+    coverage: Coverage = field(default_factory=Coverage)
+
+
+@dataclass(frozen=True)
+class FileAnalysis:
+    findings: tuple[Finding, ...]
+    coverage: Coverage
 
 
 def build_manager(
@@ -202,11 +216,20 @@ def plugin_models(plugins: Iterable[Plugin]) -> ModelTable:
 def check(source: SourceFile, plugin_roots: Sequence[Path]) -> tuple[Finding, ...]:
     """Run every plugin found under ``plugin_roots`` against one file."""
 
+    return analyze_file(source, plugin_roots).findings
+
+
+def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalysis:
+    """One file's findings and coverage, with every plugin found under ``plugin_roots``."""
+
     manager = _register_all(build_hir(source))
     registry = load_plugins(plugin_roots, manager)
     manager.provide(SecurityModelAnalysis, plugin_models(loaded.plugin for loaded in registry))
     manager.provide(ProjectSummaries, SummaryIndex())
-    return _check_module(manager, tuple(loaded.plugin for loaded in registry))[0]
+    findings, supported = _check_module(manager, tuple(loaded.plugin for loaded in registry))
+    functions = len(analyzable_functions(manager.module))
+    coverage = Coverage((FileCoverage(str(source.source_id), "analysed", functions, len(supported)),))
+    return FileAnalysis(findings, coverage)
 
 
 def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
@@ -218,22 +241,12 @@ def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
         if not path.is_file():
             continue
         try:
-            text = _decode_manifest(path.read_bytes())
+            text = decode_text(path.read_bytes())
         except (OSError, UnicodeDecodeError) as error:
             graph = graph.merge(DependencyGraph(errors=(f"{path}: {error}",)))
             continue
         graph = graph.merge(parse_dependencies(sources.add_source(str(path), text)))
     return graph
-
-
-def _decode_manifest(data: bytes) -> str:
-    """Dependency files written by ``pip freeze`` on Windows are UTF-16 with a byte
-    order mark; honour the mark, otherwise expect UTF-8."""
-
-    for mark, encoding in ((b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16")):
-        if data.startswith(mark):
-            return data.decode(encoding)
-    return data.decode("utf-8")
 
 
 def analyze_project(
@@ -278,14 +291,17 @@ def analyze_project(
     modules: dict[str, nodes.Module] = {}
     files: dict[str, SourceFile] = {}
     unreadable: list[tuple[Path, str]] = []
+    coverage: list[FileCoverage] = []
     discovered = discover_sources(root, sources, unreadable)
     for path, reason in unreadable:
         findings.append(_note("syntax-error", f"{path}: {reason}", sources.add_source(str(path), ""), 1))
+        coverage.append(FileCoverage(str(path), "unreadable", 0, 0))
     for source in discovered:
         try:
             modules[source.module_name] = build_hir(source)
         except (ParseError, HIRBuildError) as error:
             findings.append(_note("syntax-error", str(error), source, 1))
+            coverage.append(FileCoverage(str(source.source_id), "syntax-error", 0, 0))
             continue
         files[source.module_name] = source
 
@@ -309,6 +325,7 @@ def analyze_project(
             imports[name] = manager.get(ImportAnalysis)
         except (ImportResolutionError, ScopeError) as error:
             findings.append(_note("syntax-error", str(error), files[name], 1))
+            coverage.append(FileCoverage(str(files[name].source_id), "syntax-error", 0, 0))
             continue
         analysable[name] = manager
     graph = build_module_graph(
@@ -374,11 +391,15 @@ def analyze_project(
     for name in sorted(analysable):
         entry = results[name]
         findings.extend(entry.findings)
+        unsupported = sum(1 for f in entry.findings if f.rule_id == "unsupported-syntax")
+        coverage.append(
+            FileCoverage(str(files[name].source_id), "analysed", len(entry.functions), len(entry.functions) - unsupported)
+        )
         sites: dict[str, list[CallSite]] = {function: [] for function in entry.functions}
         for site in entry.sites:
             sites.setdefault(site.caller, []).append(site)
         call_graphs[name] = CallGraph({}, {f: tuple(s) for f, s in sites.items()}, frozenset())
-    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs, policy)
+    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs, policy, root)
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
@@ -390,6 +411,7 @@ def analyze_project(
         MappingProxyType(keys),
         reused,
         advisories,
+        Coverage(tuple(sorted(coverage, key=lambda c: c.path))),
     )
 
 
@@ -612,5 +634,5 @@ def _register_all(module: nodes.Module) -> AnalysisManager:
     return manager
 
 
-def report(findings: Sequence[Finding]) -> Report:
-    return Report(tuple(findings), TOOL_NAME, __version__)
+def report(findings: Sequence[Finding], coverage: Coverage | None = None) -> Report:
+    return Report(tuple(findings), TOOL_NAME, __version__, coverage)
