@@ -25,19 +25,42 @@ IGNORED_DIRECTORIES = frozenset({"__pycache__", "node_modules", "venv", "build",
 
 
 def discover_sources(root: Path, manager: SourceManager) -> tuple[SourceFile, ...]:
-    """Load every ``.py`` file under ``root``, skipping hidden and tooling directories."""
+    """Load every ``.py`` file under ``root``, skipping hidden and tooling directories and
+    virtual environments, recognised by the ``pyvenv.cfg`` at their root whatever their
+    name."""
 
     found: list[SourceFile] = []
+    environments: dict[Path, bool] = {}
     for path in sorted(root.rglob("*.py")):
         relative = path.relative_to(root)
         if any(p.startswith(".") or p in IGNORED_DIRECTORIES for p in relative.parts[:-1]):
+            continue
+        if any(_is_environment(root / Path(*relative.parts[:depth]), environments) for depth in range(1, len(relative.parts))):
             continue
         found.append(manager.load_file(path))
     return tuple(found)
 
 
+def _is_environment(directory: Path, known: dict[Path, bool]) -> bool:
+    if directory not in known:
+        known[directory] = (directory / "pyvenv.cfg").is_file()
+    return known[directory]
+
+
 def project_symbol(module_name: str, qualified_name: str) -> SymbolId:
-    return SymbolId(f"python.{module_name}.{qualified_name}")
+    """The canonical symbol of a project function. A module whose name is not an
+    identifier cannot be imported by that name, but its functions still need stable
+    symbols: invalid characters become underscores."""
+
+    module = ".".join(_component(part) for part in module_name.split("."))
+    return SymbolId(f"python.{module}.{qualified_name}")
+
+
+def _component(part: str) -> str:
+    if part.isidentifier():
+        return part
+    cleaned = "".join(c if (c.isalnum() or c == "_") else "_" for c in part)
+    return cleaned if cleaned.isidentifier() else f"_{cleaned}"
 
 
 @dataclass(frozen=True)
