@@ -34,7 +34,9 @@ coretrace-python-analyzer --check src/ --plugins plugins/ --format sarif > repor
 Given a directory, every Python file below it is analysed as one project: modules are
 named after their packages, and taint follows calls into functions defined in other files
 through a project-wide index of function summaries iterated to a fixpoint. Hidden and
-tooling directories (`.venv`, `node_modules`, `__pycache__`, `build`, `dist`) are skipped.
+tooling directories (`.venv`, `node_modules`, `__pycache__`, `build`, `dist`) are skipped,
+and so is any virtual environment, recognised by its `pyvenv.cfg` whatever its name. A
+module or package whose name is not an identifier is analysed like any other.
 The dependency files at the root (`requirements*.txt`, `pyproject.toml`, `poetry.lock`,
 `uv.lock`) are resolved into a dependency graph. Plugins may contribute advisories; the
 shipped `dependency/` plugins report a requirement that allows a vulnerable version at
