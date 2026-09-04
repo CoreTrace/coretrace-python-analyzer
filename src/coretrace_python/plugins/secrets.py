@@ -71,6 +71,19 @@ def _walk(node: Node, name: str | None, function: str | None) -> Iterator[Litera
     if isinstance(node, nodes.Keyword):
         yield from _walk(node.value, node.name, function)
         return
+    if isinstance(node, nodes.Parameter):
+        if node.default is not None:
+            yield from _walk(node.default, node.name, function)
+        return
+    if isinstance(node, nodes.Call) and _is_environment_lookup(node):
+        # ``os.getenv("APP_TOKEN", "fallback")``: the fallback is bound to the variable name.
+        variable, fallback = node.arguments[0], node.arguments[1]
+        assert isinstance(variable, nodes.Constant) and isinstance(variable.value, str)
+        yield from _walk(variable, None, function)
+        yield from _walk(fallback, variable.value, function)
+        for keyword in node.keywords:
+            yield from _walk(keyword, None, function)
+        return
     if isinstance(node, nodes.Dict):
         for key, value in node.items:
             # A constant key names the value; it is not a value itself.
@@ -84,6 +97,17 @@ def _walk(node: Node, name: str | None, function: str | None) -> Iterator[Litera
         return
     for child in children(node):
         yield from _walk(child, None, function)
+
+
+def _is_environment_lookup(call: nodes.Call) -> bool:
+    callee = call.callee
+    return (
+        isinstance(callee, nodes.Attribute)
+        and callee.name in ("getenv", "get")
+        and len(call.arguments) >= 2
+        and isinstance(call.arguments[0], nodes.Constant)
+        and isinstance(call.arguments[0].value, str)
+    )
 
 
 def _bound_name(target: nodes.Target) -> str | None:
