@@ -54,7 +54,8 @@ class ModelPlugin(Plugin):
 
 class ProjectContext:
     """What a project-scoped plugin sees: the module graph, the dependency graph, the
-    advisories every plugin contributed, and each module's imports and call graph."""
+    advisories every plugin contributed, and each module's imports and call graph. The
+    engine passes the call graphs of modules it served from its cache."""
 
     def __init__(
         self,
@@ -62,11 +63,13 @@ class ProjectContext:
         dependencies: DependencyGraph,
         advisories: tuple[Advisory, ...],
         managers: Mapping[str, AnalysisManager],
+        call_graphs: Mapping[str, CallGraph] | None = None,
     ) -> None:
         self.graph = graph
         self.dependencies = dependencies
         self.advisories = advisories
         self._managers = managers
+        self._call_graphs = dict(call_graphs or {})
 
     @property
     def modules(self) -> tuple[str, ...]:
@@ -76,7 +79,8 @@ class ProjectContext:
         return self._managers[module].get(ImportAnalysis)
 
     def call_graph(self, module: str) -> CallGraph:
-        return self._managers[module].get(CallGraphAnalysis)
+        cached = self._call_graphs.get(module)
+        return cached if cached is not None else self._managers[module].get(CallGraphAnalysis)
 
 
 class ProjectPlugin(Plugin):

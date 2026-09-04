@@ -61,7 +61,8 @@ class CallGraph:
     ) -> None:
         self._symbols = {name: MappingProxyType(dict(found)) for name, found in (symbols or {}).items()}
         self.definitions: Mapping[str, nodes.Function] = MappingProxyType(dict(definitions))
-        self.functions = tuple(definitions)
+        # A graph rebuilt from cached call sites has sites but no definitions.
+        self.functions = tuple(dict.fromkeys((*definitions, *sites)))
         self._names = {function.span: name for name, function in definitions.items()}
         self.unsupported = unsupported
         self._sites = MappingProxyType(dict(sites))
@@ -72,7 +73,7 @@ class CallGraph:
         for found in sites.values():
             for site in found:
                 if isinstance(site.target, KnownFunction):
-                    callers[site.target.name].add(site.caller)
+                    callers.setdefault(site.target.name, set()).add(site.caller)
         self._callers = {name: frozenset(found) for name, found in callers.items()}
 
     def name_of(self, function: nodes.Function) -> str:

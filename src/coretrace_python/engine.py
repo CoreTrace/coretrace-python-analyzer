@@ -6,9 +6,10 @@ plugins and analyses never import it.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python import __version__
@@ -19,20 +20,30 @@ from coretrace_python.analysis import (
     AnyAnalysis,
     TransformationPass,
 )
+from coretrace_python.cache import (
+    CachedModule,
+    ProjectCache,
+    directory_fingerprint,
+    fingerprint,
+    module_keys,
+)
 from coretrace_python.cfg import CFGAnalysis, CFGError, DominanceAnalysis, PostDominanceAnalysis
 from coretrace_python.dependency import (
     DEPENDENCY_FILES,
+    Advisory,
     DependencyAnalysis,
     DependencyGraph,
     parse_dependencies,
 )
 from coretrace_python.dependency.correlation import advisory_sinks, affected_symbols, correlate
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import FINDING_SCHEMA_VERSION, Confidence, Finding, Severity
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
-from coretrace_python.hir import nodes
+from coretrace_python.hir import HIR_SCHEMA_VERSION, nodes
 from coretrace_python.interprocedural import (
+    CallGraph,
     CallGraphAnalysis,
+    CallSite,
     FunctionSummary,
     ModuleGraph,
     ProjectSummaries,
@@ -51,6 +62,7 @@ from coretrace_python.ir.lowering import (
 )
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.plugins import (
+    PLUGIN_API_VERSION,
     Plugin,
     PluginRegistry,
     ProjectContext,
@@ -62,6 +74,7 @@ from coretrace_python.reporters import Report
 from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.imports import ImportAnalysis, ImportResolutionError, ImportTable
 from coretrace_python.semantic.scopes import ScopeError
+from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceFile, SourceManager, SourceSpan
 from coretrace_python.taint import (
     ModelTable,
@@ -115,12 +128,18 @@ class ProjectSummariesUpdated(TransformationPass):
         pass
 
 
+def _no_keys() -> Mapping[str, str]:
+    return MappingProxyType({})
+
+
 @dataclass(frozen=True)
 class ProjectAnalysis:
     graph: ModuleGraph
     index: SummaryIndex
     findings: tuple[Finding, ...]
     dependencies: DependencyGraph = field(default_factory=DependencyGraph)
+    keys: Mapping[str, str] = field(default_factory=_no_keys)
+    reused: tuple[str, ...] = ()
 
 
 def build_manager(
@@ -171,11 +190,15 @@ def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
 
 
 def analyze_project(
-    root: Path, plugin_roots: Sequence[Path] = (), plugins: Sequence[Plugin] = ()
+    root: Path,
+    plugin_roots: Sequence[Path] = (),
+    plugins: Sequence[Plugin] = (),
+    cache: ProjectCache | None = None,
 ) -> ProjectAnalysis:
     """Analyse every Python file under ``root`` with a shared summary index (§21) and the
     dependency graph of its manifests (§26). ``plugins`` adds plugin instances to the
-    ones discovered under ``plugin_roots``."""
+    ones discovered under ``plugin_roots``. With a ``cache``, modules whose key is
+    unchanged since a previous run are served from it (§11)."""
 
     sources = SourceManager()
     findings: list[Finding] = []
@@ -199,10 +222,8 @@ def analyze_project(
     advisories = tuple(a for plugin in all_plugins for a in plugin.advisories)
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
-    index = SummaryIndex()
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
-        manager.provide(ProjectSummaries, index)
         manager.provide(DependencyAnalysis, dependencies)
 
     imports: dict[str, ImportTable] = {}
@@ -218,42 +239,118 @@ def analyze_project(
         {name: files[name] for name in analysable}, {name: modules[name] for name in analysable}, imports
     )
 
+    configuration = _configuration_key(registry, plugins, models, advisories, dependencies)
+    keys = module_keys(
+        graph,
+        {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
+    )
+    cached: dict[str, CachedModule] = {}
+    if cache is not None:
+        for name in analysable:
+            entry = cache.load(keys[name])
+            if entry is not None:
+                cached[name] = entry
+    fresh = {name: manager for name, manager in analysable.items() if name not in cached}
+
+    index = SummaryIndex()
+    cached_summaries = {
+        project_symbol(name, function): summary
+        for name, entry in cached.items()
+        for function, summary in entry.summaries.items()
+    }
+    for manager in fresh.values():
+        manager.provide(ProjectSummaries, index)
     for _ in range(MAX_PROJECT_ITERATIONS):
         updated = SummaryIndex(
             {
-                project_symbol(name, function): summary
-                for name, manager in analysable.items()
-                for function, summary in _summaries_of(manager).items()
+                **cached_summaries,
+                **{
+                    project_symbol(name, function): summary
+                    for name, manager in fresh.items()
+                    for function, summary in _summaries_of(manager).items()
+                },
             }
         )
         if updated == index:
             break
         index = updated
-        for manager in analysable.values():
+        for manager in fresh.values():
             manager.run(ProjectSummariesUpdated)
             manager.provide(ProjectSummaries, index)
 
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
+    call_graphs: dict[str, CallGraph] = {}
     for name in sorted(analysable):
-        manager = analysable[name]
-        module_findings, supported = _check_module(manager, module_plugins)
-        findings.extend(module_findings)
-        if affected:
-            graph_of_module = manager.get(CallGraphAnalysis)
-            for function in supported:
-                findings.extend(
-                    correlate(
-                        graph_of_module.name_of(function),
-                        manager.get(TaintAnalysis, function).flows,
-                        manager.get(RefutationAnalysis, function),
-                        affected,
-                    )
-                )
-    context = ProjectContext(graph, dependencies, advisories, analysable)
+        entry = cached.get(name)
+        if entry is None:
+            entry = _analyse_module(analysable[name], module_plugins, affected)
+            if cache is not None:
+                cache.store(keys[name], entry)
+        else:
+            sites: dict[str, list[CallSite]] = {function: [] for function in entry.functions}
+            for site in entry.sites:
+                sites.setdefault(site.caller, []).append(site)
+            call_graphs[name] = CallGraph({}, {f: tuple(s) for f, s in sites.items()}, frozenset())
+        findings.extend(entry.findings)
+    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs)
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
-    return ProjectAnalysis(graph, index, tuple(findings), dependencies)
+    return ProjectAnalysis(
+        graph, index, tuple(findings), dependencies, MappingProxyType(keys), tuple(sorted(cached))
+    )
+
+
+def _configuration_key(
+    registry: PluginRegistry,
+    plugins: Sequence[Plugin],
+    models: ModelTable,
+    advisories: tuple[Advisory, ...],
+    dependencies: DependencyGraph,
+) -> str:
+    """Everything a module's results depend on besides the project sources (§11)."""
+
+    return fingerprint(
+        __version__,
+        str(HIR_SCHEMA_VERSION),
+        str(FINDING_SCHEMA_VERSION),
+        str(PLUGIN_API_VERSION),
+        *(
+            f"{loaded.manifest.name}={loaded.manifest.version}:{directory_fingerprint(loaded.directory)}"
+            for loaded in registry
+        ),
+        *(f"{type(p).__module__}.{type(p).__qualname__}" for p in plugins),
+        repr(models),
+        repr(advisories),
+        repr(dependencies.requirements),
+        repr(dependencies.errors),
+    )
+
+
+def _analyse_module(
+    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Mapping[SymbolId, Advisory]
+) -> CachedModule:
+    """One module's findings, summaries and call sites: what the cache keeps (§11)."""
+
+    findings, supported = _check_module(manager, plugins)
+    graph = manager.get(CallGraphAnalysis)
+    correlated: list[Finding] = []
+    if affected:
+        for function in supported:
+            correlated.extend(
+                correlate(
+                    graph.name_of(function),
+                    manager.get(TaintAnalysis, function).flows,
+                    manager.get(RefutationAnalysis, function),
+                    affected,
+                )
+            )
+    return CachedModule(
+        graph.functions,
+        _summaries_of(manager),
+        tuple(site for function in graph.functions for site in graph.sites(function)),
+        (*findings, *correlated),
+    )
 
 
 def _summaries_of(manager: AnalysisManager) -> dict[str, FunctionSummary]:
