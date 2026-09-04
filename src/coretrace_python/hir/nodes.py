@@ -99,7 +99,34 @@ class List:
 
 @dataclass(frozen=True, slots=True)
 class Dict:
-    items: tuple[tuple[Expression, Expression], ...]
+    """Items are ``(key, value)``; a ``None`` key is a ``**mapping`` unpacking."""
+
+    items: tuple[tuple[Expression | None, Expression], ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class FormattedString:
+    """An f-string: constant text and formatted expressions, in order. Conversions and
+    format specifications are dropped; expressions nested in a specification are parts."""
+
+    parts: tuple[Expression, ...]
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Slice:
+    lower: Expression | None
+    upper: Expression | None
+    step: Expression | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
+class Starred:
+    """``*iterable`` in a call argument list or a list or tuple display."""
+
+    value: Expression
     span: SourceSpan
 
 
@@ -148,6 +175,9 @@ Expression: TypeAlias = (
     | Tuple
     | List
     | Dict
+    | FormattedString
+    | Slice
+    | Starred
     | Await
     | Yield
     | Comprehension
@@ -245,6 +275,7 @@ class Continue:
 class Raise:
     exception: Expression | None
     span: SourceSpan
+    cause: Expression | None = None
 
 
 @dataclass(frozen=True, slots=True)

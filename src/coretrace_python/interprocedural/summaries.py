@@ -35,6 +35,9 @@ from coretrace_python.interprocedural.callgraph import (
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
+    BuildDict,
+    BuildList,
+    BuildTuple,
     Call,
     Constant,
     ForNext,
@@ -255,13 +258,15 @@ class _DependenceProblem(DataflowProblem[State]):
 
     # ------------------------------------------------------------------ transfer
 
-    @staticmethod
-    def instruction(instruction: Instruction, state: Mapping[Key, Dep]) -> Dep:
+    def instruction(self, instruction: Instruction, state: Mapping[Key, Dep]) -> Dep:
         if isinstance(instruction, Constant | Global | Symbol | Undefined):
             return EMPTY
         deps = EMPTY
         for operand in instruction.operands():
             deps |= state.get(operand, EMPTY)
+        if isinstance(instruction, BuildList | BuildTuple | BuildDict):
+            for unpacked in instruction.unpacked:
+                deps |= self.deep(unpacked, state)
         return deps
 
     def loaded(self, instruction: GetAttr | GetItem | GetIter, state: Mapping[Key, Dep]) -> Dep:
@@ -281,7 +286,7 @@ class _DependenceProblem(DataflowProblem[State]):
     def call(self, call: Call, state: dict[Key, Dep]) -> Dep:
         arguments = tuple(self.deep(a, state) for a in call.arguments)
         keywords = EMPTY
-        for _, value in call.keywords:
+        for value in (*call.starred, *(v for _, v in call.keywords)):
             keywords |= self.deep(value, state)
         everything = keywords
         for deps in arguments:

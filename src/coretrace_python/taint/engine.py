@@ -40,6 +40,9 @@ from coretrace_python.interprocedural import (
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
+    BuildDict,
+    BuildList,
+    BuildTuple,
     Call,
     Compare,
     ForNext,
@@ -251,12 +254,16 @@ class _TaintProblem(DataflowProblem[State]):
             return taint
         for operand in instruction.operands():
             taint = taint.join(state.get(operand, Taint.none()))
+        if isinstance(instruction, BuildList | BuildTuple | BuildDict):
+            # ``[*xs]`` and ``{**d}`` copy the contents of what they unpack.
+            for unpacked in instruction.unpacked:
+                taint = taint.join(self.deep(unpacked, state))
         return taint
 
     def call(self, call: Call, state: dict[Key, Taint], flows: list[TaintFlow]) -> Taint:
         arguments = tuple(self.deep(a, state) for a in call.arguments)
         keywords = Taint.none()
-        for _, value in call.keywords:
+        for value in (*call.starred, *(v for _, v in call.keywords)):
             keywords = keywords.join(self.deep(value, state))
         everything = keywords
         for taint in arguments:
@@ -305,12 +312,15 @@ class _TaintProblem(DataflowProblem[State]):
         if summary.unsupported:
             return everything
 
+        spread = (*call.starred, *(value for _, value in call.keywords))
+
         def mapped(deps: frozenset[int]) -> tuple[Taint, Value | None]:
             taint, witness = Taint.none(), None
             for index in sorted(deps):
-                part = arguments[index] if index < len(arguments) else keywords
-                if part and witness is None:
-                    witness = call.arguments[index] if index < len(arguments) else call.keywords[0][1]
+                positional = index < len(arguments)
+                part = arguments[index] if positional else keywords
+                if part and witness is None and (positional or spread):
+                    witness = call.arguments[index] if positional else spread[0]
                 taint = taint.join(part)
             return taint, witness
 

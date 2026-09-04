@@ -195,12 +195,20 @@ class _PointsTo:
             }[type(instruction)]
             site = AbstractObject(AllocationSite(kind, instruction.location))
             changed = self.assign(result, {site})
-            if isinstance(instruction, BuildList | BuildTuple):
-                for element in instruction.elements:
+            if isinstance(instruction, BuildList | BuildTuple | BuildDict):
+                values = (
+                    instruction.elements
+                    if isinstance(instruction, BuildList | BuildTuple)
+                    else tuple(v for _, v in instruction.items)
+                )
+                for element in values:
                     changed |= self.store({site}, ELEMENTS, element)
-            elif isinstance(instruction, BuildDict):
-                for _, value in instruction.items:
-                    changed |= self.store({site}, ELEMENTS, value)
+                for unpacked in instruction.unpacked:
+                    contents = self.at(self.of(unpacked), ELEMENTS)
+                    location = self.heap.setdefault(HeapLocation(site, ELEMENTS), set())
+                    before = len(location)
+                    location |= contents
+                    changed |= len(location) != before
             elif isinstance(instruction, Call):
                 receiver = mutated_by(instruction, self.defs)
                 if receiver is not None:
