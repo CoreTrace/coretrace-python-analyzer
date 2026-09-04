@@ -350,6 +350,25 @@ class AstHIRBuilder:
             return nodes.CapturePattern(node.name, inner, span)
         if isinstance(node, ast.MatchOr):
             return nodes.OrPattern(tuple(self.pattern(p) for p in node.patterns), span)
+        if isinstance(node, ast.MatchStar):
+            return nodes.StarPattern(node.name, span)
+        if isinstance(node, ast.MatchSequence):
+            return nodes.SequencePattern(tuple(self.pattern(p) for p in node.patterns), span)
+        if isinstance(node, ast.MatchMapping):
+            return nodes.MappingPattern(
+                tuple(self.expression(k) for k in node.keys),
+                tuple(self.pattern(p) for p in node.patterns),
+                node.rest,
+                span,
+            )
+        if isinstance(node, ast.MatchClass):
+            return nodes.ClassPattern(
+                self.expression(node.cls),
+                tuple(self.pattern(p) for p in node.patterns),
+                tuple(node.kwd_attrs),
+                tuple(self.pattern(p) for p in node.kwd_patterns),
+                span,
+            )
         return nodes.UnsupportedPattern(type(node).__name__, span)
 
     def block(self, statements: list[ast.stmt]) -> tuple[nodes.Statement, ...]:

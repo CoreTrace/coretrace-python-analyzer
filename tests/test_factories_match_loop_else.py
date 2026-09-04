@@ -188,7 +188,7 @@ def test_match_wildcard_and_subject_taint() -> None:
 
 
 def test_unsupported_patterns_are_reported_per_function() -> None:
-    findings = check("def f(p):\n    match p:\n        case [x, y]:\n            return x\n        case _:\n            return 0\n")
+    findings = check("def f(p):\n    match p:\n        case Point(0, y):\n            return y\n        case _:\n            return 0\n")
     assert [f.rule_id for f in findings] == ["unsupported-syntax"]
     assert "pattern" in findings[0].message
 

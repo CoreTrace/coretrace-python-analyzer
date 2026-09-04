@@ -168,8 +168,9 @@ conditional expressions and comprehensions, laid out as real branches and loops 
 synthetic local, set literals, chained assignments, assignments to `global` names,
 lambdas and nested function definitions, analysed as functions of their own whose
 captured variables are implicit parameters so taint flows through closures like through
-any call, `del`, loop `else` clauses, and `match` over literal, singleton, capture, wildcard
-and or-patterns with guards, laid out as an `if` chain. Not yet: sequence, mapping and
+any call, `del`, loop `else` clauses, and `match` over literal, singleton, capture, wildcard,
+or, sequence, mapping and keyword class patterns with guards, laid out as an `if` chain
+over length, index, membership, attribute and `isinstance` tests. Not yet: positional
 class patterns, `nonlocal` assignments, classes defined inside functions, and a
 conditional expression or comprehension inside a `while` condition. Blocks inside a `try`
 body carry exception edges to the handlers; `finally` is modelled on the normal path only. Methods of module-level classes are analysed like functions; other module-level
