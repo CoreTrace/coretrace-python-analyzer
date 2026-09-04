@@ -177,6 +177,16 @@ class MakeFunction(Operands):
 
 
 @dataclass(frozen=True)
+class MakeClass(Operands):
+    """A class defined inside a function, bound to its name; its methods are analysed
+    as nested functions."""
+
+    result: Value
+    location: SourceSpan
+    name: str
+
+
+@dataclass(frozen=True)
 class BuildString(Operands):
     """An f-string: its constant and formatted parts, in order."""
 
@@ -374,6 +384,7 @@ ValueInstruction: TypeAlias = (
     | BuildString
     | BuildSlice
     | MakeFunction
+    | MakeClass
     | WithEnter
     | Catch
     | Await

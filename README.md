@@ -169,10 +169,13 @@ synthetic local, set literals, chained assignments, assignments to `global` name
 lambdas and nested function definitions, analysed as functions of their own whose
 captured variables are implicit parameters so taint flows through closures like through
 any call, `del`, loop `else` clauses, and `match` over literal, singleton, capture, wildcard,
-or, sequence, mapping and keyword class patterns with guards, laid out as an `if` chain
-over length, index, membership, attribute and `isinstance` tests. Not yet: positional
-class patterns, `nonlocal` assignments, classes defined inside functions, and a
-conditional expression or comprehension inside a `while` condition. Blocks inside a `try`
+or, sequence, mapping and class patterns with guards, laid out as an `if` chain over
+length, index, membership, attribute and `isinstance` tests, positional class patterns
+using the class's `__match_args__` or a dataclass's field order when the class is in the
+module; `nonlocal` assignments, whose writes stay inside the nested function; classes
+defined inside functions, whose methods are analysed as nested functions; and control flow
+inside a `while` condition, recomputed every iteration. Left: a function using syntax
+the frontend rejects is reported as a `syntax-error` for its file. Blocks inside a `try`
 body carry exception edges to the handlers; `finally` is modelled on the normal path only. Methods of module-level classes are analysed like functions; other module-level
 code is skipped. An import inside a function is shown where it runs, as an `import`
 instruction naming the module, the bound name and the canonical symbol. A function using syntax outside this subset is reported by `--check` as

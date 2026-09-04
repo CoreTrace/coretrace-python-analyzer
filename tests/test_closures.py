@@ -115,9 +115,9 @@ def test_make_function_carries_the_captured_values() -> None:
     assert [(m.name, len(m.captured)) for m in made] == [("run", 2), ("lambda_8_11", 0)]
 
 
-def test_nonlocal_assignments_are_still_reported() -> None:
+def test_nonlocal_assignments_are_analysed_inside_the_writer() -> None:
     findings = check("def outer():\n    n = 0\n    def bump():\n        nonlocal n\n        n = n + 1\n    bump()\n    return n\n")
-    assert [(f.rule_id, f.function) for f in findings] == [("unsupported-syntax", "bump")]
+    assert findings == ()
 
 
 # --------------------------------------------------------------------------- taint through closures

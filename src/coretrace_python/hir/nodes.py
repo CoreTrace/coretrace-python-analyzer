@@ -267,6 +267,15 @@ class Delete:
 
 
 @dataclass(frozen=True, slots=True)
+class Declaration:
+    """``name: annotation`` without a value: a dataclass field or an annotated local."""
+
+    name: str
+    annotation: Expression | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True, slots=True)
 class ValuePattern:
     """``case <expression>``: equality with a value."""
 
@@ -545,6 +554,7 @@ Statement: TypeAlias = (
     | Pass
     | Delete
     | Match
+    | Declaration
     | Assert
     | If
     | While

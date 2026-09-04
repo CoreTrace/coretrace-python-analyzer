@@ -183,7 +183,7 @@ def test_cached_modules_still_serve_project_plugins_and_correlation(tmp_path: Pa
 
 
 def test_unsupported_and_syntax_notes_are_cached_too(tmp_path: Path) -> None:
-    root = project(tmp_path / "src", {"nested.py": "def outer():\n    class Inner:\n        pass\n    return Inner\n"})
+    root = project(tmp_path / "src", {"nested.py": "def outer():\n    break\n"})
     cache = ProjectCache(tmp_path / "cache")
 
     first = engine.analyze_project(root, [PLUGINS], cache=cache)

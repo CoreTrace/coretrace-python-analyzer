@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import fields, is_dataclass, replace
 from typing import Any, ClassVar
 
@@ -31,7 +32,10 @@ class _Open:
 
 
 class _Builder:
-    def __init__(self, function: nodes.Function) -> None:
+    def __init__(
+        self, function: nodes.Function, match_args: Mapping[str, tuple[str, ...]] | None = None
+    ) -> None:
+        self.match_args = dict(match_args or {})
         self.function = function
         self.blocks: dict[BlockId, BasicBlock] = {}
         self.counters: dict[str, int] = {}
@@ -59,12 +63,28 @@ class _Builder:
 
         pending: list[nodes.Statement] = []
         if isinstance(node, nodes.While):
-            if _has_control_flow(node.condition):
-                raise CFGError(
-                    f"{node.span.display()}: conditional expressions and comprehensions in a "
-                    "loop condition are not supported yet"
-                )
-            return node, block
+            if not _has_control_flow(node.condition):
+                return node, block
+            # ``while <control flow>:`` recomputes its condition every iteration: it
+            # becomes ``while True`` with the condition laid out at the top of the body
+            # and a ``break``; the ``else`` clause runs before that ``break``.
+            inner: list[nodes.Statement] = []
+            condition = self.hoist(node.condition, inner)
+            stop = nodes.If(
+                nodes.UnaryOp("not", condition, node.span),
+                (*node.orelse, nodes.Break(node.span)),
+                (),
+                node.span,
+            )
+            return (
+                replace(
+                    node,
+                    condition=nodes.Constant(True, node.span),
+                    body=(*inner, stop, *node.body),
+                    orelse=(),
+                ),
+                block,
+            )
         if isinstance(node, nodes.Assign | nodes.AugAssign):
             node = replace(node, target=self.hoist(node.target, pending), value=self.hoist(node.value, pending))
         elif isinstance(node, nodes.ExpressionStatement):
@@ -430,16 +450,17 @@ class _Builder:
         """``Cls(name=pattern)``: an instance of the class whose attributes match."""
 
         span = node.span
-        if node.patterns:
-            raise CFGError(
-                f"{span.display()}: positional class patterns need the class's __match_args__ "
-                "and are not supported yet"
-            )
         conditions: list[nodes.Expression] = [
             nodes.Call(nodes.Name("isinstance", span), (subject, node.cls), (), span)
         ]
         bindings: list[nodes.Statement] = []
-        for name, sub in zip(node.keyword_names, node.keyword_patterns, strict=True):
+        # Positional sub-patterns match the attributes ``__match_args__`` names, known
+        # for the module's classes; an unknown class gets a conservative position.
+        known = self.match_args.get(node.cls.identifier, ()) if isinstance(node.cls, nodes.Name) else ()
+        positional = [
+            (known[i] if i < len(known) else f"_match_arg_{i}", sub) for i, sub in enumerate(node.patterns)
+        ]
+        for name, sub in (*positional, *zip(node.keyword_names, node.keyword_patterns, strict=True)):
             condition, inner = self.pattern(sub, nodes.Attribute(subject, name, span))
             conditions.append(condition)
             bindings.extend(inner)
@@ -521,8 +542,43 @@ def _rename_target(target: nodes.Target, renames: dict[str, str]) -> nodes.Targe
     return renamed
 
 
-def build_cfg(function: nodes.Function) -> CFG:
-    return _Builder(function).build()
+def build_cfg(function: nodes.Function, match_args: Mapping[str, tuple[str, ...]] | None = None) -> CFG:
+    return _Builder(function, match_args).build()
+
+
+def match_args_of(module: nodes.Module) -> dict[str, tuple[str, ...]]:
+    """``__match_args__`` of the module's classes: explicit, or the field order of a
+    dataclass (bare annotated declarations and assignments, in order)."""
+
+    found: dict[str, tuple[str, ...]] = {}
+    for statement in module.body:
+        if not isinstance(statement, nodes.Class):
+            continue
+        explicit = None
+        fields: list[str] = []
+        for member in statement.body:
+            if isinstance(member, nodes.Assign) and isinstance(member.target, nodes.Name):
+                if member.target.identifier == "__match_args__" and isinstance(member.value, nodes.Tuple | nodes.List):
+                    explicit = tuple(
+                        e.value for e in member.value.elements if isinstance(e, nodes.Constant) and isinstance(e.value, str)
+                    )
+                elif not member.target.identifier.startswith("_"):
+                    fields.append(member.target.identifier)
+            elif isinstance(member, nodes.Declaration):
+                fields.append(member.name)
+        if explicit is not None:
+            found[statement.name] = explicit
+        elif any(_is_dataclass(d) for d in statement.decorators):
+            found[statement.name] = tuple(fields)
+    return found
+
+
+def _is_dataclass(decorator: nodes.Expression) -> bool:
+    if isinstance(decorator, nodes.Call):
+        decorator = decorator.callee
+    if isinstance(decorator, nodes.Name):
+        return decorator.identifier == "dataclass"
+    return isinstance(decorator, nodes.Attribute) and decorator.name == "dataclass"
 
 
 class CFGAnalysis(FunctionAnalysis[CFG]):
@@ -530,4 +586,4 @@ class CFGAnalysis(FunctionAnalysis[CFG]):
 
     @classmethod
     def compute(cls, ctx: AnalysisContext, function: nodes.Function) -> CFG:
-        return build_cfg(function)
+        return build_cfg(function, match_args_of(ctx.module))

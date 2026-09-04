@@ -127,9 +127,8 @@ def test_mapping_and_class_patterns_lower_to_membership_and_isinstance() -> None
     assert notes("def f(p):\n    match p:\n        case {'op': op}:\n            return op\n        case Point(y=y):\n            return y\n") == []
 
 
-def test_positional_class_patterns_are_still_reported() -> None:
-    found = notes("def f(p):\n    match p:\n        case Point(0, y):\n            return y\n")
-    assert len(found) == 1 and "positional" in found[0]
+def test_positional_class_patterns_on_unknown_classes_lower_conservatively() -> None:
+    assert notes("def f(p):\n    match p:\n        case Point(0, y):\n            return y\n") == []
 
 
 # --------------------------------------------------------------------------- taint
