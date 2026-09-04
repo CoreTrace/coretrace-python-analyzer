@@ -40,7 +40,7 @@ class PythonStdlibModels(ModelPlugin):
         Sink(_sym("shutil.rmtree"), TaintKind.PATH),
         Sink(_sym("urllib.request.urlopen"), TaintKind.SSRF),
         *(
-            Sink(_sym(f"sqlite3.connect{cursor}.{method}"), TaintKind.SQL)
+            Sink(_sym(f"sqlite3.connect{cursor}.{method}"), TaintKind.SQL | TaintKind.CREDENTIAL)
             for cursor in ("", ".cursor")
             for method in ("execute", "executemany", "executescript")
         ),

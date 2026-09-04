@@ -97,13 +97,17 @@ memory.
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
 repeated. The repository ships a first set under `plugins/`: security models for the
 standard library, Flask, FastAPI, Django, SQLAlchemy and the Requests and httpx clients (`models/`), taint detectors for SQL
-injection, command injection, path traversal, SSRF and XSS (`security/`), and syntactic
+injection, command injection, path traversal, SSRF, XSS and plaintext credential storage
+(`security/`), and syntactic
 detectors for `eval`/`exec`, weak hashes, `app.run(debug=True)` and HTTP client calls
 without a timeout (`syntax/`). Route handlers of Flask and
 FastAPI receive their parameters as HTTP input, whether the application is created
 directly (`app = Flask(__name__)`) or by a project factory whose summary returns it
 (`app = create_app()`); `request.args` and its siblings are HTTP
-sources. Django views are undecorated, so a parameter annotated with a request class
+sources. A parameter named `password` or the like is a credential wherever it appears: stored
+in a database without passing through a hashing function it is a
+`plaintext-credential-storage` finding at medium confidence, since a name is a hint.
+Django views are undecorated, so a parameter annotated with a request class
 (`request: HttpRequest`), a method of a class-based view and a view decorated by one of
 Django's or Django REST framework's view decorators receive HTTP input; a bare
 `request` parameter without any of these is not recognised, and URL configurations are

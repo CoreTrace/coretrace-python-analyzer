@@ -29,6 +29,7 @@ class TaintDetector(Plugin):
     kind: ClassVar[TaintKind]
     severity: ClassVar[Severity]
     title: ClassVar[str]
+    confidence: ClassVar[Confidence] = Confidence.HIGH
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         findings: list[Finding] = []
@@ -53,7 +54,7 @@ class TaintDetector(Plugin):
                     metadata["through"] = flow.through
                     metadata["sink_line"] = str(flow.sink_location.start_line)
                 confidence = (
-                    Confidence.HIGH if verdict.status is Status.VULNERABILITY else Confidence.MEDIUM
+                    self.confidence if verdict.status is Status.VULNERABILITY else _lower(self.confidence)
                 )
                 findings.append(
                     Finding(
@@ -67,6 +68,10 @@ class TaintDetector(Plugin):
                     )
                 )
         return findings
+
+
+def _lower(confidence: Confidence) -> Confidence:
+    return {Confidence.HIGH: Confidence.MEDIUM}.get(confidence, Confidence.LOW)
 
 
 class SymbolCallDetector(Plugin):

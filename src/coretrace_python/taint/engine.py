@@ -279,23 +279,63 @@ class _TaintProblem(DataflowProblem[State]):
             if project is not None:
                 through = target.symbol.canonical_name.removeprefix("python.")
                 return self.known(project, through, arguments, keywords, everything, call, flows, state)
-            sink = self.models.sink(target.symbol)
-            if sink is not None:
-                for argument in call.argument_values():
-                    self.report(flows, sink, self.deep(argument, state), argument, call, None, None)
-            sanitizer = self.models.sanitizer(target.symbol)
-            if sanitizer is not None:
-                return everything.without(sanitizer.kinds)
-            # A method on a tainted object returns tainted data (``request.args.get``).
-            everything = everything.join(state.get(call.callee, Taint.none()))
-            source = self.models.source_covering(target.symbol)
-            if source is not None:
-                return everything.join(Taint(source.kinds, frozenset({source})))
-            return everything
+            return self.external(target.symbol, everything, call, state, flows)
         if isinstance(target, KnownFunction):
             summary = self.summaries.summary(target.name)
             return self.known(summary, target.name, arguments, keywords, everything, call, flows, state)
+        returned = self.returned_symbol(call)
+        if returned is not None:
+            return self.external(returned, everything, call, state, flows)
         return everything.join(state.get(call.callee, Taint.none()))
+
+    def external(
+        self, symbol: SymbolId, everything: Taint, call: Call, state: Mapping[Key, Taint], flows: list[TaintFlow]
+    ) -> Taint:
+        """Sinks, sanitizers and sources of a call to an external symbol."""
+
+        sink = self.models.sink(symbol)
+        if sink is not None:
+            for argument in call.argument_values():
+                self.report(flows, sink, self.deep(argument, state), argument, call, None, None)
+        sanitizer = self.models.sanitizer(symbol)
+        if sanitizer is not None:
+            return everything.without(sanitizer.kinds)
+        # A method on a tainted object returns tainted data (``request.args.get``).
+        everything = everything.join(state.get(call.callee, Taint.none()))
+        source = self.models.source_covering(symbol)
+        if source is not None:
+            return everything.join(Taint(source.kinds, frozenset({source})))
+        return everything
+
+    def returned_symbol(self, call: Call) -> SymbolId | None:
+        """``get_db().execute(...)``: the method of what a known function returns, when
+        its summary says the return value is one external symbol."""
+
+        callee = self.defs.get(call.callee)
+        if not isinstance(callee, GetAttr):
+            return None
+        origin = self.defs.get(callee.object)
+        if not isinstance(origin, Call):
+            return None
+        target = self.graph.target_at(self.name, origin.location)
+        summary: FunctionSummary | None = None
+        if isinstance(target, KnownFunction):
+            summary = self.summaries.summary(target.name)
+        elif isinstance(target, ExternalSymbol):
+            summary = self.project.summary(target.symbol)
+        if summary is None:
+            return None
+        # ``getattr(g, "_database", None) or sqlite3.connect(...)``: among the symbols the
+        # function may return, the one the models know about is the one that matters.
+        for returned in sorted(summary.return_externals, key=str):
+            candidate = returned.attribute(callee.attribute)
+            if (
+                self.models.sink(candidate) is not None
+                or self.models.sanitizer(candidate) is not None
+                or self.models.source_covering(candidate) is not None
+            ):
+                return candidate
+        return None
 
     def known(
         self,
@@ -488,6 +528,15 @@ def parameter_sources(
         typed = models.typed_parameter(symbol) if symbol is not None else None
         if typed is not None:
             sources[index] = Source(typed.symbol, typed.label, typed.kinds)
+    for index, parameter in enumerate(function.parameters):
+        if index in sources:
+            continue
+        for named in models.named_parameters:
+            if named.matches(parameter.name):
+                sources[index] = Source(
+                    SymbolId(f"python.parameter.{parameter.name}"), named.label, named.kinds
+                )
+                break
     return sources
 
 
