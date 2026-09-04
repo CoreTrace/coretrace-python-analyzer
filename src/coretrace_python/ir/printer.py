@@ -94,7 +94,10 @@ def _instruction(instruction: Instruction) -> str:
         parts = [_value(v) for v in instruction.elements] + [f"*{_value(v)}" for v in instruction.unpacked]
         return f"{_value(instruction.result)} = build_set {', '.join(parts)}".rstrip()
     if isinstance(instruction, MakeFunction):
-        return f'{_value(instruction.result)} = make_function "{instruction.name}"'
+        text = f'{_value(instruction.result)} = make_function "{instruction.name}"'
+        if instruction.captured:
+            text += f" [{', '.join(_value(v) for v in instruction.captured)}]"
+        return text
     if isinstance(instruction, DelItem):
         return f"del_item {_value(instruction.object)}, {_value(instruction.key)}"
     if isinstance(instruction, DelAttr):

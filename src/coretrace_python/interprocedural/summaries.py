@@ -49,6 +49,7 @@ from coretrace_python.ir.model import (
     Global,
     Instruction,
     Jump,
+    MakeFunction,
     Phi,
     Return,
     SetAttr,
@@ -310,6 +311,9 @@ class _DependenceProblem(DataflowProblem[State]):
             )
             return everything | Dep(externals=frozenset({target.symbol}))
         if isinstance(target, KnownFunction):
+            made = self.defs.get(call.callee)
+            if isinstance(made, MakeFunction):
+                arguments = (*arguments, *(self.deep(v, state) for v in made.captured))
             return self.known(self.table[target.name], arguments, keywords, everything, call, state)
         assert isinstance(target, UnknownTarget)
         return everything | state.get(call.callee, EMPTY)
@@ -342,10 +346,12 @@ class _DependenceProblem(DataflowProblem[State]):
                 reached.location,
                 call.location,
             )
+        made = self.defs.get(call.callee)
+        values = (*call.arguments, *(made.captured if isinstance(made, MakeFunction) else ()))
         for mutation in callee.mutations:
-            if mutation.parameter < len(call.arguments):
+            if mutation.parameter < len(values):
                 deps = mapped(mutation.dependencies) | Dep(externals=mutation.externals)
-                self.store(state, call.arguments[mutation.parameter], mutation.field, deps)
+                self.store(state, values[mutation.parameter], mutation.field, deps)
         return mapped(callee.return_dependencies) | Dep(externals=callee.return_externals)
 
     def record(

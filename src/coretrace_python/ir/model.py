@@ -166,11 +166,14 @@ class BuildSet(Operands):
 
 @dataclass(frozen=True)
 class MakeFunction(Operands):
-    """A function value: a lambda or a nested definition, whose body is not lowered."""
+    """A function value: a lambda or a nested definition. ``captured`` are the values of
+    the variables the body captures, at the definition point, in the order the nested
+    function takes them as implicit parameters after its explicit ones."""
 
     result: Value
     location: SourceSpan
     name: str
+    captured: tuple[Value, ...] = ()
 
 
 @dataclass(frozen=True)
