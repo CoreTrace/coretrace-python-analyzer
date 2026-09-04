@@ -4,10 +4,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from coretrace_python import engine
+from coretrace_python import __version__, engine
 from coretrace_python.analysis import AnalysisError
 from coretrace_python.cache import ProjectCache
 from coretrace_python.cfg import CFGError
+from coretrace_python.dependency import render_sbom
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
 from coretrace_python.ir.printer import format_module
@@ -86,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="with --check on a directory, analyse independent modules in N processes",
     )
+    parser.add_argument(
+        "--sbom",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="with --check on a directory, write a CycloneDX bill of materials to PATH",
+    )
     return parser
 
 
@@ -106,6 +114,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.jobs is not None and args.jobs < 1:
         print("error: --jobs must be at least 1", file=sys.stderr)
         return EXIT_ERROR
+    if args.sbom is not None and not (args.check and args.path.is_dir()):
+        print("error: --sbom only applies to --check on a directory", file=sys.stderr)
+        return EXIT_ERROR
 
     if args.path.is_dir() and args.emit_ir:
         print(f"error: {args.path} is a directory; --emit-ir needs a file", file=sys.stderr)
@@ -118,9 +129,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.check:
             if args.path.is_dir():
                 cache = None if args.cache is None else ProjectCache(args.cache)
-                findings = engine.analyze_project(
+                analysis = engine.analyze_project(
                     args.path, args.plugins, cache=cache, jobs=args.jobs or 1
-                ).findings
+                )
+                findings = analysis.findings
+                if args.sbom is not None:
+                    args.sbom.write_text(
+                        render_sbom(analysis.dependencies, analysis.advisories, engine.TOOL_NAME, __version__),
+                        encoding="utf-8",
+                    )
             else:
                 findings = engine.check(SourceManager().load_file(args.path), args.plugins)
             print(render(args.format or "text", engine.report(findings)), end="")

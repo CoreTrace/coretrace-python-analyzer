@@ -161,6 +161,7 @@ class ProjectAnalysis:
     dependencies: DependencyGraph = field(default_factory=DependencyGraph)
     keys: Mapping[str, str] = field(default_factory=_no_keys)
     reused: tuple[str, ...] = ()
+    advisories: tuple[Advisory, ...] = ()
 
 
 def build_manager(
@@ -331,7 +332,9 @@ def analyze_project(
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
-    return ProjectAnalysis(graph, index, tuple(findings), dependencies, MappingProxyType(keys), reused)
+    return ProjectAnalysis(
+        graph, index, tuple(findings), dependencies, MappingProxyType(keys), reused, advisories
+    )
 
 
 def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: frozenset[str]) -> SummaryIndex:

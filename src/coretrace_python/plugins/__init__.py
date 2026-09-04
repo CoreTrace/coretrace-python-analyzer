@@ -24,6 +24,12 @@ from coretrace_python.plugins.manifest import (
     load_manifest,
 )
 from coretrace_python.plugins.registry import PluginRegistry
+from coretrace_python.plugins.secrets import (
+    SecretDetector,
+    SecretPattern,
+    literals,
+    shannon_entropy,
+)
 
 __all__ = [
     "PLUGIN_API_VERSION",
@@ -38,11 +44,15 @@ __all__ = [
     "PluginRegistry",
     "ProjectContext",
     "ProjectPlugin",
+    "SecretDetector",
+    "SecretPattern",
     "SymbolCallDetector",
     "TaintDetector",
     "VersionRange",
     "discover_plugins",
+    "literals",
     "load_manifest",
     "load_plugin",
     "run_plugins",
+    "shannon_entropy",
 ]

@@ -167,6 +167,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "django-models",
         "fastapi-models",
         "flask-models",
+        "hardcoded-secrets",
         "http-client-models",
         "path-traversal",
         "python-stdlib-models",
