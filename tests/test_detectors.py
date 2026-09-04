@@ -163,6 +163,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
 
     assert set(by_name) == {
         "command-injection",
+        "config-secrets",
         "dangerous-eval",
         "dependency-policy",
         "django-models",

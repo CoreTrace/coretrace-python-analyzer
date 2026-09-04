@@ -75,7 +75,7 @@ def test_dashed_packages_are_analysed_instead_of_crashing(tmp_path: Path) -> Non
 
 def test_undecodable_files_become_notes_and_the_rest_is_analysed(tmp_path: Path) -> None:
     root = project(tmp_path, {"app.py": "import os\n\ndef run():\n    os.system(input())\n"})
-    (root / "legacy.py").write_bytes(b"\xff\xfeprint('utf-16')\n")
+    (root / "legacy.py").write_bytes(b"print('x')\n\xff")
 
     analysis = engine.analyze_project(root, [Path(__file__).resolve().parent.parent / "plugins"])
 
@@ -83,7 +83,7 @@ def test_undecodable_files_become_notes_and_the_rest_is_analysed(tmp_path: Path)
     assert ("syntax-error", "legacy.py") in notes
     assert ("command-injection", "app.py") in notes
     assert set(analysis.keys) == {"app"}
-    assert any("utf-8" in f.message for f in analysis.findings if f.rule_id == "syntax-error")
+    assert any("codec" in f.message for f in analysis.findings if f.rule_id == "syntax-error")
 
 
 def test_utf16_dependency_files_are_read(tmp_path: Path) -> None:
