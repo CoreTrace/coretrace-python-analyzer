@@ -36,8 +36,9 @@ LAYERS = {
     "interprocedural": 7,
     "taint": 8,
     "findings": 9,
-    "plugins": 10,
-    "reporters": 11,
+    "dependency": 10,
+    "plugins": 11,
+    "reporters": 12,
 }
 
 # Top-level modules that wire the pipeline together and may import any layer.
