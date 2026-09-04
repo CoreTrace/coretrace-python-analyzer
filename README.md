@@ -43,6 +43,15 @@ attacker-controlled data reaches such a call, the engine correlates the four fac
 one critical `exploitable-vulnerability` finding, judged like any other flow. The shipped
 advisory database is a small offline sample; a live OSV feed is future work.
 
+`--cache DIR` keeps the results of a directory check on disk, one JSON entry per module.
+The entry is keyed by the module's source, the engine and plugin versions, the plugin
+code, the security models, the advisories, the dependency graph and the keys of the
+modules it imports transitively. On the next run a module whose key is unchanged is
+served from the cache: its function summaries seed the project index, its call sites
+serve the project plugins and its findings are reported as they were, so editing one file
+re-analyses that file and the modules that import it only. Entries are plain data, never
+code; an unreadable entry is simply recomputed.
+
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
 repeated. The repository ships a first set under `plugins/`: security models for the
 standard library, Flask, FastAPI and SQLAlchemy (`models/`), taint detectors for SQL

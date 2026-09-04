@@ -6,6 +6,7 @@ from pathlib import Path
 
 from coretrace_python import engine
 from coretrace_python.analysis import AnalysisError
+from coretrace_python.cache import ProjectCache
 from coretrace_python.cfg import CFGError
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
@@ -70,6 +71,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="with --check, the report format (default: text)",
     )
+    parser.add_argument(
+        "--cache",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="with --check on a directory, keep per-module results under DIR and reuse "
+        "them for modules unchanged since the previous run",
+    )
     return parser
 
 
@@ -80,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ERROR
     if args.format is not None and not args.check:
         print("error: --format only applies to --check", file=sys.stderr)
+        return EXIT_ERROR
+    if args.cache is not None and not (args.check and args.path.is_dir()):
+        print("error: --cache only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
 
     if args.path.is_dir() and args.emit_ir:
@@ -92,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
             print(format_module(lower_module(build_hir(source), ssa=args.ssa)))
         if args.check:
             if args.path.is_dir():
-                findings = engine.analyze_project(args.path, args.plugins).findings
+                cache = None if args.cache is None else ProjectCache(args.cache)
+                findings = engine.analyze_project(args.path, args.plugins, cache=cache).findings
             else:
                 findings = engine.check(SourceManager().load_file(args.path), args.plugins)
             print(render(args.format or "text", engine.report(findings)), end="")
