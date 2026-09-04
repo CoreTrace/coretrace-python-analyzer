@@ -215,7 +215,7 @@ def test_unsupported_functions_and_syntax_errors_are_reported_per_file(tmp_path:
         tmp_path,
         {
             "good.py": "def f():\n    pass\n",
-            "nested.py": "def outer():\n    def inner():\n        pass\n    return inner\n",
+            "nested.py": "def outer():\n    class Inner:\n        pass\n    return Inner\n",
             "broken.py": "def broken(:\n",
         },
     )

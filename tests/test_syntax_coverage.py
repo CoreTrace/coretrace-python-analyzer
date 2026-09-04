@@ -266,9 +266,9 @@ def test_check_reports_unsupported_functions_and_keeps_going(tmp_path, capsys) -
     source.write_text(
         "CONFIG = {}\n\n"
         "def outer():\n"
-        "    def inner():\n"
-        "        return 1\n"
-        "    return inner\n\n"
+        "    class Inner:\n"
+        "        pass\n"
+        "    return Inner\n\n"
         "class Runner:\n"
         "    def go(self, code):\n"
         "        eval(code)\n",
@@ -280,13 +280,13 @@ def test_check_reports_unsupported_functions_and_keeps_going(tmp_path, capsys) -
 
     assert exit_code == 1
     assert f"{source}:3:1: info unsupported-syntax: " in output
-    assert "Function" in output
+    assert "Class" in output
     assert f"{source}:10:9: high dangerous-eval:" in output
     assert output.endswith("2 findings\n")
 
 
 def test_unsupported_syntax_findings_are_notes() -> None:
-    findings = engine.check(SourceManager().add_source("n.py", "def f():\n    def g():\n        pass\n"), [PLUGINS])
+    findings = engine.check(SourceManager().add_source("n.py", "def f():\n    class G:\n        pass\n"), [PLUGINS])
 
     assert [f.rule_id for f in findings] == ["unsupported-syntax"]
     assert findings[0].severity is Severity.INFO

@@ -91,7 +91,7 @@ def test_parameter_annotations_are_kept() -> None:
 
 
 def test_unsupported_annotations_do_not_break_the_build() -> None:
-    module = module_for("def f(x: (lambda: 1), y: 'Request'):\n    return x\n")
+    module = module_for("def f(x: (n := 1), y: 'Request'):\n    return x\n")
     function = module.body[0]
     assert isinstance(function, nodes.Function)
     assert function.parameters[0].annotation is None
