@@ -162,6 +162,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
     by_name = {plugin.manifest.name: plugin.manifest for plugin in loaded}
 
     assert set(by_name) == {
+        "cli-models",
         "command-injection",
         "config-secrets",
         "credential-models",
@@ -173,7 +174,9 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "flask-models",
         "hardcoded-secrets",
         "http-client-models",
+        "insecure-deserialization",
         "missing-timeout",
+        "open-redirect",
         "path-traversal",
         "plaintext-credentials",
         "python-stdlib-models",
@@ -209,9 +212,11 @@ def test_shlex_quote_sanitizes_command_arguments() -> None:
     assert findings == ()
 
 
-def test_argv_to_open_is_a_path_traversal() -> None:
-    findings = check("import sys\n\ndef read():\n    return open(sys.argv[1])\n")
+def test_stdin_to_open_is_a_path_traversal_but_argv_is_not() -> None:
+    findings = check("def read():\n    return open(input())\n")
     assert rules(findings) == ["path-traversal"]
+    # A command-line tool is expected to open the paths it is given.
+    assert check("import sys\n\ndef read():\n    return open(sys.argv[1])\n") == ()
 
 
 def test_environment_to_urlopen_is_ssrf() -> None:
