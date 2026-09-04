@@ -116,6 +116,31 @@ class NamedParameter:
 
 
 @dataclass(frozen=True)
+class RouteRegistrar:
+    """A call registering a handler elsewhere (``path('login/', views.log_in)``): the
+    function or class referenced by ``argument`` (or ``keyword``) is an entry point."""
+
+    symbol: SymbolId
+    argument: int
+    label: str
+    kinds: TaintKind = TaintKind.ALL
+    keyword: str | None = None
+
+
+@dataclass(frozen=True)
+class SuffixSink:
+    """A sink matched by the tail of a call's symbol (``objects.raw`` for any model)."""
+
+    suffix: str
+    kinds: TaintKind
+    positions: tuple[tuple[TaintKind, tuple[int, ...]], ...] = ()
+
+    @property
+    def symbol(self) -> SymbolId:
+        return SymbolId(f"python.suffix.{self.suffix.replace('.', '_')}")
+
+
+@dataclass(frozen=True)
 class Validator:
     """A callable whose truth proves its ``argument`` safe (refutation evidence, §24)."""
 
@@ -134,7 +159,16 @@ class AuthorizationGuard:
 
 
 Model = (
-    Source | Sink | Sanitizer | EntryPoint | TypedParameter | Validator | AuthorizationGuard | NamedParameter
+    Source
+    | Sink
+    | Sanitizer
+    | EntryPoint
+    | TypedParameter
+    | Validator
+    | AuthorizationGuard
+    | NamedParameter
+    | RouteRegistrar
+    | SuffixSink
 )
 
 
@@ -148,6 +182,8 @@ class ModelTable:
     validators: tuple[Validator, ...] = ()
     authorizations: tuple[AuthorizationGuard, ...] = ()
     named_parameters: tuple[NamedParameter, ...] = ()
+    route_registrars: tuple[RouteRegistrar, ...] = ()
+    suffix_sinks: tuple[SuffixSink, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -161,6 +197,7 @@ class ModelTable:
             TypedParameter: {m.symbol: m for m in self.typed_parameters},
             Validator: {m.symbol: m for m in self.validators},
             AuthorizationGuard: {m.symbol: m for m in self.authorizations},
+            RouteRegistrar: {m.symbol: m for m in self.route_registrars},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
 
@@ -197,7 +234,16 @@ class ModelTable:
 
     def sink(self, symbol: SymbolId) -> Sink | None:
         found = self._by_symbol[Sink].get(symbol)
-        return found if isinstance(found, Sink) else None
+        if isinstance(found, Sink):
+            return found
+        for suffix in self.suffix_sinks:
+            if symbol.canonical_name.endswith(f".{suffix.suffix}"):
+                return Sink(symbol, suffix.kinds, suffix.positions)
+        return None
+
+    def route_registrar(self, symbol: SymbolId) -> RouteRegistrar | None:
+        found = self._by_symbol[RouteRegistrar].get(symbol)
+        return found if isinstance(found, RouteRegistrar) else None
 
     def extended(self, *sinks: Sink) -> ModelTable:
         """A table with extra sinks; a sink already present gains the new kinds."""
@@ -219,6 +265,8 @@ class ModelTable:
             self.validators,
             self.authorizations,
             self.named_parameters,
+            self.route_registrars,
+            self.suffix_sinks,
         )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
@@ -252,6 +300,8 @@ class SecurityModelRegistry:
             validators=tuple(m for m in models if isinstance(m, Validator)),
             authorizations=tuple(m for m in models if isinstance(m, AuthorizationGuard)),
             named_parameters=tuple(m for m in models if isinstance(m, NamedParameter)),
+            route_registrars=tuple(m for m in models if isinstance(m, RouteRegistrar)),
+            suffix_sinks=tuple(m for m in models if isinstance(m, SuffixSink)),
         )
 
 

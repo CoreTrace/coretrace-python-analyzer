@@ -94,14 +94,19 @@ from coretrace_python.plugins import (
 from coretrace_python.reporters import Report
 from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.imports import ImportAnalysis, ImportResolutionError, ImportTable
-from coretrace_python.semantic.scopes import ScopeError
-from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeError
+from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId
 from coretrace_python.source import SourceFile, SourceManager, SourceSpan, decode_text
 from coretrace_python.taint import (
+    EntryPoint,
     ModelTable,
+    RegisteredRoutes,
+    Routes,
     SecurityModelAnalysis,
     SecurityModelRegistry,
     TaintAnalysis,
+    TaintKind,
+    registered_routes,
 )
 
 TOOL_NAME = "coretrace-python-analyzer"
@@ -125,6 +130,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     TaintAnalysis,
     RefutationAnalysis,
     DependencyAnalysis,
+    RegisteredRoutes,
 )
 
 
@@ -157,7 +163,7 @@ class ResultsEvicted(TransformationPass):
 
     name: ClassVar[str] = "project.results-evicted"
     preserves: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {*SEMANTIC_ANALYSES, SecurityModelAnalysis, ProjectSummaries, DependencyAnalysis}
+        {*SEMANTIC_ANALYSES, SecurityModelAnalysis, ProjectSummaries, DependencyAnalysis, RegisteredRoutes}
     )
 
     @classmethod
@@ -195,7 +201,19 @@ def build_manager(
     manager = _register_all(module)
     manager.provide(SecurityModelAnalysis, (models or SecurityModelRegistry()).freeze())
     manager.provide(ProjectSummaries, SummaryIndex())
+    manager.provide(RegisteredRoutes, _routes_of(manager))
     return manager
+
+
+def _routes_of(manager: AnalysisManager) -> dict[SymbolId, EntryPoint]:
+    """The handlers one module registers, given the models already provided."""
+
+    return registered_routes(
+        manager.module,
+        manager.get(ScopeAnalysis),
+        manager.get(SymbolAnalysis),
+        manager.get(SecurityModelAnalysis),
+    )
 
 
 def load_plugins(plugin_roots: Sequence[Path], manager: AnalysisManager) -> PluginRegistry:
@@ -226,6 +244,7 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalys
     registry = load_plugins(plugin_roots, manager)
     manager.provide(SecurityModelAnalysis, plugin_models(loaded.plugin for loaded in registry))
     manager.provide(ProjectSummaries, SummaryIndex())
+    manager.provide(RegisteredRoutes, _routes_of(manager))
     findings, supported = _check_module(manager, tuple(loaded.plugin for loaded in registry))
     functions = len(analyzable_functions(manager.module))
     coverage = Coverage((FileCoverage(str(source.source_id), "analysed", functions, len(supported)),))
@@ -331,8 +350,14 @@ def analyze_project(
     graph = build_module_graph(
         {name: files[name] for name in analysable}, {name: modules[name] for name in analysable}, imports
     )
+    routes: dict[SymbolId, EntryPoint] = {}
+    for name in sorted(analysable):
+        for symbol, registered in _routes_of(analysable[name]).items():
+            routes.setdefault(symbol, registered)
+    for manager in analysable.values():
+        manager.provide(RegisteredRoutes, routes)
 
-    configuration = _configuration_key(registry, plugins, models, advisories, dependencies)
+    configuration = _configuration_key(registry, plugins, models, advisories, dependencies, routes)
     keys = module_keys(
         graph,
         {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
@@ -372,6 +397,7 @@ def analyze_project(
                             {name: _path_of(files[name]) for name in sorted(component)},
                             encode_index(_seed(results, graph, component)),
                             advisory_paths,
+                            _encode_routes(routes),
                         ),
                     )
                     for component in pending
@@ -500,6 +526,7 @@ class _Batch:
     paths: Mapping[str, Path]
     seed: Mapping[str, Any]
     advisory_paths: tuple[Path, ...] = ()
+    routes: tuple[tuple[str, str, str, int], ...] = ()
 
 
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
@@ -519,9 +546,11 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     )
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
+    routes = _decode_routes(batch.routes)
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(DependencyAnalysis, dependencies)
+        manager.provide(RegisteredRoutes, routes)
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
     results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected)
     return {name: encode(entry) for name, entry in results.items()}
@@ -532,12 +561,23 @@ def _path_of(source: SourceFile) -> Path:
     return source.path
 
 
+def _encode_routes(routes: Routes) -> tuple[tuple[str, str, str, int], ...]:
+    return tuple(
+        sorted((str(symbol), str(entry.symbol), entry.label, entry.kinds.value) for symbol, entry in routes.items())
+    )
+
+
+def _decode_routes(data: tuple[tuple[str, str, str, int], ...]) -> dict[SymbolId, EntryPoint]:
+    return {SymbolId(symbol): EntryPoint(SymbolId(registrar), label, TaintKind(kinds)) for symbol, registrar, label, kinds in data}
+
+
 def _configuration_key(
     registry: PluginRegistry,
     plugins: Sequence[Plugin],
     models: ModelTable,
     advisories: tuple[Advisory, ...],
     dependencies: DependencyGraph,
+    routes: Routes | None = None,
 ) -> str:
     """Everything a module's results depend on besides the project sources (§11)."""
 
@@ -556,6 +596,7 @@ def _configuration_key(
         repr(advisories),
         repr(dependencies.requirements),
         repr(dependencies.errors),
+        repr(_encode_routes(routes or {})),
     )
 
 

@@ -14,15 +14,18 @@ from coretrace_python.taint.models import (
     ModelError,
     ModelTable,
     NamedParameter,
+    RouteRegistrar,
     Sanitizer,
     SecurityModelAnalysis,
     SecurityModelRegistry,
     Sink,
     Source,
+    SuffixSink,
     TaintKind,
     TypedParameter,
     Validator,
 )
+from coretrace_python.taint.routes import RegisteredRoutes, Routes, registered_routes
 
 __all__ = [
     "AuthorizationGuard",
@@ -31,11 +34,15 @@ __all__ = [
     "ModelError",
     "ModelTable",
     "NamedParameter",
+    "RegisteredRoutes",
+    "RouteRegistrar",
+    "Routes",
     "Sanitizer",
     "SecurityModelAnalysis",
     "SecurityModelRegistry",
     "Sink",
     "Source",
+    "SuffixSink",
     "Taint",
     "TaintAnalysis",
     "TaintFacts",
@@ -44,4 +51,5 @@ __all__ = [
     "TypedParameter",
     "Validator",
     "propagate_taint",
+    "registered_routes",
 ]

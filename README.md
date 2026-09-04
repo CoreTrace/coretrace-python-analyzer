@@ -113,9 +113,11 @@ in a database without passing through a hashing function it is a
 `plaintext-credential-storage` finding at medium confidence, since a name is a hint.
 Django views are undecorated, so a parameter annotated with a request class
 (`request: HttpRequest`), a method of a class-based view and a view decorated by one of
-Django's or Django REST framework's view decorators receive HTTP input; a bare
-`request` parameter without any of these is not recognised, and URL configurations are
-not read. Requests and httpx calls are SSRF sinks whose responses are untrusted
+Django's or Django REST framework's view decorators receive HTTP input, and so does a
+view registered in a URL configuration (`path('login/', views.log_in)`, `as_view()`,
+REST framework routers) or programmatically (`add_url_rule`, `add_api_route`): the
+engine reads every module's registrations before analysing. `Model.objects.raw` and
+`extra` are SQL sinks for any model class. Requests and httpx calls are SSRF sinks whose responses are untrusted
 `http-response` sources. Model plugins contribute sources, sinks and sanitizers;
 detectors consume the shared taint result, so adding a framework model makes every
 detector aware of it. Taint follows calls between functions of the same module through

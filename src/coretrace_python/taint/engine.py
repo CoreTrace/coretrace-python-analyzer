@@ -36,6 +36,7 @@ from coretrace_python.interprocedural import (
     SummaryAnalysis,
     SummaryIndex,
     SummaryTable,
+    project_symbol,
 )
 from coretrace_python.ir.model import (
     BasicBlock,
@@ -71,6 +72,7 @@ from coretrace_python.taint.models import (
     Source,
     TaintKind,
 )
+from coretrace_python.taint.routes import RegisteredRoutes, Routes
 
 
 @dataclass(frozen=True)
@@ -527,10 +529,11 @@ def parameter_sources(
     scopes: ScopeTable,
     symbols: SymbolTable,
     instances: Instances | None = None,
+    routes: Routes | None = None,
 ) -> Mapping[int, Source]:
     """The attacker-controlled parameters of ``function``, by index: every parameter of an
-    entry point (``self`` excepted for a method) and every parameter annotated with a
-    typed-parameter symbol."""
+    entry point (``self`` excepted for a method), including one registered elsewhere
+    (``routes``), and every parameter annotated with a typed-parameter symbol."""
 
     owner = next(
         (s for s in module.body if isinstance(s, nodes.Class) and any(f is function for f in s.body)),
@@ -538,6 +541,11 @@ def parameter_sources(
     )
     sources: dict[int, Source] = {}
     entry = entry_point_of(function, models, scopes, symbols, owner, instances)
+    if entry is None and routes:
+        qualified = function.name if owner is None else f"{owner.name}.{function.name}"
+        entry = routes.get(project_symbol(module.name, qualified))
+        if entry is None and owner is not None:
+            entry = routes.get(project_symbol(module.name, owner.name))
     if entry is not None:
         first = 1 if owner is not None else 0
         for index in range(first, len(function.parameters)):
@@ -601,6 +609,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             SymbolAnalysis,
             ProjectSummaries,
             HeapAnalysis,
+            RegisteredRoutes,
         }
     )
 
@@ -628,6 +637,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
                     ctx.get(SummaryAnalysis),
                     ctx.get(ProjectSummaries),
                 ),
+                ctx.get(RegisteredRoutes),
             ),
             ctx.get(ProjectSummaries),
             ctx.get(HeapAnalysis, function),
