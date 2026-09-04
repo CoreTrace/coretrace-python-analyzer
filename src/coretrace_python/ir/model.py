@@ -157,6 +157,23 @@ class BuildDict(Operands):
 
 
 @dataclass(frozen=True)
+class BuildSet(Operands):
+    result: Value
+    location: SourceSpan
+    elements: tuple[Value, ...]
+    unpacked: tuple[Value, ...] = ()
+
+
+@dataclass(frozen=True)
+class MakeFunction(Operands):
+    """A function value: a lambda or a nested definition, whose body is not lowered."""
+
+    result: Value
+    location: SourceSpan
+    name: str
+
+
+@dataclass(frozen=True)
 class BuildString(Operands):
     """An f-string: its constant and formatted parts, in order."""
 
@@ -295,6 +312,16 @@ class Assert(Operands):
 
 
 @dataclass(frozen=True)
+class SetGlobal(Operands):
+    """Assignment to a name declared ``global``."""
+
+    result: None
+    location: SourceSpan
+    name: str
+    value: Value
+
+
+@dataclass(frozen=True)
 class Import(Operands):
     """An import executed where it stands: ``module`` as written (relative dots
     included), the canonical ``symbol_id`` bound and the local ``name`` it binds."""
@@ -324,14 +351,16 @@ ValueInstruction: TypeAlias = (
     | BuildList
     | BuildTuple
     | BuildDict
+    | BuildSet
     | BuildString
     | BuildSlice
+    | MakeFunction
     | WithEnter
     | Catch
     | Await
     | Yield
 )
-EffectInstruction: TypeAlias = StoreLocal | SetAttr | SetItem | WithExit | Assert | Import
+EffectInstruction: TypeAlias = StoreLocal | SetAttr | SetItem | WithExit | Assert | Import | SetGlobal
 Instruction: TypeAlias = ValueInstruction | EffectInstruction
 
 

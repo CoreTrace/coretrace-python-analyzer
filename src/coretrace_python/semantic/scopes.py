@@ -209,7 +209,7 @@ class _ScopeBuilder:
         )
 
 
-_COMPREHENSION_NAMES = {"list": "<listcomp>", "set": "<setcomp>", "generator": "<genexpr>"}
+_COMPREHENSION_NAMES = {"list": "<listcomp>", "set": "<setcomp>", "generator": "<genexpr>", "dict": "<dictcomp>"}
 
 
 class _Collector:
@@ -358,6 +358,21 @@ class _Collector:
                     self.expression(bound, scope)
         elif isinstance(node, nodes.Starred):
             self.expression(node.value, scope)
+        elif isinstance(node, nodes.Set):
+            for element in node.elements:
+                self.expression(element, scope)
+        elif isinstance(node, nodes.Conditional):
+            self.expression(node.test, scope)
+            self.expression(node.body, scope)
+            self.expression(node.orelse, scope)
+        elif isinstance(node, nodes.Lambda):
+            for parameter in node.parameters:
+                if parameter.default is not None:
+                    self.expression(parameter.default, scope)
+            inner = self.open(scope, ScopeKind.FUNCTION, "<lambda>", node.span)
+            for parameter in node.parameters:
+                inner.bind(parameter.name, BindingKind.PARAMETER, parameter.span)
+            self.expression(node.body, inner)
         else:
             raise TypeError(f"unknown expression: {node!r}")
 
@@ -379,9 +394,11 @@ class _Collector:
         for index, generator in enumerate(node.generators):
             if index:
                 self.expression(generator.iterable, inner)
-            inner.bind(generator.target.identifier, BindingKind.LOCAL, generator.target.span)
+            self.target(generator.target, inner)
             for condition in generator.conditions:
                 self.expression(condition, inner)
+        if node.key is not None:
+            self.expression(node.key, inner)
         self.expression(node.element, inner)
 
     def open(

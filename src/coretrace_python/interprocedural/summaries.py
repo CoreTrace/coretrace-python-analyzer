@@ -37,6 +37,7 @@ from coretrace_python.ir.model import (
     Branch,
     BuildDict,
     BuildList,
+    BuildSet,
     BuildTuple,
     Call,
     Constant,
@@ -264,7 +265,7 @@ class _DependenceProblem(DataflowProblem[State]):
         deps = EMPTY
         for operand in instruction.operands():
             deps |= state.get(operand, EMPTY)
-        if isinstance(instruction, BuildList | BuildTuple | BuildDict):
+        if isinstance(instruction, BuildList | BuildTuple | BuildDict | BuildSet):
             for unpacked in instruction.unpacked:
                 deps |= self.deep(unpacked, state)
         return deps

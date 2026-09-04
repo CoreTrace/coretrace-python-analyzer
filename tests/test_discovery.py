@@ -94,3 +94,25 @@ def test_utf16_dependency_files_are_read(tmp_path: Path) -> None:
 
     assert analysis.dependencies.names == ("flask", "pyyaml")
     assert sorted(f.rule_id for f in analysis.findings) == ["vulnerable-dependency", "vulnerable-dependency"]
+
+
+def test_duplicate_qualified_names_get_distinct_call_graph_names() -> None:
+    from coretrace_python.interprocedural import CallGraphAnalysis
+    from coretrace_python.taint import TaintAnalysis
+
+    source = SourceManager().add_source(
+        "props.py",
+        "import os\n\nclass Box:\n    @property\n    def cmd(self):\n        return self._cmd\n\n"
+        "    @cmd.setter\n    def cmd(self, value):\n        self._cmd = value\n        os.system(input())\n\n"
+        "def run():\n    return 1\n\ndef run():\n    return 2\n",
+    )
+    module = engine.build_hir(source)
+    manager = engine.build_manager(module)
+    graph = manager.get(CallGraphAnalysis)
+
+    assert graph.functions == ("Box.cmd", "Box.cmd__2", "run", "run__2")
+    setter = module.body[1].body[1]  # type: ignore[union-attr]
+    assert graph.name_of(setter) == "Box.cmd__2"  # type: ignore[arg-type]
+    assert manager.get(TaintAnalysis, setter) is not None  # type: ignore[arg-type]
+    findings = engine.check(source, [Path(__file__).resolve().parent.parent / "plugins"])
+    assert [(f.rule_id, f.span.start_line) for f in findings] == [("command-injection", 11)]

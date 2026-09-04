@@ -23,6 +23,7 @@ from coretrace_python.ir.model import (
     Await,
     BuildDict,
     BuildList,
+    BuildSet,
     BuildTuple,
     Call,
     Catch,
@@ -183,11 +184,12 @@ class _PointsTo:
         result = instruction.result
         if result is None:
             return False
-        if isinstance(instruction, BuildList | BuildTuple | BuildDict | Call | WithEnter | Catch | Yield):
+        if isinstance(instruction, BuildList | BuildTuple | BuildDict | BuildSet | Call | WithEnter | Catch | Yield):
             kind = {
                 BuildList: "list",
                 BuildTuple: "tuple",
                 BuildDict: "dict",
+                BuildSet: "set",
                 Call: "call",
                 WithEnter: "context",
                 Catch: "exception",
@@ -195,11 +197,11 @@ class _PointsTo:
             }[type(instruction)]
             site = AbstractObject(AllocationSite(kind, instruction.location))
             changed = self.assign(result, {site})
-            if isinstance(instruction, BuildList | BuildTuple | BuildDict):
+            if isinstance(instruction, BuildList | BuildTuple | BuildDict | BuildSet):
                 values = (
-                    instruction.elements
-                    if isinstance(instruction, BuildList | BuildTuple)
-                    else tuple(v for _, v in instruction.items)
+                    tuple(v for _, v in instruction.items)
+                    if isinstance(instruction, BuildDict)
+                    else instruction.elements
                 )
                 for element in values:
                     changed |= self.store({site}, ELEMENTS, element)
