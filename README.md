@@ -129,6 +129,12 @@ allocation site one abstract object with an `elements` and an `attributes` locat
 `insert`, `add`, `update` and iteration all carry taint through the container. Function
 summaries record the parameters a function mutates and the module globals it touches, so
 a helper that fills a list taints the caller's list, across files too.
+Objects of the project's own classes are followed too: `App(x)` calls `App.__init__` on
+the new object, `app.run()` and `self.run()` call the class's methods with the receiver as
+`self`, so a value stored in one method and read in another flows through the object,
+across files through the project index. A method the framework calls, a Django view's
+`get` for instance, starts with what its sibling methods store into `self` from their
+own inputs.
 Each flow is then judged: a dominating guard that proves the value safe (`isdigit()`,
 membership in a constant allowlist, equality with a constant) refutes it and it is not
 reported; a guard that only mentions the value makes it a hotspot with medium confidence;
