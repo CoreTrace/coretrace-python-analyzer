@@ -14,12 +14,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from coretrace_python import engine
 from coretrace_python.cli import main
 from coretrace_python.findings import Severity
-from coretrace_python.frontend import HIRBuildError, build_hir
+from coretrace_python.frontend import build_hir
 from coretrace_python.hir import nodes
 from coretrace_python.semantic.scopes import ResolutionKind, analyze_scopes
 from coretrace_python.source import SourceManager
@@ -121,9 +119,13 @@ def test_keyword_arguments_including_unpacking() -> None:
     assert [k.name for k in call.expression.keywords] == ["key", None]
 
 
-def test_star_arguments_are_still_rejected_explicitly() -> None:
-    with pytest.raises(HIRBuildError, match="star arguments"):
-        build("def f(g, a):\n    g(*a)\n")
+def test_star_arguments_are_kept_as_starred_expressions() -> None:
+    module = build("def f(g, a):\n    g(*a)\n")
+    function = module.body[0]
+    assert isinstance(function, nodes.Function)
+    call = function.body[0]
+    assert isinstance(call, nodes.ExpressionStatement) and isinstance(call.expression, nodes.Call)
+    assert isinstance(call.expression.arguments[0], nodes.Starred)
 
 
 def test_pyhir_declares_a_schema_version() -> None:
