@@ -26,6 +26,7 @@ from coretrace_python.dependency import (
     DependencyGraph,
     parse_dependencies,
 )
+from coretrace_python.dependency.correlation import advisory_sinks, affected_symbols, correlate
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -155,7 +156,7 @@ def check(source: SourceFile, plugin_roots: Sequence[Path]) -> tuple[Finding, ..
     registry = load_plugins(plugin_roots, manager)
     manager.provide(SecurityModelAnalysis, plugin_models(loaded.plugin for loaded in registry))
     manager.provide(ProjectSummaries, SummaryIndex())
-    return _check_module(manager, tuple(loaded.plugin for loaded in registry))
+    return _check_module(manager, tuple(loaded.plugin for loaded in registry))[0]
 
 
 def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
@@ -195,8 +196,9 @@ def analyze_project(
     probe = next(iter(managers.values()), None) or _register_all(build_hir(sources.add_source("<empty>", "")))
     registry = load_plugins(plugin_roots, probe)
     all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *plugins)
-    models = plugin_models(all_plugins)
     advisories = tuple(a for plugin in all_plugins for a in plugin.advisories)
+    affected = affected_symbols(dependencies, advisories)
+    models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
     index = SummaryIndex()
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
@@ -233,7 +235,20 @@ def analyze_project(
 
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
     for name in sorted(analysable):
-        findings.extend(_check_module(analysable[name], module_plugins))
+        manager = analysable[name]
+        module_findings, supported = _check_module(manager, module_plugins)
+        findings.extend(module_findings)
+        if affected:
+            graph_of_module = manager.get(CallGraphAnalysis)
+            for function in supported:
+                findings.extend(
+                    correlate(
+                        graph_of_module.name_of(function),
+                        manager.get(TaintAnalysis, function).flows,
+                        manager.get(RefutationAnalysis, function),
+                        affected,
+                    )
+                )
     context = ProjectContext(graph, dependencies, advisories, analysable)
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
@@ -246,7 +261,12 @@ def _summaries_of(manager: AnalysisManager) -> dict[str, FunctionSummary]:
     return {name: table.summary(name) for name in table.names}
 
 
-def _check_module(manager: AnalysisManager, plugins: tuple[Plugin, ...]) -> tuple[Finding, ...]:
+def _check_module(
+    manager: AnalysisManager, plugins: tuple[Plugin, ...]
+) -> tuple[tuple[Finding, ...], tuple[nodes.Function, ...]]:
+    """Findings of the module plugins plus notes for unsupported functions, and the
+    functions that could be analysed."""
+
     supported: list[nodes.Function] = []
     notes: list[Finding] = []
     for function in analyzable_functions(manager.module):
@@ -266,7 +286,7 @@ def _check_module(manager: AnalysisManager, plugins: tuple[Plugin, ...]) -> tupl
         else:
             supported.append(function)
     findings = run_plugins(manager, plugins, tuple(supported))
-    return (*findings, *notes)
+    return (*findings, *notes), tuple(supported)
 
 
 def _note(rule_id: str, message: str, source: SourceFile, line: int) -> Finding:

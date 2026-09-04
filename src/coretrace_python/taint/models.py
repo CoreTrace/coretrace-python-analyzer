@@ -25,7 +25,8 @@ class TaintKind(Flag):
     PATH = auto()
     SSRF = auto()
     CODE = auto()
-    ALL = SQL | COMMAND | HTML | PATH | SSRF | CODE
+    ADVISORY = auto()
+    ALL = SQL | COMMAND | HTML | PATH | SSRF | CODE | ADVISORY
 
 
 class ModelError(Exception):
@@ -110,6 +111,17 @@ class ModelTable:
     def sink(self, symbol: SymbolId) -> Sink | None:
         found = self._by_symbol[Sink].get(symbol)
         return found if isinstance(found, Sink) else None
+
+    def extended(self, *sinks: Sink) -> ModelTable:
+        """A table with extra sinks; a sink already present gains the new kinds."""
+
+        merged = {sink.symbol: sink for sink in self.sinks}
+        for sink in sinks:
+            current = merged.get(sink.symbol)
+            merged[sink.symbol] = (
+                Sink(sink.symbol, current.kinds | sink.kinds) if current is not None else sink
+            )
+        return ModelTable(self.sources, tuple(merged.values()), self.sanitizers, self.entry_points)
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
         found = self._by_symbol[Sanitizer].get(symbol)
