@@ -159,9 +159,10 @@ assignment, list, tuple and dict literals with `*` and `**` unpacking, f-strings
 `try`/`except`/`else`/`finally`, `await`, `yield`, `if`/`elif`/`else`, `while`, `for`
 with name or tuple targets, `break`, `continue` and `raise`, `from` clause included,
 conditional expressions and comprehensions, laid out as real branches and loops over a
-synthetic local, set literals, chained assignments, assignments to `global` names, and
-lambdas and nested function definitions as function values whose bodies are not analysed
-yet, `del`, loop `else` clauses, and `match` over literal, singleton, capture, wildcard
+synthetic local, set literals, chained assignments, assignments to `global` names,
+lambdas and nested function definitions, analysed as functions of their own whose
+captured variables are implicit parameters so taint flows through closures like through
+any call, `del`, loop `else` clauses, and `match` over literal, singleton, capture, wildcard
 and or-patterns with guards, laid out as an `if` chain. Not yet: sequence, mapping and
 class patterns, `nonlocal` assignments, classes defined inside functions, and a
 conditional expression or comprehension inside a `while` condition. Blocks inside a `try`

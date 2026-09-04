@@ -134,6 +134,9 @@ class _FunctionLowerer:
         if isinstance(node, nodes.Name):
             resolution = self.resolve(node.identifier)
             if resolution.kind is ResolutionKind.FREE:
+                # A captured variable is an implicit parameter of the nested function.
+                if node.identifier in self.parameters:
+                    return self.parameters[node.identifier]
                 self.fail(node, "closures are not supported yet")
             if resolution.kind is not ResolutionKind.LOCAL:
                 return self.emit(Global(self.new_value(), node.span, node.identifier))
@@ -181,7 +184,9 @@ class _FunctionLowerer:
             elements, unpacked = self.spread(node.elements)
             return self.emit(BuildSet(self.new_value(), node.span, elements, unpacked))
         if isinstance(node, nodes.Lambda):
-            return self.emit(MakeFunction(self.new_value(), node.span, "<lambda>"))
+            synthesized = lambda_function(node)
+            captured = tuple(self.captured_value(name, node.span) for name in captured_names(synthesized, self.scopes))
+            return self.emit(MakeFunction(self.new_value(), node.span, synthesized.name, captured))
         if isinstance(node, nodes.Conditional | nodes.Comprehension):
             self.fail(node, "expression-level control flow must be laid out by the CFG builder")
         if isinstance(node, nodes.Await):
@@ -256,7 +261,8 @@ class _FunctionLowerer:
             for parameter in node.parameters:
                 if parameter.default is not None:
                     self.expression(parameter.default)
-            made = self.emit(MakeFunction(self.new_value(), node.span, node.name))
+            captured = tuple(self.captured_value(name, node.span) for name in captured_names(node, self.scopes))
+            made = self.emit(MakeFunction(self.new_value(), node.span, node.name, captured))
             self.store(nodes.Name(node.name, node.span), made)
             return
         if isinstance(node, nodes.AugAssign):
@@ -345,20 +351,29 @@ class _FunctionLowerer:
             iterable = self.expression(header.iterable)
             self.iterators[target] = self.emit(GetIter(self.new_value(), header.span, iterable))
 
+    def captured_value(self, name: str, span: SourceSpan) -> Value:
+        """The current value of a variable a nested function captures."""
+
+        return self.expression(nodes.Name(name, span))
+
     def function(self, node: nodes.Function) -> FunctionIR:
-        parameter_values = tuple(self.new_value() for _ in node.parameters)
+        captured = captured_names(node, self.scopes)
+        parameter_values = tuple(self.new_value() for _ in (*node.parameters, *captured))
         reassigned = _reassigned_parameters(node)
         self.parameters = {
             parameter.name: value
-            for parameter, value in zip(node.parameters, parameter_values, strict=True)
+            for parameter, value in zip(node.parameters, parameter_values, strict=False)
             if parameter.name not in reassigned
         }
+        # Captured variables come after the explicit parameters; they are never
+        # reassigned, an assignment would have made them local.
+        self.parameters.update(zip(captured, parameter_values[len(node.parameters) :], strict=True))
         blocks: list[BasicBlock] = []
         for cfg_block in self.cfg.blocks.values():
             self.instructions = []
             if cfg_block.id == self.cfg.entry:
                 # Reassigned parameters live in locals so every block reads the same slot.
-                for parameter, value in zip(node.parameters, parameter_values, strict=True):
+                for parameter, value in zip(node.parameters, parameter_values, strict=False):
                     if parameter.name in reassigned:
                         self.emit_effect(StoreLocal(None, parameter.span, parameter.name, value))
             for statement in cfg_block.statements:
@@ -375,15 +390,49 @@ class _FunctionLowerer:
 
 
 def qualified_name(scopes: ScopeTable, function: nodes.Function) -> str:
-    """``Class.method`` for methods, the bare name for module-level functions."""
+    """``Class.method`` for methods, ``outer.inner`` for nested functions, the bare name
+    for module-level functions; lambda and comprehension scopes keep identifier names."""
 
     names = [function.name]
     scope = scopes.scope_for(function)
     parent = scopes.scope(scope.parent) if scope.parent else None
     while parent is not None and parent.kind is not ScopeKind.MODULE:
-        names.append(parent.name)
+        names.append(parent.name.strip("<>"))
         parent = scopes.scope(parent.parent) if parent.parent else None
     return ".".join(reversed(names))
+
+
+def lambda_function(node: nodes.Lambda) -> nodes.Function:
+    """A lambda as a function named after its position, returning its body."""
+
+    return nodes.Function(
+        f"lambda_{node.span.start_line}_{node.span.start_column}",
+        node.parameters,
+        (nodes.Return(node.body, node.span),),
+        False,
+        node.span,
+    )
+
+
+def captured_names(function: nodes.Function, scopes: ScopeTable) -> tuple[str, ...]:
+    """The enclosing-function variables ``function`` reads, sorted: its implicit
+    parameters after the explicit ones."""
+
+    scope = scopes.scope_for(function)
+    names: set[str] = set()
+
+    def walk(node: Node) -> None:
+        if isinstance(node, nodes.Name):
+            names.add(node.identifier)
+        for child in children(node):
+            walk(child)
+
+    for statement in function.body:
+        walk(statement)
+    for parameter in function.parameters:
+        if parameter.default is not None:
+            walk(parameter.default)
+    return tuple(sorted(n for n in names if scopes.resolve(scope.id, n).kind is ResolutionKind.FREE))
 
 
 def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:
@@ -434,15 +483,37 @@ class PyIRAnalysis(FunctionAnalysis[FunctionIR]):
 
 
 def analyzable_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
-    """Top-level functions and the methods of top-level classes, in source order."""
+    """Top-level functions, the methods of top-level classes, and the functions and
+    lambdas nested inside them, in source order."""
 
     functions: list[nodes.Function] = []
     for statement in module.body:
         if isinstance(statement, nodes.Function):
-            functions.append(statement)
+            _collect(statement, functions)
         elif isinstance(statement, nodes.Class):
-            functions.extend(s for s in statement.body if isinstance(s, nodes.Function))
+            for member in statement.body:
+                if isinstance(member, nodes.Function):
+                    _collect(member, functions)
     return tuple(functions)
+
+
+def _collect(function: nodes.Function, into: list[nodes.Function]) -> None:
+    into.append(function)
+
+    def walk(node: Node) -> None:
+        if isinstance(node, nodes.Function):
+            _collect(node, into)
+            return
+        if isinstance(node, nodes.Lambda):
+            _collect(lambda_function(node), into)
+            return
+        if isinstance(node, nodes.Class):
+            return
+        for child in children(node):
+            walk(child)
+
+    for statement in function.body:
+        walk(statement)
 
 
 class ModuleIRAnalysis(Analysis[ModuleIR]):

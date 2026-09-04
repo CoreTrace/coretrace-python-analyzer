@@ -38,6 +38,7 @@ from coretrace_python.interprocedural import (
     SummaryTable,
     project_symbol,
 )
+from coretrace_python.ir.lowering import analyzable_functions
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
@@ -54,6 +55,7 @@ from coretrace_python.ir.model import (
     GetIter,
     Instruction,
     Jump,
+    MakeFunction,
     Phi,
     SetAttr,
     SetItem,
@@ -289,11 +291,21 @@ class _TaintProblem(DataflowProblem[State]):
             return self.external(symbol, everything, call, state, flows)
         if isinstance(target, KnownFunction):
             summary = self.summaries.summary(target.name)
-            return self.known(summary, target.name, arguments, keywords, everything, call, flows, state)
+            captured = self.captured(call)
+            arguments = (*arguments, *(self.deep(value, state) for value in captured))
+            return self.known(
+                summary, target.name, arguments, keywords, everything, call, flows, state, captured
+            )
         returned = self.returned_symbol(call)
         if returned is not None:
             return self.external(returned, everything, call, state, flows)
         return everything.join(state.get(call.callee, Taint.none()))
+
+    def captured(self, call: Call) -> tuple[Value, ...]:
+        """The values a nested callee captured, its implicit trailing parameters."""
+
+        made = self.defs.get(call.callee)
+        return made.captured if isinstance(made, MakeFunction) else ()
 
     def modelled(self, symbol: SymbolId) -> bool:
         return (
@@ -359,6 +371,7 @@ class _TaintProblem(DataflowProblem[State]):
         call: Call,
         flows: list[TaintFlow],
         state: dict[Key, Taint],
+        captured: tuple[Value, ...] = (),
     ) -> Taint:
         """Flows and result taint of a call to a function whose summary is known."""
 
@@ -366,6 +379,7 @@ class _TaintProblem(DataflowProblem[State]):
             return everything
 
         spread = (*call.starred, *(value for _, value in call.keywords))
+        values = (*call.arguments, *captured)
 
         def mapped(deps: frozenset[int]) -> tuple[Taint, Value | None]:
             taint, witness = Taint.none(), None
@@ -373,7 +387,7 @@ class _TaintProblem(DataflowProblem[State]):
                 positional = index < len(arguments)
                 part = arguments[index] if positional else keywords
                 if part and witness is None and (positional or spread):
-                    witness = call.arguments[index] if positional else spread[0]
+                    witness = values[index] if positional else spread[0]
                 taint = taint.join(part)
             return taint, witness
 
@@ -387,13 +401,13 @@ class _TaintProblem(DataflowProblem[State]):
                 if witness is not None:
                     self.report(flows, sink, taint, witness, call, through, reached.location, position)
         for mutation in summary.mutations:
-            if mutation.parameter < len(call.arguments):
+            if mutation.parameter < len(values):
                 stored = mapped(mutation.dependencies)[0]
                 for symbol in sorted(mutation.externals, key=str):
                     stored_source = self.models.source(symbol)
                     if stored_source is not None:
                         stored = stored.join(Taint(stored_source.kinds, frozenset({stored_source})))
-                self.store(state, call.arguments[mutation.parameter], mutation.field, stored)
+                self.store(state, values[mutation.parameter], mutation.field, stored)
         result = mapped(summary.return_dependencies)[0]
         for symbol in sorted(summary.return_externals, key=str):
             returned_source = self.models.source(symbol)
@@ -477,6 +491,61 @@ def factory_instances(
     return found
 
 
+def local_instances(function: nodes.Function, scopes: ScopeTable, symbols: SymbolTable) -> Instances:
+    """Locals of ``function`` bound to the result of calling a resolvable symbol."""
+
+    scope = scopes.scope_for(function).id
+    found: dict[str, tuple[SymbolId, ...]] = {}
+    for statement in function.body:
+        if (
+            isinstance(statement, nodes.Assign)
+            and isinstance(statement.target, nodes.Name)
+            and isinstance(statement.value, nodes.Call)
+        ):
+            symbol = symbols.resolve_expression(scope, statement.value.callee)
+            if symbol is not None:
+                found[statement.target.identifier] = (symbol,)
+    return found
+
+
+def _enclosing(module: nodes.Module, function: nodes.Function) -> nodes.Function | None:
+    """The function whose body defines ``function``, if it is nested."""
+
+    def search(body: tuple[nodes.Statement, ...], parent: nodes.Function | None) -> nodes.Function | None:
+        for statement in body:
+            if isinstance(statement, nodes.Function):
+                if statement.span == function.span:
+                    return parent
+                found = search(statement.body, statement)
+                if found is not None:
+                    return found
+            elif isinstance(statement, nodes.Class):
+                found = search(statement.body, None)
+                if found is not None:
+                    return found
+        return None
+
+    found = search(module.body, None)
+    if found is not None:
+        return found
+    # Lambdas are synthesized functions: their enclosing function is the innermost
+    # analysable function whose span contains theirs.
+    innermost: nodes.Function | None = None
+    for candidate in analyzable_functions(module):
+        if candidate.span != function.span and _contains(candidate.span, function.span):
+            innermost = candidate
+    return innermost
+
+
+def _contains(outer: SourceSpan, inner: SourceSpan) -> bool:
+    if outer.source_id != inner.source_id or outer.end_line is None or inner.end_line is None:
+        return False
+    return (outer.start_line, outer.start_column) <= (inner.start_line, inner.start_column) and (
+        inner.end_line,
+        inner.end_column,
+    ) <= (outer.end_line, outer.end_column)
+
+
 def _instance_symbols(expression: nodes.Expression, instances: Instances) -> tuple[SymbolId, ...]:
     """The symbols an expression rooted at a factory instance may denote."""
 
@@ -540,6 +609,10 @@ def parameter_sources(
         None,
     )
     sources: dict[int, Source] = {}
+    enclosing_function = _enclosing(module, function)
+    if enclosing_function is not None:
+        # ``app = Flask(__name__)`` inside ``create_app``: routes defined there resolve.
+        instances = {**(instances or {}), **local_instances(enclosing_function, scopes, symbols)}
     entry = entry_point_of(function, models, scopes, symbols, owner, instances)
     if entry is None and routes:
         qualified = function.name if owner is None else f"{owner.name}.{function.name}"

@@ -23,6 +23,7 @@ from coretrace_python.ir.model import (
     GetAttr,
     GetItem,
     Global,
+    MakeFunction,
     Symbol,
     Value,
     WithEnter,
@@ -149,8 +150,10 @@ def resolve_targets(
     scopes: ScopeTable,
     known: frozenset[str],
     parameters: Mapping[Value, SymbolId] | None = None,
+    nested: frozenset[str] = frozenset(),
 ) -> tuple[dict[Value, Target], dict[Value, SymbolId]]:
-    """Map every callee value of ``function`` to its target, and every symbol value."""
+    """Map every callee value of ``function`` to its target, and every symbol value.
+    ``nested`` names the functions defined inside this one, ``outer.inner``."""
 
     module = scopes.module_scope
     symbols = derive_symbols(function, parameters)
@@ -159,6 +162,10 @@ def resolve_targets(
     }
     for block in function.blocks:
         for instruction in block.instructions:
+            if isinstance(instruction, MakeFunction):
+                qualified = f"{function.name}.{instruction.name}"
+                if qualified in nested:
+                    targets[instruction.result] = KnownFunction(qualified)
             if isinstance(instruction, Global):
                 binding = module.bindings.get(instruction.name)
                 if (
@@ -178,7 +185,8 @@ def _annotated(
     scope = scopes.scope_for(function)
     enclosing = scope.parent if scope.parent is not None else scope.id
     found: dict[Value, SymbolId] = {}
-    for value, parameter in zip(ssa.parameters, function.parameters, strict=True):
+    # Captured variables follow the explicit parameters and carry no annotation.
+    for value, parameter in zip(ssa.parameters, function.parameters, strict=False):
         if parameter.annotation is None:
             continue
         symbol = table.resolve_expression(enclosing, parameter.annotation)
@@ -218,7 +226,9 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 unsupported.add(name)
                 sites[name] = ()
                 continue
-            targets, symbols[name] = resolve_targets(ssa, scopes, known, _annotated(function, ssa, scopes, table))
+            targets, symbols[name] = resolve_targets(
+                ssa, scopes, known, _annotated(function, ssa, scopes, table), frozenset(definitions)
+            )
             found: list[CallSite] = []
             for block in ssa.blocks:
                 for instruction in block.instructions:
