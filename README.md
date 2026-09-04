@@ -38,7 +38,9 @@ tooling directories (`.venv`, `node_modules`, `__pycache__`, `build`, `dist`) ar
 The dependency files at the root (`requirements*.txt`, `pyproject.toml`, `poetry.lock`,
 `uv.lock`) are resolved into a dependency graph. Plugins may contribute advisories; the
 shipped `dependency/` plugins report a requirement that allows a vulnerable version at
-its line, and every call in the project to an API the advisory affects. The shipped
+its line, and every call in the project to an API the advisory affects. When
+attacker-controlled data reaches such a call, the engine correlates the four facts into
+one critical `exploitable-vulnerability` finding, judged like any other flow. The shipped
 advisory database is a small offline sample; a live OSV feed is future work.
 
 `--plugins` is a directory searched recursively for `plugin.toml` manifests and may be
