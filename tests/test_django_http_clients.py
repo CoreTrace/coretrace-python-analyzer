@@ -266,7 +266,7 @@ def test_requests_with_user_url_is_an_ssrf_and_its_response_is_input() -> None:
         "import os\nimport requests\nfrom flask import Flask, request\n\napp = Flask(__name__)\n\n"
         "@app.route('/fetch')\n"
         "def fetch():\n"
-        "    response = requests.get(request.args['url'])\n"
+        "    response = requests.get(request.args['url'], timeout=5)\n"
         "    os.system(response.text)\n"
     )
     # The response carries two provenances: the remote server's answer, and the URL the
@@ -282,9 +282,9 @@ def test_httpx_client_instances_and_sessions_are_ssrf_sinks() -> None:
         "import httpx\nimport requests\n\n"
         "client = httpx.Client()\nsession = requests.Session()\n\n"
         "def fetch():\n"
-        "    client.post(input())\n"
-        "    session.get(input())\n"
-        "    httpx.get('https://example.com')\n"
+        "    client.post(input(), timeout=5)\n"
+        "    session.get(input(), timeout=5)\n"
+        "    httpx.get('https://example.com', timeout=5)\n"
     )
     assert rules(findings) == ["ssrf", "ssrf"]
     assert sorted(f.span.start_line for f in findings) == [8, 9]
