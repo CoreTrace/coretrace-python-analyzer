@@ -24,6 +24,15 @@ class Severity(Enum):
     HIGH = "high"
     CRITICAL = "critical"
 
+    @property
+    def rank(self) -> int:
+        """Position in the order of severities, ``INFO`` lowest, ``CRITICAL`` highest."""
+
+        return _SEVERITY_ORDER.index(self)
+
+
+_SEVERITY_ORDER = (Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL)
+
 
 class Confidence(Enum):
     LOW = "low"

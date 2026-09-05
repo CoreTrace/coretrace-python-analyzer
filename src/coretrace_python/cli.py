@@ -10,6 +10,7 @@ from coretrace_python.analysis import AnalysisError
 from coretrace_python.cache import ProjectCache
 from coretrace_python.cfg import CFGError
 from coretrace_python.dependency import dump_advisories, import_osv, read_osv, render_sbom
+from coretrace_python.findings import Severity
 from coretrace_python.findings.baseline import Baseline, BaselineError
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
@@ -131,6 +132,14 @@ def build_parser() -> argparse.ArgumentParser:
         "findings not recorded there fail the check",
     )
     parser.add_argument(
+        "--fail-on",
+        choices=[severity.value for severity in Severity],
+        default=None,
+        metavar="SEVERITY",
+        help="with --check, exit with status 1 only when a finding of this severity or "
+        "above was reported (info, low, medium, high, critical); default: any finding",
+    )
+    parser.add_argument(
         "--import-advisories",
         nargs=2,
         type=Path,
@@ -180,6 +189,9 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --policy only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
 
+    if args.fail_on is not None and not args.check:
+        print("error: --fail-on only applies to --check", file=sys.stderr)
+        return EXIT_ERROR
     if args.baseline is not None and not args.check:
         print("error: --baseline only applies to --check", file=sys.stderr)
         return EXIT_ERROR
@@ -229,7 +241,9 @@ def main(argv: list[str] | None = None) -> int:
                     findings, baselined = (), findings
             report = engine.report(findings, coverage, root, suppressed, baselined)
             print(render(args.format or "text", report), end="")
-            return EXIT_FINDINGS if findings else EXIT_CLEAN
+            threshold = Severity(args.fail_on).rank if args.fail_on is not None else 0
+            failing = any(finding.severity.rank >= threshold for finding in findings)
+            return EXIT_FINDINGS if failing else EXIT_CLEAN
     except _ANALYSIS_ERRORS as error:
         print(f"error: {error}", file=sys.stderr)
         return EXIT_ERROR

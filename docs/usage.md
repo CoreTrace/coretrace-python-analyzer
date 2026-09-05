@@ -31,7 +31,8 @@ coverage: 2/2 files, 12/12 functions
 ```
 
 The exit status is 0 when nothing was found, 1 when findings were reported and 2 on a
-usage or analysis error, so the command can gate a pipeline as it is.
+usage or analysis error, so the command can gate a pipeline as it is. `--fail-on high`
+keeps reporting every finding but fails only from that severity up.
 
 ## Command line
 
@@ -52,6 +53,7 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 | `--advisories FILE` | Read a local advisory file in addition to `advisories.json` at the root. Repeatable. |
 | `--policy FILE` | Apply this dependency policy instead of `coretrace-policy.toml` at the root. |
 | `--import-advisories SRC OUT` | Convert an OSV dump into the local advisory file `OUT`, then exit. |
+| `--fail-on SEVERITY` | Exit with status 1 only when a finding of this severity or above was reported: `info`, `low`, `medium`, `high` or `critical`. Default: any finding. |
 | `--baseline PATH` | The accepted findings: written on the first run, then only findings not recorded there fail the check. |
 | `--emit-ir` | Print the intermediate representation of `path` instead of checking it. |
 | `--ssa` | With `--emit-ir`, print the static single assignment form. |
@@ -310,7 +312,7 @@ Actions:
 
 ```yaml
 - run: pip install coretrace-python-analyzer
-- run: coretrace-python-analyzer --check src/ --format sarif > coretrace.sarif
+- run: coretrace-python-analyzer --check src/ --fail-on high --format sarif > coretrace.sarif
   continue-on-error: true
 - uses: github/codeql-action/upload-sarif@v3
   with:
