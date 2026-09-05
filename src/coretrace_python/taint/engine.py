@@ -541,23 +541,25 @@ def local_instances(function: nodes.Function, scopes: ScopeTable, symbols: Symbo
 def _enclosing(module: nodes.Module, function: nodes.Function) -> nodes.Function | None:
     """The function whose body defines ``function``, if it is nested."""
 
-    def search(body: tuple[nodes.Statement, ...], parent: nodes.Function | None) -> nodes.Function | None:
+    def search(
+        body: tuple[nodes.Statement, ...], parent: nodes.Function | None
+    ) -> tuple[bool, nodes.Function | None]:
         for statement in body:
             if isinstance(statement, nodes.Function):
                 if statement.span == function.span:
-                    return parent
+                    return True, parent
                 found = search(statement.body, statement)
-                if found is not None:
+                if found[0]:
                     return found
             elif isinstance(statement, nodes.Class):
                 found = search(statement.body, None)
-                if found is not None:
+                if found[0]:
                     return found
-        return None
+        return False, None
 
-    found = search(module.body, None)
-    if found is not None:
-        return found
+    defined, parent = search(module.body, None)
+    if defined:
+        return parent
     # Lambdas are synthesized functions: their enclosing function is the innermost
     # analysable function whose span contains theirs.
     innermost: nodes.Function | None = None
