@@ -86,6 +86,9 @@ _AUTHORIZATION_DECORATORS = (
 )
 
 
+_TARGET_ONLY = ((TaintKind.REDIRECT, (0,)),)
+
+
 def _sym(path: str) -> SymbolId:
     return SymbolId(f"python.{path}")
 
@@ -107,9 +110,11 @@ class DjangoModels(ModelPlugin):
         Sink(_sym("django.http.response.HttpResponse"), TaintKind.HTML),
         Sink(_sym("django.template.Template"), TaintKind.HTML),
         Sink(_sym("django.http.FileResponse"), TaintKind.PATH),
-        Sink(_sym("django.shortcuts.redirect"), TaintKind.REDIRECT),
-        Sink(_sym("django.http.HttpResponseRedirect"), TaintKind.REDIRECT),
-        Sink(_sym("django.http.HttpResponsePermanentRedirect"), TaintKind.REDIRECT),
+        # Only the target is a redirect: the other arguments of ``redirect`` are route
+        # parameters resolved through the URL configuration.
+        Sink(_sym("django.shortcuts.redirect"), TaintKind.REDIRECT, _TARGET_ONLY),
+        Sink(_sym("django.http.HttpResponseRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
+        Sink(_sym("django.http.HttpResponsePermanentRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
         Sanitizer(_sym("django.utils.html.escape"), TaintKind.HTML),
         Sanitizer(_sym("django.utils.html.conditional_escape"), TaintKind.HTML),
         *(AuthorizationGuard(_sym(decorator), label) for decorator, label in _AUTHORIZATION_DECORATORS),
