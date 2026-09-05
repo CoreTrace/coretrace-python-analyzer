@@ -110,3 +110,20 @@ def test_the_wheel_carries_the_bundled_plugins(tmp_path: Path) -> None:
     assert "coretrace_python/bundled/syntax/dangerous_eval/dangerous_eval.py" in names
     assert sum(1 for n in names if n.endswith("/plugin.toml")) == 26
     assert not any(n.startswith("tests/") or "tests-project" in n for n in names)
+
+
+def test_the_license_ships_with_the_repository_and_the_wheel(tmp_path: Path) -> None:
+    pytest.importorskip("build")
+    assert "Apache License" in (REPO / "LICENSE").read_text(encoding="utf-8")
+    assert "Copyright" in (REPO / "NOTICE").read_text(encoding="utf-8")
+    assert "Apache" in (REPO / "README.md").read_text(encoding="utf-8")
+    assert metadata.metadata("coretrace-python-analyzer")["License-Expression"] == "Apache-2.0"
+    subprocess.run(
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(tmp_path), str(REPO)],
+        check=True,
+        capture_output=True,
+    )
+    (wheel,) = tmp_path.glob("*.whl")
+    names = zipfile.ZipFile(wheel).namelist()
+    assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
+    assert any(name.endswith(".dist-info/licenses/NOTICE") for name in names)
