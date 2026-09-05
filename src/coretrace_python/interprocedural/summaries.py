@@ -50,10 +50,12 @@ from coretrace_python.ir.model import (
     Instruction,
     Jump,
     MakeFunction,
+    NonlocalResult,
     Phi,
     Return,
     SetAttr,
     SetItem,
+    SetNonlocal,
     Symbol,
     Undefined,
     Value,
@@ -103,6 +105,16 @@ class Mutation:
 
 
 @dataclass(frozen=True)
+class NonlocalWrite:
+    """What the function stores into its ``nonlocal`` ``name``: data of its parameters
+    and results of external symbols, written back to the caller's variable."""
+
+    name: str
+    dependencies: Dependencies
+    externals: frozenset[SymbolId]
+
+
+@dataclass(frozen=True)
 class FunctionSummary:
     name: str
     parameters: int
@@ -112,6 +124,7 @@ class FunctionSummary:
     return_externals: frozenset[SymbolId] = frozenset()
     mutations: tuple[Mutation, ...] = ()
     side_effects: frozenset[str] = frozenset()
+    nonlocal_writes: tuple[NonlocalWrite, ...] = ()
 
 
 class SummaryIndex:
@@ -184,6 +197,7 @@ class _DependenceProblem(DataflowProblem[State]):
         self.returns: Dep = EMPTY
         self.stores: dict[HeapLocation, Dep] = {}
         self.mutated_globals: set[str] = set()
+        self.nonlocal_stores: dict[str, Dep] = {}
 
     # ------------------------------------------------------------------ heap
 
@@ -224,6 +238,9 @@ class _DependenceProblem(DataflowProblem[State]):
                 self.store(state, instruction.object, ATTRIBUTES, state.get(instruction.value, EMPTY))
             elif isinstance(instruction, SetItem):
                 self.store(state, instruction.object, ELEMENTS, state.get(instruction.value, EMPTY))
+            elif isinstance(instruction, SetNonlocal):
+                previous = self.nonlocal_stores.get(instruction.name, EMPTY)
+                self.nonlocal_stores[instruction.name] = previous | state.get(instruction.value, EMPTY)
             if instruction.result is None:
                 continue
             if isinstance(instruction, Phi):
@@ -233,6 +250,8 @@ class _DependenceProblem(DataflowProblem[State]):
                         deps |= incoming[predecessor].get(value, EMPTY)
             elif isinstance(instruction, Call):
                 deps = self.call(instruction, state)
+            elif isinstance(instruction, NonlocalResult):
+                deps = self.nonlocal_result(instruction, state)
             else:
                 deps = self.instruction(instruction, state)
                 if isinstance(instruction, GetAttr | GetItem | GetIter):
@@ -324,6 +343,34 @@ class _DependenceProblem(DataflowProblem[State]):
         assert isinstance(target, UnknownTarget)
         return everything | state.get(call.callee, EMPTY)
 
+    def nonlocal_result(self, instruction: NonlocalResult, state: dict[Key, Dep]) -> Dep:
+        """What the nested callee left in its nonlocal ``name``, in the caller's terms."""
+
+        call = self.defs.get(instruction.call)
+        if not isinstance(call, Call):
+            return EMPTY
+        target = self.graph.target_at(self.name, call.location)
+        if not isinstance(target, KnownFunction) or target.name not in self.table:
+            return EMPTY
+        callee = self.table[target.name]
+        arguments = tuple(self.deep(a, state) for a in call.arguments)
+        made = self.defs.get(call.callee)
+        if isinstance(made, MakeFunction):
+            arguments = (*arguments, *(self.deep(v, state) for v in made.captured))
+        bound = self.receiver(call, target.name)
+        arguments = (*(self.deep(r, state) for r in bound), *arguments)
+        keywords = EMPTY
+        for value in (*call.starred, *(v for _, v in call.keywords)):
+            keywords |= self.deep(value, state)
+        deps = EMPTY
+        for write in callee.nonlocal_writes:
+            if write.name != instruction.name:
+                continue
+            for index in write.dependencies:
+                deps |= arguments[index] if index < len(arguments) else keywords
+            deps |= Dep(externals=write.externals)
+        return deps
+
     def receiver(self, call: Call, name: str) -> tuple[Value, ...]:
         """The object a method call runs on: the receiver of ``obj.method(...)`` or the
         new object of ``Class(...)``, the method's implicit first parameter."""
@@ -407,6 +454,7 @@ def summarize(
     problem.returns = EMPTY
     problem.stores = {}
     problem.mutated_globals = set()
+    problem.nonlocal_stores = {}
     for block in function.blocks:
         if solution.reached(block.id):
             problem.evaluate(block, solution.incoming(block.id))
@@ -426,6 +474,11 @@ def summarize(
         return_externals=problem.returns.externals,
         mutations=tuple(mutations),
         side_effects=frozenset(problem.mutated_globals),
+        nonlocal_writes=tuple(
+            NonlocalWrite(name, deps.parameters, deps.externals)
+            for name, deps in sorted(problem.nonlocal_stores.items())
+            if deps.parameters or deps.externals
+        ),
     )
 
 

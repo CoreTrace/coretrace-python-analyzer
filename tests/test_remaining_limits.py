@@ -116,9 +116,9 @@ def test_nonlocal_assignments_lower_as_locals_of_the_nested_function() -> None:
 def test_a_nonlocal_write_is_visible_inside_the_writer_but_not_yet_outside() -> None:
     inside = "import os\n\ndef outer():\n    cmd = 'ls'\n    def set_cmd():\n        nonlocal cmd\n        cmd = input()\n        os.system(cmd)\n    set_cmd()\n"
     assert rules(check(inside)) == [("command-injection", 8, "set_cmd")]
-    # Documented limit: the write does not flow back to the enclosing function.
+    # The write flows back to the enclosing function when it calls the writer directly.
     outside = "import os\n\ndef outer():\n    cmd = 'ls'\n    def set_cmd():\n        nonlocal cmd\n        cmd = input()\n    set_cmd()\n    os.system(cmd)\n"
-    assert check(outside) == ()
+    assert rules(check(outside)) == [("command-injection", 9, "outer")]
 
 
 # --------------------------------------------------------------------------- classes inside functions

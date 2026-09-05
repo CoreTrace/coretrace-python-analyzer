@@ -30,12 +30,14 @@ from coretrace_python.ir.model import (
     MakeClass,
     MakeFunction,
     ModuleIR,
+    NonlocalResult,
     Phi,
     Raise,
     Return,
     SetAttr,
     SetGlobal,
     SetItem,
+    SetNonlocal,
     StoreLocal,
     Symbol,
     Terminator,
@@ -107,6 +109,8 @@ def _instruction(instruction: Instruction) -> str:
         return f'{_value(instruction.result)} = make_class "{instruction.name}"'
     if isinstance(instruction, SetGlobal):
         return f'set_global "{instruction.name}", {_value(instruction.value)}'
+    if isinstance(instruction, SetNonlocal):
+        return f'set_nonlocal "{instruction.name}", {_value(instruction.value)}'
     if isinstance(instruction, BuildString):
         return f"{_value(instruction.result)} = build_string {', '.join(_value(v) for v in instruction.parts)}".rstrip()
     if isinstance(instruction, BuildSlice):
@@ -124,6 +128,8 @@ def _instruction(instruction: Instruction) -> str:
     if isinstance(instruction, Yield):
         suffix = "" if instruction.value is None else f" {_value(instruction.value)}"
         return f"{_value(instruction.result)} = yield{suffix}"
+    if isinstance(instruction, NonlocalResult):
+        return f"{_value(instruction.result)} = nonlocal_result {_value(instruction.call)}, {instruction.name!r}"
     if isinstance(instruction, SetAttr):
         return f"set_attr {_value(instruction.object)}, {instruction.attribute!r}, {_value(instruction.value)}"
     if isinstance(instruction, SetItem):

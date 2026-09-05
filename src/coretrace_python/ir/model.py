@@ -235,6 +235,17 @@ class Yield(Operands):
 
 
 @dataclass(frozen=True)
+class NonlocalResult(Operands):
+    """The value a nested function left in its ``nonlocal`` ``name`` when ``call``
+    returned; the caller stores it back into its own variable."""
+
+    result: Value
+    location: SourceSpan
+    call: Value
+    name: str
+
+
+@dataclass(frozen=True)
 class GetAttr(Operands):
     result: Value
     location: SourceSpan
@@ -341,6 +352,17 @@ class DelAttr(Operands):
 
 
 @dataclass(frozen=True)
+class SetNonlocal(Operands):
+    """A store to a name this function declares ``nonlocal``, kept through SSA so the
+    summary can tell the enclosing function what was written back."""
+
+    result: None
+    location: SourceSpan
+    name: str
+    value: Value
+
+
+@dataclass(frozen=True)
 class SetGlobal(Operands):
     """Assignment to a name declared ``global``."""
 
@@ -389,9 +411,11 @@ ValueInstruction: TypeAlias = (
     | Catch
     | Await
     | Yield
+    | NonlocalResult
 )
 EffectInstruction: TypeAlias = (
     StoreLocal | SetAttr | SetItem | WithExit | Assert | Import | SetGlobal | DelItem | DelAttr
+    | SetNonlocal
 )
 Instruction: TypeAlias = ValueInstruction | EffectInstruction
 
