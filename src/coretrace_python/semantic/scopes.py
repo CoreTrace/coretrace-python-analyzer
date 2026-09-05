@@ -237,7 +237,7 @@ class _Collector:
             for item in node.items:
                 self.expression(item.context, scope)
                 if item.target is not None:
-                    scope.bind(item.target.identifier, BindingKind.LOCAL, item.target.span)
+                    self.target(item.target, scope)
             self.body(node.body, scope)
         elif isinstance(node, nodes.Try):
             self.body(node.body, scope)
@@ -291,6 +291,8 @@ class _Collector:
                 self.expression(decorator, scope)
             for base in node.bases:
                 self.expression(base, scope)
+            for keyword in node.keywords:
+                self.expression(keyword.value, scope)
             scope.bind(node.name, BindingKind.CLASS, node.span)
             self.body(node.body, self.open(scope, ScopeKind.CLASS, node.name, node.span))
         elif isinstance(node, nodes.If | nodes.While):

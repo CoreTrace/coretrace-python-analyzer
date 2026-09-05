@@ -365,7 +365,8 @@ boolean operators, chained comparisons, keyword and starred arguments, `with`, `
 `else` clauses, `break`, `continue`, `raise` with `from`, conditional expressions,
 comprehensions, lambdas, nested functions and classes, `global`, `nonlocal`, `del`,
 assignment expressions (`(y := f(x))`, laid out as an assignment before the statement),
-`yield from`, starred assignment targets (`first, *rest = items`) and `match` with every
+`yield from`, starred assignment targets (`first, *rest = items`), class keyword arguments
+such as `metaclass=`, `with` targets of any assignable form and `match` with every
 pattern kind. `finally` is modelled on the normal path only. A
 `nonlocal` write made by a nested function flows back to the enclosing variable when the
 enclosing function calls that nested function directly by name; a nested function passed

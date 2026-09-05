@@ -297,6 +297,8 @@ class _FunctionLowerer:
                 self.expression(decorator)
             for base in node.bases:
                 self.expression(base)
+            for keyword in node.keywords:
+                self.expression(keyword.value)
             made_class = self.emit(MakeClass(self.new_value(), node.span, node.name))
             self.store(nodes.Name(node.name, node.span), made_class)
             return

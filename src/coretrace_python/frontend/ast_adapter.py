@@ -249,13 +249,9 @@ class AstHIRBuilder:
         if isinstance(node, (ast.With, ast.AsyncWith)):
             items = []
             for item in node.items:
-                bound: nodes.Name | None = None
+                bound: nodes.Target | None = None
                 if item.optional_vars is not None:
-                    if not isinstance(item.optional_vars, ast.Name):
-                        self.fail(
-                            item.optional_vars, "only a single name is supported as a with target"
-                        )
-                    bound = nodes.Name(item.optional_vars.id, self.span(item.optional_vars))
+                    bound = self.target(item.optional_vars)
                 items.append(
                     nodes.WithItem(
                         self.expression(item.context_expr), bound, self.span(item.context_expr)
@@ -389,12 +385,14 @@ class AstHIRBuilder:
         return tuple(found for statement in statements for found in self.statements(statement))
 
     def class_definition(self, node: ast.ClassDef) -> nodes.Class:
-        if node.keywords:
-            self.fail(node, "class keyword arguments are not supported yet")
         bases = tuple(self.expression(base) for base in node.bases)
+        keywords = tuple(
+            nodes.Keyword(keyword.arg, self.expression(keyword.value), self.span(keyword))
+            for keyword in node.keywords
+        )
         body = self.block(node.body)
         decorators = tuple(self.expression(d) for d in node.decorator_list)
-        return nodes.Class(node.name, bases, body, self.span(node), decorators)
+        return nodes.Class(node.name, bases, body, self.span(node), decorators, keywords)
 
     def function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> nodes.Function:
         body = self.block(node.body)

@@ -1,9 +1,9 @@
 {
   "coverage": {
     "files": 132,
-    "files_analysed": 129,
-    "functions": 1016,
-    "functions_analysed": 1016
+    "files_analysed": 132,
+    "functions": 1070,
+    "functions_analysed": 1070
   },
   "findings": [
     {
@@ -11,12 +11,6 @@
       "line": 200,
       "rule": "missing-timeout",
       "function": "fetch"
-    },
-    {
-      "file": "extras/profiling/run.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "httpie/client.py",
@@ -43,12 +37,6 @@
       "function": "_fetch_updates"
     },
     {
-      "file": "httpie/output/streams.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
       "file": "tests/test_binary.py",
       "line": 49,
       "rule": "missing-timeout",
@@ -68,9 +56,9 @@
     },
     {
       "file": "tests/test_uploads.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
+      "line": 103,
+      "rule": "command-injection",
+      "function": "stdin_processes"
     }
   ]
 }
