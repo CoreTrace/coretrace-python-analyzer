@@ -10,7 +10,7 @@ def render_text(report: Report) -> str:
     for finding in report.findings:
         span = finding.span
         line = (
-            f"{span.source_id}:{span.start_line}:{span.start_column}: "
+            f"{report.locate(str(span.source_id))}:{span.start_line}:{span.start_column}: "
             f"{finding.severity.value} {finding.rule_id}: {finding.message}"
         )
         if finding.function is not None:

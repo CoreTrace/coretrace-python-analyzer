@@ -342,4 +342,4 @@ def test_cli_reports_dependency_findings(tmp_path: Path, capsys) -> None:  # typ
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert output.startswith(f"{(root / 'requirements.txt').resolve()}:1:1: critical vulnerable-dependency:")
+    assert output.startswith("requirements.txt:1:1: critical vulnerable-dependency:")

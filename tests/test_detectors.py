@@ -322,4 +322,4 @@ def test_cli_reports_taint_findings(tmp_path: Path, capsys) -> None:  # type: ig
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert output.startswith(f"{source}:4:5: high command-injection: Command injection: stdin input reaches python.os.system [run]\n")
+    assert output.startswith("run.py:4:5: high command-injection: Command injection: stdin input reaches python.os.system [run]\n")
