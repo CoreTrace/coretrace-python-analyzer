@@ -453,7 +453,7 @@ class Raise:
 @dataclass(frozen=True, slots=True)
 class WithItem:
     context: Expression
-    target: Name | None
+    target: Target | None
     span: SourceSpan
 
 
@@ -558,6 +558,8 @@ class Class:
     body: tuple[Statement, ...]
     span: SourceSpan
     decorators: tuple[Expression, ...] = ()
+    # ``metaclass=`` and the other keyword arguments of the class statement.
+    keywords: tuple[Keyword, ...] = ()
 
 
 Statement: TypeAlias = (

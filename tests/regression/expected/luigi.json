@@ -1,9 +1,9 @@
 {
   "coverage": {
     "files": 259,
-    "files_analysed": 245,
-    "functions": 4462,
-    "functions_analysed": 4462
+    "files_analysed": 259,
+    "functions": 5169,
+    "functions_analysed": 5169
   },
   "findings": [
     {
@@ -19,28 +19,10 @@
       "function": null
     },
     {
-      "file": "luigi/contrib/beam_dataflow.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
       "file": "luigi/contrib/esindex.py",
       "line": 159,
       "rule": "weak-crypto",
       "function": "marker_index_document_id"
-    },
-    {
-      "file": "luigi/contrib/hdfs/abstract_client.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "luigi/contrib/hive.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "luigi/contrib/lsf.py",
@@ -83,18 +65,6 @@
       "line": 134,
       "rule": "command-injection",
       "function": "track_and_progress"
-    },
-    {
-      "file": "luigi/contrib/presto.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "luigi/contrib/pyspark_runner.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "luigi/contrib/salesforce.py",
@@ -185,42 +155,6 @@
       "line": 296,
       "rule": "command-injection",
       "function": "_run_job"
-    },
-    {
-      "file": "luigi/metrics.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "luigi/parameter.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "luigi/rpc.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "luigi/target.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "luigi/task.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "luigi/task_history.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "test/_test_ftp.py",
@@ -401,24 +335,6 @@
       "line": 1653,
       "rule": "high-entropy-string",
       "function": "test_task_list_filter_by_search_long_family_name"
-    },
-    {
-      "file": "test/task_test.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "test/worker_scheduler_com_test.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "test/worker_test.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "tox.ini",

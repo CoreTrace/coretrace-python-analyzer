@@ -1,9 +1,9 @@
 {
   "coverage": {
     "files": 43,
-    "files_analysed": 41,
-    "functions": 139,
-    "functions_analysed": 139
+    "files_analysed": 42,
+    "functions": 140,
+    "functions_analysed": 140
   },
   "findings": [
     {
@@ -50,8 +50,8 @@
     },
     {
       "file": "backend/app/models.py",
-      "line": 1,
-      "rule": "syntax-error",
+      "line": 123,
+      "rule": "hardcoded-credential",
       "function": null
     },
     {
