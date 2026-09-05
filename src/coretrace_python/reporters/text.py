@@ -20,6 +20,8 @@ def render_text(report: Report) -> str:
     summary = "no findings" if count == 0 else f"{count} finding{'s' if count > 1 else ''}"
     if report.suppressed:
         summary += f", {len(report.suppressed)} suppressed"
+    if report.baselined:
+        summary += f", {len(report.baselined)} baselined"
     lines.append(summary)
     if report.coverage is not None:
         lines.append(report.coverage.summary())

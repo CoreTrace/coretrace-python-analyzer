@@ -27,7 +27,11 @@ def _artifact(report: Report, path: str) -> dict[str, str]:
 
 
 def _result(
-    report: Report, finding: Finding, rule_index: int, suppressed: bool = False
+    report: Report,
+    finding: Finding,
+    rule_index: int,
+    suppressed: bool = False,
+    baseline_state: str | None = None,
 ) -> dict[str, object]:
     span = finding.span
     region: dict[str, int] = {"startLine": span.start_line, "startColumn": span.start_column}
@@ -50,14 +54,17 @@ def _result(
     }
     if suppressed:
         result["suppressions"] = [{"kind": "inSource"}]
+    if baseline_state is not None:
+        result["baselineState"] = baseline_state
     return result
 
 
 def render_sarif(report: Report) -> str:
     rule_ids: list[str] = []
-    for finding in (*report.findings, *report.suppressed):
+    for finding in (*report.findings, *report.suppressed, *report.baselined):
         if finding.rule_id not in rule_ids:
             rule_ids.append(finding.rule_id)
+    new = "new" if report.with_baseline else None
     run: dict[str, object] = {}
     if report.root is not None:
         run["originalUriBaseIds"] = {SRCROOT: {"uri": report.root.as_uri() + "/"}}
@@ -74,8 +81,12 @@ def render_sarif(report: Report) -> str:
                     }
                 },
             "results": [
-                *(_result(report, f, rule_ids.index(f.rule_id)) for f in report.findings),
+                *(_result(report, f, rule_ids.index(f.rule_id), False, new) for f in report.findings),
                 *(_result(report, f, rule_ids.index(f.rule_id), True) for f in report.suppressed),
+                *(
+                    _result(report, f, rule_ids.index(f.rule_id), False, "unchanged")
+                    for f in report.baselined
+                ),
             ],
         }
     )

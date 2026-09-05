@@ -52,6 +52,7 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 | `--advisories FILE` | Read a local advisory file in addition to `advisories.json` at the root. Repeatable. |
 | `--policy FILE` | Apply this dependency policy instead of `coretrace-policy.toml` at the root. |
 | `--import-advisories SRC OUT` | Convert an OSV dump into the local advisory file `OUT`, then exit. |
+| `--baseline PATH` | The accepted findings: written on the first run, then only findings not recorded there fail the check. |
 | `--emit-ir` | Print the intermediate representation of `path` instead of checking it. |
 | `--ssa` | With `--emit-ir`, print the static single assignment form. |
 | `--help` | Show the options and exit. |
@@ -153,6 +154,23 @@ The comment also works in requirements files, where a line
 finding. Suppressed findings are kept apart: the text report counts them, the JSON report
 lists them under `suppressed`, the SARIF log marks them as suppressed in source, and
 they never affect the exit status.
+
+## Adopting the analyzer on an existing code base
+
+A repository with known findings starts from a baseline:
+
+```bash
+coretrace-python-analyzer --check src/ --baseline coretrace-baseline.json
+```
+
+The first run writes the file with every current finding and passes. Later runs set the
+recorded findings apart and fail only on new ones. A finding is recognised by its file,
+its rule, its function and the text of its line, not by its line number, so code inserted
+above it does not make it new; a change to the line itself does. Commit the file and
+shrink it as findings are fixed: an entry without a matching finding is simply unused.
+Baselined findings are counted in the text report, listed under `baselined` in the JSON
+report and marked `baselineState: unchanged` in the SARIF log, where new results are
+marked `new`.
 
 ## Reports
 

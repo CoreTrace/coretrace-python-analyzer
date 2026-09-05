@@ -45,7 +45,7 @@ def shipped_rules() -> set[str]:
     rules: set[str] = set()
     for path in (REPO / "src" / "coretrace_python").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        rules.update(re.findall(r'rule_id[^"\n]{0,40}"([a-z-]+)"', text))
+        rules.update(re.findall(r'rule_id(?:: ClassVar\[str\])?\s*=\s*"([a-z-]+)"', text))
         rules.update(re.findall(r'Finding\(\s*"([a-z]+-[a-z-]+)"', text))
         rules.update(re.findall(r'_note\("([a-z-]+)"', text))
     return rules - {"message"}

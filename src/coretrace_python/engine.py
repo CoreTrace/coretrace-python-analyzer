@@ -713,7 +713,18 @@ def report(
     coverage: Coverage | None = None,
     root: Path | None = None,
     suppressed: Sequence[Finding] = (),
+    baselined: Sequence[Finding] | None = None,
 ) -> Report:
-    """The report of a check; paths under ``root`` are rendered relative to it."""
+    """The report of a check; paths under ``root`` are rendered relative to it.
+    ``baselined`` is the findings a baseline accounts for, ``None`` when none applied."""
 
-    return Report(tuple(findings), TOOL_NAME, __version__, coverage, root, tuple(suppressed))
+    return Report(
+        tuple(findings),
+        TOOL_NAME,
+        __version__,
+        coverage,
+        root,
+        tuple(suppressed),
+        tuple(baselined or ()),
+        baselined is not None,
+    )

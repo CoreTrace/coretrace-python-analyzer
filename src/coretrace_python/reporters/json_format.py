@@ -38,6 +38,8 @@ def render_json(report: Report) -> str:
     document["findings"] = [finding_record(finding, report) for finding in report.findings]
     if report.suppressed:
         document["suppressed"] = [finding_record(finding, report) for finding in report.suppressed]
+    if report.baselined:
+        document["baselined"] = [finding_record(finding, report) for finding in report.baselined]
     if report.coverage is not None:
         coverage = report.coverage
         document["coverage"] = {
