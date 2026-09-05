@@ -45,9 +45,8 @@ def registered_routes(
         s.name for s in module.body if isinstance(s, nodes.Function | nodes.Class)
     }
     found: dict[SymbolId, EntryPoint] = {}
-    for call in _calls(module.body):
-        callee = symbols.resolve_expression(scope, call.callee)
-        registrar = models.route_registrar(callee) if callee is not None else None
+    for call, callee in _registration_calls(module, scopes, symbols):
+        registrar = models.route_registrar(callee)
         if registrar is None:
             continue
         handler: nodes.Expression | None = None
@@ -81,6 +80,58 @@ def _handler_symbol(
     if isinstance(handler, nodes.Name) and handler.identifier in defined:
         return project_symbol(module.name, handler.identifier)
     return None
+
+
+def _registration_calls(
+    module: nodes.Module, scopes: ScopeTable, symbols: SymbolTable
+) -> Iterator[tuple[nodes.Call, SymbolId]]:
+    """Every call of the module with a resolvable callee: at module level, and inside
+    functions such as ``def setup_routes(app: Application)``, where a call on an
+    annotated parameter denotes the class's method (``app.router.add_route``)."""
+
+    module_scope = scopes.module_scope.id
+    for call in _calls(module.body):
+        callee = symbols.resolve_expression(module_scope, call.callee)
+        if callee is not None:
+            yield call, callee
+    for function in _functions(module.body):
+        scope = scopes.scope_for(function)
+        enclosing = scope.parent if scope.parent is not None else scope.id
+        annotated: dict[str, SymbolId] = {}
+        for parameter in function.parameters:
+            if parameter.annotation is not None:
+                symbol = symbols.resolve_expression(enclosing, parameter.annotation)
+                if symbol is not None:
+                    annotated[parameter.name] = symbol
+        for call in _calls(function.body):
+            callee = symbols.resolve_expression(scope.id, call.callee)
+            if callee is None:
+                callee = _through_annotation(call.callee, annotated)
+            if callee is not None:
+                yield call, callee
+
+
+def _through_annotation(expression: nodes.Expression, annotated: Mapping[str, SymbolId]) -> SymbolId | None:
+    """``app.router.add_route`` with ``app: Application`` is ``Application.router.add_route``."""
+
+    names: list[str] = []
+    while isinstance(expression, nodes.Attribute):
+        names.append(expression.name)
+        expression = expression.value
+    if not isinstance(expression, nodes.Name) or expression.identifier not in annotated:
+        return None
+    symbol = annotated[expression.identifier]
+    for name in reversed(names):
+        symbol = symbol.attribute(name)
+    return symbol
+
+
+def _functions(body: tuple[nodes.Statement, ...]) -> Iterator[nodes.Function]:
+    for statement in body:
+        if isinstance(statement, nodes.Function):
+            yield statement
+        elif isinstance(statement, nodes.Class):
+            yield from (member for member in statement.body if isinstance(member, nodes.Function))
 
 
 def _calls(body: tuple[nodes.Statement, ...]) -> Iterator[nodes.Call]:
