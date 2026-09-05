@@ -81,7 +81,12 @@ Taint follows values between functions and across files through function summari
 into objects (containers, attributes, instances of the project's own classes) and through
 closures. Flask, FastAPI and Django route handlers, class-based views and registered
 URL patterns receive HTTP input; click and Typer commands receive `argv` input; `input()`,
-`sys.argv`, environment variables and the responses of HTTP clients are further sources.
+`sys.argv`, environment variables, the output of local processes and the responses of
+HTTP clients are further sources. The first three are operator-controlled: a command-line
+tool opens the paths it is given, a command or a path built from the environment is the
+operator's own doing, and a path read from a local process is not a traversal, so those
+sources do not carry the corresponding kinds; a downloaded script piped into a shell
+stays a command injection.
 
 ## Rules
 

@@ -8,6 +8,9 @@ from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import Model, Sanitizer, Sink, Source, TaintKind, Validator
 
+_ENVIRONMENT_KINDS = TaintKind.ALL & ~(TaintKind.COMMAND | TaintKind.PATH)
+_PROCESS_OUTPUT_KINDS = TaintKind.ALL & ~TaintKind.PATH
+
 
 def _sym(path: str) -> SymbolId:
     return SymbolId(f"python.{path}")
@@ -18,13 +21,16 @@ class PythonStdlibModels(ModelPlugin):
     models: ClassVar[tuple[Model, ...]] = (
         Source(_sym("builtins.input"), "stdin"),
         Source(_sym("sys.stdin"), "stdin"),
-        # A command-line tool is expected to open the paths it is given.
+        # Operator-controlled inputs. A command-line tool is expected to open the paths
+        # it is given; the environment is set by whoever runs the program, so a command
+        # or a path built from it is not an injection; the output of a local process is
+        # not a path either, but a downloaded script piped into a shell is a real flaw.
         Source(_sym("sys.argv"), "argv", TaintKind.ALL & ~TaintKind.PATH),
-        Source(_sym("os.environ"), "environment"),
-        Source(_sym("subprocess.run.stdout"), "process-output"),
-        Source(_sym("subprocess.check_output"), "process-output"),
-        Source(_sym("subprocess.getoutput"), "process-output"),
-        Source(_sym("subprocess.Popen.communicate"), "process-output"),
+        Source(_sym("os.environ"), "environment", _ENVIRONMENT_KINDS),
+        Source(_sym("subprocess.run.stdout"), "process-output", _PROCESS_OUTPUT_KINDS),
+        Source(_sym("subprocess.check_output"), "process-output", _PROCESS_OUTPUT_KINDS),
+        Source(_sym("subprocess.getoutput"), "process-output", _PROCESS_OUTPUT_KINDS),
+        Source(_sym("subprocess.Popen.communicate"), "process-output", _PROCESS_OUTPUT_KINDS),
         Sink(_sym("os.system"), TaintKind.COMMAND),
         Sink(_sym("os.popen"), TaintKind.COMMAND),
         Sink(_sym("subprocess.run"), TaintKind.COMMAND),

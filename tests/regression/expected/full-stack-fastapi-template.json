@@ -49,12 +49,6 @@
       "function": "recover_password_html_content"
     },
     {
-      "file": "backend/app/models.py",
-      "line": 123,
-      "rule": "hardcoded-credential",
-      "function": null
-    },
-    {
       "file": "backend/tests/api/routes/test_login.py",
       "line": 31,
       "rule": "hardcoded-credential",

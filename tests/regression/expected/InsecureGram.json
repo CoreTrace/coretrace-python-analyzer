@@ -13,12 +13,6 @@
       "function": "insecure_deserialize"
     },
     {
-      "file": "app/auth.py",
-      "line": 40,
-      "rule": "hardcoded-credential",
-      "function": "login"
-    },
-    {
       "file": "app/command.py",
       "line": 12,
       "rule": "command-injection",
