@@ -10,6 +10,7 @@ from coretrace_python.analysis import AnalysisError
 from coretrace_python.cache import ProjectCache
 from coretrace_python.cfg import CFGError
 from coretrace_python.dependency import dump_advisories, import_osv, read_osv, render_sbom
+from coretrace_python.findings.baseline import Baseline, BaselineError
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
 from coretrace_python.ir.printer import format_module
@@ -24,6 +25,7 @@ EXIT_FINDINGS = 1
 EXIT_ERROR = 2
 
 _ANALYSIS_ERRORS = (
+    BaselineError,
     OSError,
     UnicodeError,
     ParseError,
@@ -121,6 +123,14 @@ def build_parser() -> argparse.ArgumentParser:
         "coretrace-policy.toml at the root",
     )
     parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="with --check, the accepted findings: written on the first run, then only "
+        "findings not recorded there fail the check",
+    )
+    parser.add_argument(
         "--import-advisories",
         nargs=2,
         type=Path,
@@ -170,6 +180,9 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --policy only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
 
+    if args.baseline is not None and not args.check:
+        print("error: --baseline only applies to --check", file=sys.stderr)
+        return EXIT_ERROR
     if args.no_bundled_plugins and not args.check:
         print("error: --no-bundled-plugins only applies to --check", file=sys.stderr)
         return EXIT_ERROR
@@ -207,8 +220,15 @@ def main(argv: list[str] | None = None) -> int:
                 findings, coverage = file_analysis.findings, file_analysis.coverage
                 suppressed = file_analysis.suppressed
             root = args.path.resolve() if args.path.is_dir() else args.path.resolve().parent
-            rendered = render(args.format or "text", engine.report(findings, coverage, root, suppressed))
-            print(rendered, end="")
+            baselined = None
+            if args.baseline is not None:
+                if args.baseline.is_file():
+                    findings, baselined = Baseline.load(args.baseline).partition(findings, root)
+                else:
+                    Baseline.of(findings, root).save(args.baseline)
+                    findings, baselined = (), findings
+            report = engine.report(findings, coverage, root, suppressed, baselined)
+            print(render(args.format or "text", report), end="")
             return EXIT_FINDINGS if findings else EXIT_CLEAN
     except _ANALYSIS_ERRORS as error:
         print(f"error: {error}", file=sys.stderr)

@@ -23,10 +23,14 @@ class Report:
     root: Path | None = None
     # Findings silenced by an inline suppression; reported apart, never counted.
     suppressed: tuple[Finding, ...] = ()
+    # Findings the baseline accounts for; reported apart, never counted.
+    baselined: tuple[Finding, ...] = ()
+    # Whether a baseline was applied, so new findings can be marked as such.
+    with_baseline: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "findings", tuple(sorted(self.findings, key=_order)))
-        object.__setattr__(self, "suppressed", tuple(sorted(self.suppressed, key=_order)))
+        for name in ("findings", "suppressed", "baselined"):
+            object.__setattr__(self, name, tuple(sorted(getattr(self, name), key=_order)))
 
     def locate(self, path: str) -> str:
         """``path`` relative to the root, POSIX style, when it lies under the root."""
