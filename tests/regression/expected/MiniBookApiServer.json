@@ -32,12 +32,6 @@
     },
     {
       "file": "docs/insomnia/insomnia_config_file.yaml",
-      "line": 71,
-      "rule": "high-entropy-string",
-      "function": null
-    },
-    {
-      "file": "docs/insomnia/insomnia_config_file.yaml",
       "line": 231,
       "rule": "hardcoded-credential",
       "function": null

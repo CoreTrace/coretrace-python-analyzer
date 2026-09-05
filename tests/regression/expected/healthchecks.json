@@ -176,12 +176,6 @@
     },
     {
       "file": "hc/api/tests/test_tokenbucket.py",
-      "line": 12,
-      "rule": "high-entropy-string",
-      "function": null
-    },
-    {
-      "file": "hc/api/tests/test_tokenbucket.py",
       "line": 15,
       "rule": "hardcoded-credential",
       "function": null

@@ -208,9 +208,10 @@ def test_high_entropy_tokens_without_context_are_low_confidence() -> None:
     assert RANDOM_BASE64 not in finding.message
 
 
-def test_hex_digests_count_as_high_entropy() -> None:
-    (finding,) = check(f"digest = '{RANDOM_HEX}'\n")
-    assert finding.rule_id == "high-entropy-string"
+def test_hex_digests_are_secrets_only_under_a_credential_name() -> None:
+    assert check(f"digest = '{RANDOM_HEX}'\n") == ()
+    (finding,) = check(f"api_token = '{RANDOM_HEX}'\n")
+    assert finding.rule_id == "hardcoded-credential"
 
 
 def test_prose_urls_and_short_strings_are_not_secrets() -> None:

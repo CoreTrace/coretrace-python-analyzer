@@ -37,6 +37,35 @@ _PLACEHOLDER_WORDS = frozenset(
     {"", "changeme", "change_me", "password", "passwd", "secret", "token", "example", "xxx", "todo", "none", "null"}
 )
 _NOT_CREDENTIAL_SUFFIXES = ("_name", "_field", "_file", "_path", "_url", "_id", "_env", "_var", "_header", "_param")
+# MD5, SHA-1, SHA-256 and SHA-512 digests, as hex.
+_DIGEST_LENGTHS = frozenset({32, 40, 64, 128})
+_DIGEST_WORDS = ("hash", "digest", "sha", "md5", "checksum", "commit", "etag", "fingerprint", "revision", "version")
+# Subresource integrity, as in lock files: ``sha512-<base64>``.
+_INTEGRITY = re.compile(r"^(md5|sha1|sha256|sha384|sha512)-[A-Za-z0-9+/=]+$", re.IGNORECASE)
+_ALPHABET_WORDS = ("alphabet", "charset", "characters", "letters", "digits")
+
+
+def looks_like_digest(value: str, name: str | None) -> bool:
+    """A hex value of digest length, a hex value whose name names a hash, or a
+    subresource-integrity hash: a commit id, a checksum, a content hash, never a secret
+    unless a credential name says so."""
+
+    if _INTEGRITY.match(value) is not None or (name is not None and name.lower() == "integrity"):
+        return True
+    if _HEX.match(value) is None:
+        return False
+    if len(value) in _DIGEST_LENGTHS:
+        return True
+    return name is not None and any(word in name.lower() for word in _DIGEST_WORDS)
+
+
+def is_alphabet(value: str, name: str | None) -> bool:
+    """A constant that spells out a character set is high-entropy by construction: its
+    name says so, or every character in it is distinct, which no random token is."""
+
+    if name is not None and any(word in name.lower() for word in _ALPHABET_WORDS):
+        return True
+    return len(value) >= 16 and len(set(value)) == len(value)
 
 
 def shannon_entropy(text: str) -> float:
@@ -302,7 +331,7 @@ class SecretDetector(Plugin):
                 {"name": name, "length": str(len(value))},
             )
         entropy = self.entropy_of(value)
-        if entropy is not None:
+        if entropy is not None and not looks_like_digest(value, name) and not is_alphabet(value, name):
             return Finding(
                 "high-entropy-string",
                 f"High-entropy string {where}: {redacted(value)}",
