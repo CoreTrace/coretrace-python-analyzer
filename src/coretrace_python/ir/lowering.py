@@ -50,11 +50,13 @@ from coretrace_python.ir.model import (
     MakeClass,
     MakeFunction,
     ModuleIR,
+    NonlocalResult,
     Raise,
     Return,
     SetAttr,
     SetGlobal,
     SetItem,
+    SetNonlocal,
     StoreLocal,
     Symbol,
     Terminator,
@@ -166,7 +168,9 @@ class _FunctionLowerer:
             callee = self.expression(node.callee)
             arguments, starred = self.spread(node.arguments)
             keywords = tuple((k.name, self.expression(k.value)) for k in node.keywords)
-            return self.emit(Call(self.new_value(), node.span, callee, arguments, keywords, starred))
+            result = self.emit(Call(self.new_value(), node.span, callee, arguments, keywords, starred))
+            self.write_back_nonlocals(node, result)
+            return result
         if isinstance(node, nodes.BoolOp):
             values = tuple(self.expression(value) for value in node.values)
             return self.emit(BoolOp(self.new_value(), node.span, node.operator, values))
@@ -221,6 +225,20 @@ class _FunctionLowerer:
                 plain.append(self.expression(element))
         return tuple(plain), tuple(unpacked)
 
+    def write_back_nonlocals(self, node: nodes.Call, call: Value) -> None:
+        """After a direct call to a nested function defined here, store what it left in
+        each of its ``nonlocal`` names back into this function's variable."""
+
+        if not isinstance(node.callee, nodes.Name):
+            return
+        nested = self.nested_defs.get(node.callee.identifier)
+        if nested is None:
+            return
+        bindings = self.scopes.scope_for(nested).bindings
+        for name in sorted(n for n, b in bindings.items() if b.kind is BindingKind.NONLOCAL):
+            written = self.emit(NonlocalResult(self.new_value(), node.span, call, name))
+            self.store(nodes.Name(name, node.span), written)
+
     # ------------------------------------------------------------------ statements
 
     def store(self, target: nodes.Target, value: Value) -> None:
@@ -232,6 +250,8 @@ class _FunctionLowerer:
             if resolution.kind is not ResolutionKind.LOCAL and target.identifier not in self.nonlocals:
                 self.fail(target, "assignment to a free variable that is not declared nonlocal")
             self.emit_effect(StoreLocal(None, target.span, target.identifier, value))
+            if target.identifier in self.nonlocals:
+                self.emit_effect(SetNonlocal(None, target.span, target.identifier, value))
         elif isinstance(target, nodes.Attribute):
             object_value = self.expression(target.value)
             self.emit_effect(SetAttr(None, target.span, object_value, target.name, value))
@@ -300,6 +320,7 @@ class _FunctionLowerer:
             captured = tuple(self.captured_value(name, node.span) for name in captured_names(node, self.scopes))
             made = self.emit(MakeFunction(self.new_value(), node.span, node.name, captured))
             self.store(nodes.Name(node.name, node.span), made)
+            self.nested_defs[node.name] = node
             return
         if isinstance(node, nodes.AugAssign):
             current = self.expression(node.target)
@@ -405,6 +426,9 @@ class _FunctionLowerer:
         # assigned in this body, so it lives in a local slot initialised from the
         # captured value; the others are never reassigned.
         bindings = self.scopes.scope_for(node).bindings
+        # Nested definitions bound in this body, so a direct call to one can write its
+        # ``nonlocal`` names back into this function's variables.
+        self.nested_defs: dict[str, nodes.Function] = {}
         self.nonlocals = frozenset(
             name for name in captured if name in bindings and bindings[name].kind is BindingKind.NONLOCAL
         )
@@ -429,7 +453,11 @@ class _FunctionLowerer:
                 )
             )
         return FunctionIR(
-            qualified_name(self.scopes, node), parameter_values, self.cfg.entry, tuple(blocks), node.span
+            qualified_name(self.scopes, node),
+            parameter_values,
+            self.cfg.entry,
+            tuple(blocks),
+            node.span,
         )
 
 

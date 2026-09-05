@@ -57,6 +57,7 @@ from coretrace_python.ir.model import (
     Instruction,
     Jump,
     MakeFunction,
+    NonlocalResult,
     Phi,
     SetAttr,
     SetItem,
@@ -227,6 +228,8 @@ class _TaintProblem(DataflowProblem[State]):
                         taint = taint.join(incoming[predecessor].get(value, Taint.none()))
             elif isinstance(instruction, Call):
                 taint = self.call(instruction, state, flows)
+            elif isinstance(instruction, NonlocalResult):
+                taint = self.nonlocal_result(instruction, state)
             else:
                 taint = self.instruction(instruction, state)
                 if isinstance(instruction, GetAttr | GetItem | GetIter):
@@ -316,6 +319,36 @@ class _TaintProblem(DataflowProblem[State]):
         if returned is not None:
             return self.external(returned, everything, call, state, flows)
         return everything.join(state.get(call.callee, Taint.none()))
+
+    def nonlocal_result(self, instruction: NonlocalResult, state: dict[Key, Taint]) -> Taint:
+        """The taint a nested callee left in its nonlocal ``name``, in the caller's terms."""
+
+        call = self.defs.get(instruction.call)
+        if not isinstance(call, Call):
+            return Taint.none()
+        target = self.graph.target_at(self.name, call.location)
+        if not isinstance(target, KnownFunction):
+            return Taint.none()
+        summary = self.summaries.summary(target.name)
+        arguments = (
+            *(self.deep(r, state) for r in self.receiver(call, target.name)),
+            *(self.deep(a, state) for a in call.arguments),
+            *(self.deep(v, state) for v in self.captured(call)),
+        )
+        keywords = Taint.none()
+        for value in (*call.starred, *(v for _, v in call.keywords)):
+            keywords = keywords.join(self.deep(value, state))
+        result = Taint.none()
+        for write in summary.nonlocal_writes:
+            if write.name != instruction.name:
+                continue
+            for index in sorted(write.dependencies):
+                result = result.join(arguments[index] if index < len(arguments) else keywords)
+            for symbol in sorted(write.externals, key=str):
+                source = self.models.source(symbol)
+                if source is not None:
+                    result = result.join(Taint(source.kinds, frozenset({source})))
+        return result
 
     def receiver(self, call: Call, name: str) -> tuple[Value, ...]:
         """The object a method call runs on, its implicit first parameter: the receiver

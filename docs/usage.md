@@ -366,8 +366,10 @@ boolean operators, chained comparisons, keyword and starred arguments, `with`, `
 comprehensions, lambdas, nested functions and classes, `global`, `nonlocal`, `del`,
 assignment expressions (`(y := f(x))`, laid out as an assignment before the statement),
 `yield from`, starred assignment targets (`first, *rest = items`) and `match` with every
-pattern kind. `finally` is modelled on the normal path only and a
-`nonlocal` write stays inside the nested function. Methods of module-level classes are
+pattern kind. `finally` is modelled on the normal path only. A
+`nonlocal` write made by a nested function flows back to the enclosing variable when the
+enclosing function calls that nested function directly by name; a nested function passed
+around and called elsewhere keeps its writes to itself. Methods of module-level classes are
 analysed like functions.
 
 ## Looking at the intermediate representation
