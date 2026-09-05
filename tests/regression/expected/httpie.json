@@ -25,12 +25,6 @@
       "function": "collect_messages"
     },
     {
-      "file": "httpie/internal/daemons.py",
-      "line": 121,
-      "rule": "command-injection",
-      "function": "spawn_daemon"
-    },
-    {
       "file": "httpie/internal/update_warnings.py",
       "line": 44,
       "rule": "missing-timeout",
@@ -53,12 +47,6 @@
       "line": 163,
       "rule": "missing-timeout",
       "function": "test_quiet_with_output_redirection"
-    },
-    {
-      "file": "tests/test_uploads.py",
-      "line": 103,
-      "rule": "command-injection",
-      "function": "stdin_processes"
     }
   ]
 }

@@ -36,7 +36,11 @@ _PLACEHOLDER = re.compile(r"^(<.*>|\$\{.*\}|\{\{.*\}\}|%.*%|\.{3,}|(.)\2*)$")
 _PLACEHOLDER_WORDS = frozenset(
     {"", "changeme", "change_me", "password", "passwd", "secret", "token", "example", "xxx", "todo", "none", "null"}
 )
-_NOT_CREDENTIAL_SUFFIXES = ("_name", "_field", "_file", "_path", "_url", "_id", "_env", "_var", "_header", "_param")
+_NOT_CREDENTIAL_SUFFIXES = (
+    "_name", "_field", "_file", "_path", "_url", "_id", "_env", "_var", "_header", "_param",
+    # ``token_type = "bearer"``: the kind of a credential, not one.
+    "_type", "_kind", "_scheme", "_format", "_algorithm", "_method", "_mode",
+)
 # MD5, SHA-1, SHA-256 and SHA-512 digests, as hex.
 _DIGEST_LENGTHS = frozenset({32, 40, 64, 128})
 _DIGEST_WORDS = ("hash", "digest", "sha", "md5", "checksum", "commit", "etag", "fingerprint", "revision", "version")

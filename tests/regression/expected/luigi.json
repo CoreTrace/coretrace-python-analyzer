@@ -31,18 +31,6 @@
       "function": "_run_job"
     },
     {
-      "file": "luigi/contrib/lsf.py",
-      "line": 263,
-      "rule": "path-traversal",
-      "function": "_run_job"
-    },
-    {
-      "file": "luigi/contrib/lsf.py",
-      "line": 274,
-      "rule": "path-traversal",
-      "function": "_run_job"
-    },
-    {
       "file": "luigi/contrib/pai.py",
       "line": 229,
       "rule": "missing-timeout",
@@ -59,12 +47,6 @@
       "line": 280,
       "rule": "missing-timeout",
       "function": "run"
-    },
-    {
-      "file": "luigi/contrib/pig.py",
-      "line": 134,
-      "rule": "command-injection",
-      "function": "track_and_progress"
     },
     {
       "file": "luigi/contrib/salesforce.py",
@@ -139,18 +121,6 @@
       "function": "_get_batch_info"
     },
     {
-      "file": "luigi/contrib/scalding.py",
-      "line": 211,
-      "rule": "command-injection",
-      "function": "run_job"
-    },
-    {
-      "file": "luigi/contrib/sge.py",
-      "line": 291,
-      "rule": "path-traversal",
-      "function": "_run_job"
-    },
-    {
       "file": "luigi/contrib/sge.py",
       "line": 296,
       "rule": "command-injection",
@@ -161,12 +131,6 @@
       "line": 43,
       "rule": "hardcoded-credential",
       "function": null
-    },
-    {
-      "file": "test/cmdline_test.py",
-      "line": 213,
-      "rule": "command-injection",
-      "function": "_run_cmdline"
     },
     {
       "file": "test/contrib/beam_dataflow_test.py",
