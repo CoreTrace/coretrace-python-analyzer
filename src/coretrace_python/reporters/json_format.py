@@ -36,6 +36,8 @@ def render_json(report: Report) -> str:
     if report.root is not None:
         document["root"] = str(report.root)
     document["findings"] = [finding_record(finding, report) for finding in report.findings]
+    if report.suppressed:
+        document["suppressed"] = [finding_record(finding, report) for finding in report.suppressed]
     if report.coverage is not None:
         coverage = report.coverage
         document["coverage"] = {

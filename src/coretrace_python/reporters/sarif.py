@@ -26,13 +26,15 @@ def _artifact(report: Report, path: str) -> dict[str, str]:
     return {"uri": path}
 
 
-def _result(report: Report, finding: Finding, rule_index: int) -> dict[str, object]:
+def _result(
+    report: Report, finding: Finding, rule_index: int, suppressed: bool = False
+) -> dict[str, object]:
     span = finding.span
     region: dict[str, int] = {"startLine": span.start_line, "startColumn": span.start_column}
     if span.end_line is not None and span.end_column is not None:
         region["endLine"] = span.end_line
         region["endColumn"] = span.end_column
-    return {
+    result: dict[str, object] = {
         "ruleId": finding.rule_id,
         "ruleIndex": rule_index,
         "level": _LEVELS[finding.severity],
@@ -46,11 +48,14 @@ def _result(report: Report, finding: Finding, rule_index: int) -> dict[str, obje
             }
         ],
     }
+    if suppressed:
+        result["suppressions"] = [{"kind": "inSource"}]
+    return result
 
 
 def render_sarif(report: Report) -> str:
     rule_ids: list[str] = []
-    for finding in report.findings:
+    for finding in (*report.findings, *report.suppressed):
         if finding.rule_id not in rule_ids:
             rule_ids.append(finding.rule_id)
     run: dict[str, object] = {}
@@ -69,8 +74,8 @@ def render_sarif(report: Report) -> str:
                     }
                 },
             "results": [
-                _result(report, finding, rule_ids.index(finding.rule_id))
-                for finding in report.findings
+                *(_result(report, f, rule_ids.index(f.rule_id)) for f in report.findings),
+                *(_result(report, f, rule_ids.index(f.rule_id), True) for f in report.suppressed),
             ],
         }
     )

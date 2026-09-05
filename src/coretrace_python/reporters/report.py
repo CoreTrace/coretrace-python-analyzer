@@ -21,9 +21,12 @@ class Report:
     coverage: Coverage | None = None
     # The directory the report is about: paths under it are rendered relative to it.
     root: Path | None = None
+    # Findings silenced by an inline suppression; reported apart, never counted.
+    suppressed: tuple[Finding, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "findings", tuple(sorted(self.findings, key=_order)))
+        object.__setattr__(self, "suppressed", tuple(sorted(self.suppressed, key=_order)))
 
     def locate(self, path: str) -> str:
         """``path`` relative to the root, POSIX style, when it lies under the root."""
