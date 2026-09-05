@@ -684,5 +684,9 @@ def _register_all(module: nodes.Module) -> AnalysisManager:
     return manager
 
 
-def report(findings: Sequence[Finding], coverage: Coverage | None = None) -> Report:
-    return Report(tuple(findings), TOOL_NAME, __version__, coverage)
+def report(
+    findings: Sequence[Finding], coverage: Coverage | None = None, root: Path | None = None
+) -> Report:
+    """The report of a check; paths under ``root`` are rendered relative to it."""
+
+    return Report(tuple(findings), TOOL_NAME, __version__, coverage, root)

@@ -277,9 +277,9 @@ def test_check_reports_unsupported_functions_and_keeps_going(tmp_path, capsys) -
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert f"{source}:3:1: info unsupported-syntax: " in output
+    assert "mixed.py:3:1: info unsupported-syntax: " in output
     assert "break" in output
-    assert f"{source}:8:9: high dangerous-eval:" in output
+    assert "mixed.py:8:9: high dangerous-eval:" in output
     assert output.endswith("2 findings\ncoverage: 1/1 files, 1/2 functions\n")
 
 

@@ -144,7 +144,8 @@ sources and in configuration files.
 `--format` accepts `text`, `json` and `sarif`.
 
 `--format text` prints one line per finding, `path:line:column: severity rule: message`,
-then the count and the coverage line.
+then the count and the coverage line. Paths are relative to the checked directory, or to
+the directory of the checked file; a path outside it is printed as it is.
 
 `--format json` prints one document:
 
@@ -152,26 +153,31 @@ then the count and the coverage line.
 {
   "schema_version": 1,
   "tool": {"name": "coretrace-python-analyzer", "version": "0.1.0"},
+  "root": "/home/me/project",
   "findings": [
     {
       "rule_id": "sql-injection",
       "message": "SQL injection: http input reaches python.sqlite3.connect.cursor.execute",
       "severity": "high",
       "confidence": "high",
-      "location": {"path": "src/app.py", "line": 50, "column": 21, "end_line": 50, "end_column": 60},
+      "location": {"path": "app.py", "line": 50, "column": 21, "end_line": 50, "end_column": 60},
       "function": "user",
       "metadata": {"source": "python.flask.request.args", "verdict": "vulnerability"}
     }
   ],
   "coverage": {
     "files": 2, "files_analysed": 2, "functions": 12, "functions_analysed": 12,
-    "details": [{"path": "src/app.py", "status": "analysed", "functions": 9, "analysed": 9}]
+    "details": [{"path": "app.py", "status": "analysed", "functions": 9, "analysed": 9}]
   }
 }
 ```
 
+`root` is the directory the paths are relative to.
+
 `--format sarif` prints a SARIF 2.1.0 log, one run with the tool, its rules and one
-result per finding, ready for code scanning services:
+result per finding. The root is declared once as the `SRCROOT` original URI base and
+every location under it is relative to that base, which is what code scanning services
+need to attach results to files:
 
 ```bash
 coretrace-python-analyzer --check src/ --format sarif > report.sarif

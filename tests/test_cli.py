@@ -43,7 +43,7 @@ def test_check_reports_findings_from_loaded_plugins(tmp_path, capsys) -> None:
 
     assert exit_code == 1
     assert captured.out == (
-        f"{source}:2:5: high dangerous-eval: call to python.builtins.eval executes"
+        "target.py:2:5: high dangerous-eval: call to python.builtins.eval executes"
         " dynamically built code [run]\n"
         "1 finding\n"
         "coverage: 1/1 files, 1/1 functions\n"
@@ -73,7 +73,8 @@ def test_check_json_format(tmp_path, capsys) -> None:
     assert exit_code == 1
     assert document["tool"]["name"] == "coretrace-python-analyzer"
     assert [f["rule_id"] for f in document["findings"]] == ["dangerous-eval"]
-    assert document["findings"][0]["location"]["path"] == str(source)
+    assert document["findings"][0]["location"]["path"] == source.name
+    assert document["root"] == str(source.resolve().parent)
 
 
 def test_check_sarif_format(tmp_path, capsys) -> None:

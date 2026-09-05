@@ -204,7 +204,8 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 file_analysis = engine.analyze_file(SourceManager().load_file(args.path), plugin_roots)
                 findings, coverage = file_analysis.findings, file_analysis.coverage
-            print(render(args.format or "text", engine.report(findings, coverage)), end="")
+            root = args.path.resolve() if args.path.is_dir() else args.path.resolve().parent
+            print(render(args.format or "text", engine.report(findings, coverage, root)), end="")
             return EXIT_FINDINGS if findings else EXIT_CLEAN
     except _ANALYSIS_ERRORS as error:
         print(f"error: {error}", file=sys.stderr)
