@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import multiprocessing
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -58,6 +58,7 @@ from coretrace_python.findings import (
     Severity,
 )
 from coretrace_python.findings.refutation import RefutationAnalysis
+from coretrace_python.findings.suppressions import partition
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.hir import HIR_SCHEMA_VERSION, nodes
 from coretrace_python.interprocedural import (
@@ -96,7 +97,7 @@ from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.imports import ImportAnalysis, ImportResolutionError, ImportTable
 from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeError
 from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId
-from coretrace_python.source import SourceFile, SourceManager, SourceSpan, decode_text
+from coretrace_python.source import SourceFile, SourceId, SourceManager, SourceSpan, decode_text
 from coretrace_python.taint import (
     EntryPoint,
     ModelTable,
@@ -189,12 +190,32 @@ class ProjectAnalysis:
     reused: tuple[str, ...] = ()
     advisories: tuple[Advisory, ...] = ()
     coverage: Coverage = field(default_factory=Coverage)
+    # Findings silenced by an inline ``# coretrace: ignore`` comment.
+    suppressed: tuple[Finding, ...] = ()
 
 
 @dataclass(frozen=True)
 class FileAnalysis:
     findings: tuple[Finding, ...]
     coverage: Coverage
+    suppressed: tuple[Finding, ...] = ()
+
+
+def _text_of(sources: SourceManager) -> Callable[[SourceId], str | None]:
+    """The text of a source by identifier: loaded sources first, then the file on disk."""
+
+    def text_of(source_id: SourceId) -> str | None:
+        try:
+            return sources.get(source_id).text
+        except KeyError:
+            pass
+        path = Path(str(source_id))
+        try:
+            return decode_text(path.read_bytes()) if path.is_file() else None
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    return text_of
 
 
 def build_manager(
@@ -257,7 +278,8 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalys
     findings, supported = _check_module(manager, tuple(loaded.plugin for loaded in registry))
     functions = len(analyzable_functions(manager.module))
     coverage = Coverage((FileCoverage(str(source.source_id), "analysed", functions, len(supported)),))
-    return FileAnalysis(findings, coverage)
+    kept, suppressed = partition(findings, lambda sid: source.text if sid == source.source_id else None)
+    return FileAnalysis(kept, coverage, suppressed)
 
 
 def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
@@ -438,15 +460,17 @@ def analyze_project(
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
+    kept, suppressed = partition(apply_policy(policy, findings), _text_of(sources))
     return ProjectAnalysis(
         graph,
         index,
-        apply_policy(policy, findings),
+        kept,
         dependencies,
         MappingProxyType(keys),
         reused,
         advisories,
         Coverage(tuple(sorted(coverage, key=lambda c: c.path))),
+        suppressed,
     )
 
 
@@ -685,8 +709,11 @@ def _register_all(module: nodes.Module) -> AnalysisManager:
 
 
 def report(
-    findings: Sequence[Finding], coverage: Coverage | None = None, root: Path | None = None
+    findings: Sequence[Finding],
+    coverage: Coverage | None = None,
+    root: Path | None = None,
+    suppressed: Sequence[Finding] = (),
 ) -> Report:
     """The report of a check; paths under ``root`` are rendered relative to it."""
 
-    return Report(tuple(findings), TOOL_NAME, __version__, coverage, root)
+    return Report(tuple(findings), TOOL_NAME, __version__, coverage, root, tuple(suppressed))

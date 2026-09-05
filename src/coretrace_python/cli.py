@@ -196,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 findings = analysis.findings
                 coverage = analysis.coverage
+                suppressed = analysis.suppressed
                 if args.sbom is not None:
                     args.sbom.write_text(
                         render_sbom(analysis.dependencies, analysis.advisories, engine.TOOL_NAME, __version__),
@@ -204,8 +205,10 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 file_analysis = engine.analyze_file(SourceManager().load_file(args.path), plugin_roots)
                 findings, coverage = file_analysis.findings, file_analysis.coverage
+                suppressed = file_analysis.suppressed
             root = args.path.resolve() if args.path.is_dir() else args.path.resolve().parent
-            print(render(args.format or "text", engine.report(findings, coverage, root)), end="")
+            rendered = render(args.format or "text", engine.report(findings, coverage, root, suppressed))
+            print(rendered, end="")
             return EXIT_FINDINGS if findings else EXIT_CLEAN
     except _ANALYSIS_ERRORS as error:
         print(f"error: {error}", file=sys.stderr)

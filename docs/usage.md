@@ -139,6 +139,21 @@ sources and in configuration files.
 | `denied-dependency` | A package the policy denies. |
 | `unpinned-dependency` | A requirement without an exact pin when the policy requires pins. |
 
+## Suppressing a finding
+
+A finding whose line carries a `# coretrace: ignore` comment is suppressed. With a list
+of rules, only those are:
+
+```python
+data = yaml.load(text)  # coretrace: ignore[insecure-deserialization]
+```
+
+The comment also works in requirements files, where a line
+`pyyaml==5.3.1  # coretrace: ignore[vulnerable-dependency]` silences that requirement's
+finding. Suppressed findings are kept apart: the text report counts them, the JSON report
+lists them under `suppressed`, the SARIF log marks them as suppressed in source, and
+they never affect the exit status.
+
 ## Reports
 
 `--format` accepts `text`, `json` and `sarif`.
