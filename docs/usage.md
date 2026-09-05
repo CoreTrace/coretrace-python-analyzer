@@ -130,7 +130,7 @@ sources and in configuration files.
 |---|---|---|
 | `hardcoded-secret` | high | A provider-specific format: AWS, GitHub, Slack, Stripe, Google, private keys, JWTs, SendGrid, Twilio. |
 | `hardcoded-credential` | medium | A credential-like name (`password`, `token`, `api_key`, `app.config['SECRET_KEY']`, …) bound to a real value. Placeholders are excluded. |
-| `high-entropy-string` | low | An opaque high-entropy token. |
+| `high-entropy-string` | low | An opaque high-entropy token. Hex digests (MD5, SHA-1, SHA-256, SHA-512 lengths, or a name such as `hash`, `checksum`, `commit`), subresource-integrity hashes (`sha512-…`) and character-set constants are not secrets unless a credential name says so. |
 
 ### Dependencies
 
