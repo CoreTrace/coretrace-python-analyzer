@@ -59,6 +59,23 @@ def looks_like_digest(value: str, name: str | None) -> bool:
     return name is not None and any(word in name.lower() for word in _DIGEST_WORDS)
 
 
+_TEST_DIRECTORIES = frozenset({"test", "tests", "testing", "fixtures", "__tests__"})
+_TEST_FILE = re.compile(r"^(test_.*|.*_test|conftest)\.py$")
+_EXAMPLE_SUFFIXES = (".example", ".sample", ".dist", ".tpl")
+
+
+def credential_context(path: str) -> str | None:
+    """``"test"`` for test code and fixtures, ``"example"`` for template configuration
+    files (``.env.example``), ``None`` for anything else."""
+
+    parts = Path(path).parts
+    if any(part in _TEST_DIRECTORIES for part in parts[:-1]) or _TEST_FILE.match(parts[-1]):
+        return "test"
+    if parts[-1].endswith(_EXAMPLE_SUFFIXES):
+        return "example"
+    return None
+
+
 def is_alphabet(value: str, name: str | None) -> bool:
     """A constant that spells out a character set is high-entropy by construction: its
     name says so, or every character in it is distinct, which no random token is."""
@@ -321,14 +338,20 @@ class SecretDetector(Plugin):
                     {"provider": pattern.provider, "name": name or "", "length": str(len(value))},
                 )
         if name is not None and self.is_credential_name(name) and not is_placeholder(value):
+            # A password in a test fixture or a template file is rarely a leak; a name
+            # is a hint, so the finding stays, at low confidence.
+            context = credential_context(str(span.source_id))
+            metadata = {"name": name, "length": str(len(value))}
+            if context is not None:
+                metadata["context"] = context
             return Finding(
                 "hardcoded-credential",
                 f"Hardcoded credential {where}: {redacted(value)}",
                 Severity.HIGH,
-                Confidence.MEDIUM,
+                Confidence.LOW if context is not None else Confidence.MEDIUM,
                 span,
                 function,
-                {"name": name, "length": str(len(value))},
+                metadata,
             )
         entropy = self.entropy_of(value)
         if entropy is not None and not looks_like_digest(value, name) and not is_alphabet(value, name):
