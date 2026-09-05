@@ -1,0 +1,82 @@
+{
+  "coverage": {
+    "files": 43,
+    "files_analysed": 41,
+    "functions": 139,
+    "functions_analysed": 139
+  },
+  "findings": [
+    {
+      "file": ".env",
+      "line": 6,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": ".env",
+      "line": 8,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": ".env",
+      "line": 17,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": ".env",
+      "line": 18,
+      "rule": "hardcoded-secret",
+      "function": null
+    },
+    {
+      "file": "backend/app/api/deps.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "backend/app/api/routes/login.py",
+      "line": 121,
+      "rule": "xss",
+      "function": "recover_password_html_content"
+    },
+    {
+      "file": "backend/app/api/routes/login.py",
+      "line": 121,
+      "rule": "xss",
+      "function": "recover_password_html_content"
+    },
+    {
+      "file": "backend/app/models.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "backend/tests/api/routes/test_login.py",
+      "line": 31,
+      "rule": "hardcoded-credential",
+      "function": "test_get_access_token_incorrect_password"
+    },
+    {
+      "file": "backend/tests/api/routes/test_login.py",
+      "line": 116,
+      "rule": "hardcoded-credential",
+      "function": "test_reset_password_invalid_token"
+    },
+    {
+      "file": "backend/tests/api/routes/test_login.py",
+      "line": 116,
+      "rule": "hardcoded-credential",
+      "function": "test_reset_password_invalid_token"
+    },
+    {
+      "file": "backend/tests/api/routes/test_private.py",
+      "line": 13,
+      "rule": "hardcoded-credential",
+      "function": "test_create_user"
+    }
+  ]
+}

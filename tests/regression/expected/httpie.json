@@ -1,0 +1,76 @@
+{
+  "coverage": {
+    "files": 132,
+    "files_analysed": 129,
+    "functions": 1016,
+    "functions_analysed": 1016
+  },
+  "findings": [
+    {
+      "file": "docs/contributors/fetch.py",
+      "line": 200,
+      "rule": "missing-timeout",
+      "function": "fetch"
+    },
+    {
+      "file": "extras/profiling/run.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "httpie/client.py",
+      "line": 114,
+      "rule": "ssrf",
+      "function": "collect_messages"
+    },
+    {
+      "file": "httpie/client.py",
+      "line": 114,
+      "rule": "ssrf",
+      "function": "collect_messages"
+    },
+    {
+      "file": "httpie/internal/daemons.py",
+      "line": 121,
+      "rule": "command-injection",
+      "function": "spawn_daemon"
+    },
+    {
+      "file": "httpie/internal/update_warnings.py",
+      "line": 44,
+      "rule": "missing-timeout",
+      "function": "_fetch_updates"
+    },
+    {
+      "file": "httpie/output/streams.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "tests/test_binary.py",
+      "line": 49,
+      "rule": "missing-timeout",
+      "function": "test_binary_included_and_correct_when_suitable"
+    },
+    {
+      "file": "tests/test_json.py",
+      "line": 41,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "tests/test_output.py",
+      "line": 163,
+      "rule": "missing-timeout",
+      "function": "test_quiet_with_output_redirection"
+    },
+    {
+      "file": "tests/test_uploads.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    }
+  ]
+}

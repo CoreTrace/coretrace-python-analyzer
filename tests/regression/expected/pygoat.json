@@ -1,0 +1,328 @@
+{
+  "coverage": {
+    "files": 78,
+    "files_analysed": 76,
+    "functions": 170,
+    "functions_analysed": 170
+  },
+  "findings": [
+    {
+      "file": "challenge/views.py",
+      "line": 50,
+      "rule": "command-injection",
+      "function": "post"
+    },
+    {
+      "file": "challenge/views.py",
+      "line": 81,
+      "rule": "command-injection",
+      "function": "delete"
+    },
+    {
+      "file": "dockerized_labs/broken_auth_lab/app.py",
+      "line": 8,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "dockerized_labs/broken_auth_lab/app.py",
+      "line": 13,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "dockerized_labs/broken_auth_lab/app.py",
+      "line": 18,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "dockerized_labs/broken_auth_lab/app.py",
+      "line": 86,
+      "rule": "weak-crypto",
+      "function": "reset_password"
+    },
+    {
+      "file": "dockerized_labs/broken_auth_lab/app.py",
+      "line": 123,
+      "rule": "debug-enabled",
+      "function": null
+    },
+    {
+      "file": "dockerized_labs/sensitive_data_exposure/sensitive_data_lab/settings.py",
+      "line": 8,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "introduction/apis.py",
+      "line": 38,
+      "rule": "path-traversal",
+      "function": "ssrf_code_checker"
+    },
+    {
+      "file": "introduction/apis.py",
+      "line": 81,
+      "rule": "missing-timeout",
+      "function": "log_function_checker"
+    },
+    {
+      "file": "introduction/apis.py",
+      "line": 82,
+      "rule": "missing-timeout",
+      "function": "log_function_checker"
+    },
+    {
+      "file": "introduction/apis.py",
+      "line": 83,
+      "rule": "missing-timeout",
+      "function": "log_function_checker"
+    },
+    {
+      "file": "introduction/apis.py",
+      "line": 83,
+      "rule": "ssrf",
+      "function": "log_function_checker"
+    },
+    {
+      "file": "introduction/apis.py",
+      "line": 84,
+      "rule": "missing-timeout",
+      "function": "log_function_checker"
+    },
+    {
+      "file": "introduction/mitre.py",
+      "line": 161,
+      "rule": "weak-crypto",
+      "function": "csrf_lab_login"
+    },
+    {
+      "file": "introduction/mitre.py",
+      "line": 218,
+      "rule": "dangerous-eval",
+      "function": "mitre_lab_25_api"
+    },
+    {
+      "file": "introduction/mitre.py",
+      "line": 242,
+      "rule": "command-injection",
+      "function": "mitre_lab_17_api"
+    },
+    {
+      "file": "introduction/playground/A6/soln.py",
+      "line": 9,
+      "rule": "missing-timeout",
+      "function": "check_vuln"
+    },
+    {
+      "file": "introduction/playground/A6/utility.py",
+      "line": 9,
+      "rule": "missing-timeout",
+      "function": "check_vuln"
+    },
+    {
+      "file": "introduction/playground/A9/api.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "introduction/playground/A9/archive.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 162,
+      "rule": "sql-injection",
+      "function": "sql_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 214,
+      "rule": "insecure-deserialization",
+      "function": "insec_des_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 290,
+      "rule": "xss",
+      "function": "auth_lab_signup"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 304,
+      "rule": "xss",
+      "function": "auth_lab_login"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 318,
+      "rule": "xss",
+      "function": "auth_lab_login"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 430,
+      "rule": "command-injection",
+      "function": "cmd_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 460,
+      "rule": "dangerous-eval",
+      "function": "cmd_lab2"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 538,
+      "rule": "hardcoded-credential",
+      "function": "secret"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 560,
+      "rule": "exploitable-vulnerability",
+      "function": "a9_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 560,
+      "rule": "insecure-deserialization",
+      "function": "a9_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 560,
+      "rule": "reachable-vulnerability",
+      "function": "a9_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 584,
+      "rule": "exploitable-vulnerability",
+      "function": "a9_lab2"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 584,
+      "rule": "reachable-vulnerability",
+      "function": "a9_lab2"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 866,
+      "rule": "hardcoded-credential",
+      "function": "injection_sql_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 868,
+      "rule": "hardcoded-credential",
+      "function": "injection_sql_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 870,
+      "rule": "hardcoded-credential",
+      "function": "injection_sql_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 872,
+      "rule": "hardcoded-credential",
+      "function": "injection_sql_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 878,
+      "rule": "sql-injection",
+      "function": "injection_sql_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 927,
+      "rule": "path-traversal",
+      "function": "ssrf_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 963,
+      "rule": "missing-timeout",
+      "function": "ssrf_lab2"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 963,
+      "rule": "ssrf",
+      "function": "ssrf_lab2"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 1026,
+      "rule": "weak-crypto",
+      "function": "crypto_failure_lab"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 1164,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 1165,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 1166,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 1167,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "pygoat/settings.py",
+      "line": 25,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "pygoat/settings.py",
+      "line": 171,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 19,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 27,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 32,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 32,
+      "rule": "vulnerable-dependency",
+      "function": null
+    }
+  ]
+}
