@@ -43,3 +43,6 @@ python -m pytest -m regression
 CORETRACE_REGRESSION_UPDATE=1 python -m pytest -m regression   # record an intended change
 ```
 
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
