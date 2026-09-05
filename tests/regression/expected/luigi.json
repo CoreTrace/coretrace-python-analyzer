@@ -1,0 +1,430 @@
+{
+  "coverage": {
+    "files": 259,
+    "files_analysed": 245,
+    "functions": 4462,
+    "functions_analysed": 4462
+  },
+  "findings": [
+    {
+      "file": "examples/ftp_experiment_outputs.py",
+      "line": 25,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "examples/top_artists.py",
+      "line": 249,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "luigi/contrib/beam_dataflow.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/contrib/esindex.py",
+      "line": 159,
+      "rule": "weak-crypto",
+      "function": "marker_index_document_id"
+    },
+    {
+      "file": "luigi/contrib/hdfs/abstract_client.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/contrib/hive.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/contrib/lsf.py",
+      "line": 263,
+      "rule": "command-injection",
+      "function": "_run_job"
+    },
+    {
+      "file": "luigi/contrib/lsf.py",
+      "line": 263,
+      "rule": "path-traversal",
+      "function": "_run_job"
+    },
+    {
+      "file": "luigi/contrib/lsf.py",
+      "line": 274,
+      "rule": "path-traversal",
+      "function": "_run_job"
+    },
+    {
+      "file": "luigi/contrib/pai.py",
+      "line": 229,
+      "rule": "missing-timeout",
+      "function": "__init_token"
+    },
+    {
+      "file": "luigi/contrib/pai.py",
+      "line": 247,
+      "rule": "missing-timeout",
+      "function": "__check_job_status"
+    },
+    {
+      "file": "luigi/contrib/pai.py",
+      "line": 280,
+      "rule": "missing-timeout",
+      "function": "run"
+    },
+    {
+      "file": "luigi/contrib/pig.py",
+      "line": 134,
+      "rule": "command-injection",
+      "function": "track_and_progress"
+    },
+    {
+      "file": "luigi/contrib/presto.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/contrib/pyspark_runner.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 258,
+      "rule": "missing-timeout",
+      "function": "start_session"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 286,
+      "rule": "missing-timeout",
+      "function": "query"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 312,
+      "rule": "missing-timeout",
+      "function": "query_more"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 373,
+      "rule": "missing-timeout",
+      "function": "restful"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 394,
+      "rule": "missing-timeout",
+      "function": "create_operation_job"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 412,
+      "rule": "missing-timeout",
+      "function": "get_job_details"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 426,
+      "rule": "missing-timeout",
+      "function": "abort_job"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 441,
+      "rule": "missing-timeout",
+      "function": "close_job"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 465,
+      "rule": "missing-timeout",
+      "function": "create_batch"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 512,
+      "rule": "missing-timeout",
+      "function": "get_batch_result_ids"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 528,
+      "rule": "missing-timeout",
+      "function": "get_batch_result"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 534,
+      "rule": "missing-timeout",
+      "function": "_get_batch_info"
+    },
+    {
+      "file": "luigi/contrib/scalding.py",
+      "line": 211,
+      "rule": "command-injection",
+      "function": "run_job"
+    },
+    {
+      "file": "luigi/contrib/sge.py",
+      "line": 291,
+      "rule": "path-traversal",
+      "function": "_run_job"
+    },
+    {
+      "file": "luigi/contrib/sge.py",
+      "line": 296,
+      "rule": "command-injection",
+      "function": "_run_job"
+    },
+    {
+      "file": "luigi/metrics.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/parameter.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/rpc.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/target.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/task.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "luigi/task_history.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "test/_test_ftp.py",
+      "line": 43,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/cmdline_test.py",
+      "line": 213,
+      "rule": "command-injection",
+      "function": "_run_cmdline"
+    },
+    {
+      "file": "test/contrib/beam_dataflow_test.py",
+      "line": 161,
+      "rule": "high-entropy-string",
+      "function": "test_dataflow_full_cmd_line_args"
+    },
+    {
+      "file": "test/contrib/mysqldb_test.py",
+      "line": 41,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/pai_test.py",
+      "line": 62,
+      "rule": "hardcoded-credential",
+      "function": "test_success"
+    },
+    {
+      "file": "test/contrib/pai_test.py",
+      "line": 80,
+      "rule": "hardcoded-credential",
+      "function": "test_fail"
+    },
+    {
+      "file": "test/contrib/postgres_test.py",
+      "line": 56,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/postgres_test.py",
+      "line": 96,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/postgres_with_server_test.py",
+      "line": 40,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/rdbms_test.py",
+      "line": 46,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/redshift_test.py",
+      "line": 62,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/redshift_test.py",
+      "line": 90,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/redshift_test.py",
+      "line": 150,
+      "rule": "hardcoded-credential",
+      "function": "test_from_env"
+    },
+    {
+      "file": "test/contrib/redshift_test.py",
+      "line": 155,
+      "rule": "hardcoded-credential",
+      "function": "test_from_config"
+    },
+    {
+      "file": "test/contrib/redshift_test.py",
+      "line": 494,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/redshift_test.py",
+      "line": 502,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/contrib/redshift_test.py",
+      "line": 537,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/event_callbacks_test.py",
+      "line": 189,
+      "rule": "dangerous-eval",
+      "function": "eval_contents"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 405,
+      "rule": "hardcoded-credential",
+      "function": "test_sends_smtp_email"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 438,
+      "rule": "hardcoded-credential",
+      "function": "test_sends_smtp_email_with_images_png"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 476,
+      "rule": "hardcoded-credential",
+      "function": "test_sends_smtp_email_without_tls"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 509,
+      "rule": "hardcoded-credential",
+      "function": "test_sends_smtp_email_exceptions"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 548,
+      "rule": "hardcoded-credential",
+      "function": "test_sends_sendgrid_email"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 561,
+      "rule": "hardcoded-credential",
+      "function": "test_sends_sendgrid_email_with_multiple_images"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 591,
+      "rule": "hardcoded-credential",
+      "function": "test_sendgrid_with_empty_images_list_does_not_attach"
+    },
+    {
+      "file": "test/notifications_test.py",
+      "line": 598,
+      "rule": "hardcoded-credential",
+      "function": "test_sends_sendgrid_email_with_image_png_kwarg"
+    },
+    {
+      "file": "test/range_test.py",
+      "line": 1119,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/range_test.py",
+      "line": 1553,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "test/rpc_test.py",
+      "line": 196,
+      "rule": "hardcoded-secret",
+      "function": "test_url_with_basic_auth"
+    },
+    {
+      "file": "test/scheduler_api_test.py",
+      "line": 1653,
+      "rule": "high-entropy-string",
+      "function": "test_task_list_filter_by_search_long_family_name"
+    },
+    {
+      "file": "test/task_test.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "test/worker_scheduler_com_test.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "test/worker_test.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "tox.ini",
+      "line": 55,
+      "rule": "hardcoded-credential",
+      "function": null
+    }
+  ]
+}

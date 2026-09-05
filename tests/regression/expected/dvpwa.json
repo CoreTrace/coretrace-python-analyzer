@@ -1,0 +1,34 @@
+{
+  "coverage": {
+    "files": 21,
+    "files_analysed": 21,
+    "functions": 48,
+    "functions_analysed": 48
+  },
+  "findings": [
+    {
+      "file": "config/dev.yaml",
+      "line": 3,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 11,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "requirements.txt",
+      "line": 15,
+      "rule": "vulnerable-dependency",
+      "function": null
+    },
+    {
+      "file": "sqli/dao/user.py",
+      "line": 41,
+      "rule": "weak-crypto",
+      "function": "check_password"
+    }
+  ]
+}
