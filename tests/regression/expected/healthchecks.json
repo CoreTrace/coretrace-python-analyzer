@@ -1,0 +1,910 @@
+{
+  "coverage": {
+    "files": 653,
+    "files_analysed": 636,
+    "functions": 2566,
+    "functions_analysed": 2566
+  },
+  "findings": [
+    {
+      "file": "docker/.env.example",
+      "line": 7,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "docker/docker-compose.yml",
+      "line": 11,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "hc/accounts/decorators.py",
+      "line": 44,
+      "rule": "open-redirect",
+      "function": "wrapper"
+    },
+    {
+      "file": "hc/accounts/middleware.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/accounts/migrations/0049_convert_email_lowercase.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/accounts/models.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/accounts/tests/test_createsuperuser.py",
+      "line": 40,
+      "rule": "hardcoded-credential",
+      "function": "test_it_accepts_arguments"
+    },
+    {
+      "file": "hc/accounts/tests/test_login.py",
+      "line": 90,
+      "rule": "hardcoded-credential",
+      "function": "test_it_rate_limits_emails"
+    },
+    {
+      "file": "hc/accounts/tests/test_login.py",
+      "line": 151,
+      "rule": "hardcoded-credential",
+      "function": "test_it_rate_limits_password_attempts"
+    },
+    {
+      "file": "hc/accounts/tests/test_login.py",
+      "line": 187,
+      "rule": "hardcoded-credential",
+      "function": "test_it_handles_wrong_password"
+    },
+    {
+      "file": "hc/accounts/tests/test_project.py",
+      "line": 224,
+      "rule": "hardcoded-credential",
+      "function": "test_it_rate_limits_invites"
+    },
+    {
+      "file": "hc/accounts/tests/test_set_password.py",
+      "line": 24,
+      "rule": "hardcoded-credential",
+      "function": "test_it_sets_password"
+    },
+    {
+      "file": "hc/accounts/tests/test_signup.py",
+      "line": 147,
+      "rule": "hardcoded-credential",
+      "function": "test_it_rate_limits_email_address"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/api/management/commands/sendalerts.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/api/models.py",
+      "line": 434,
+      "rule": "weak-crypto",
+      "function": "unique_key"
+    },
+    {
+      "file": "hc/api/models.py",
+      "line": 1489,
+      "rule": "weak-crypto",
+      "function": "authorize_login_email"
+    },
+    {
+      "file": "hc/api/models.py",
+      "line": 1504,
+      "rule": "weak-crypto",
+      "function": "authorize_login_password"
+    },
+    {
+      "file": "hc/api/models.py",
+      "line": 1517,
+      "rule": "weak-crypto",
+      "function": "authorize_signal"
+    },
+    {
+      "file": "hc/api/models.py",
+      "line": 1532,
+      "rule": "weak-crypto",
+      "function": "authorize_pushover"
+    },
+    {
+      "file": "hc/api/models.py",
+      "line": 1540,
+      "rule": "weak-crypto",
+      "function": "authorize_ntfy"
+    },
+    {
+      "file": "hc/api/tests/test_bounces.py",
+      "line": 121,
+      "rule": "hardcoded-credential",
+      "function": "test_it_handles_bad_signature"
+    },
+    {
+      "file": "hc/api/tests/test_tokenbucket.py",
+      "line": 12,
+      "rule": "high-entropy-string",
+      "function": null
+    },
+    {
+      "file": "hc/api/tests/test_tokenbucket.py",
+      "line": 15,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "hc/api/transports.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/api/views.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/front/tests/test_webhook_validator.py",
+      "line": 22,
+      "rule": "hardcoded-secret",
+      "function": "test_it_does_not_touch_existing_tld_with_port_and_basic_auth"
+    },
+    {
+      "file": "hc/front/tests/test_webhook_validator.py",
+      "line": 23,
+      "rule": "hardcoded-secret",
+      "function": "test_it_does_not_touch_existing_tld_with_port_and_basic_auth"
+    },
+    {
+      "file": "hc/front/tests/test_webhook_validator.py",
+      "line": 39,
+      "rule": "hardcoded-secret",
+      "function": "test_it_handles_port_and_basic_auth"
+    },
+    {
+      "file": "hc/front/tests/test_webhook_validator.py",
+      "line": 40,
+      "rule": "hardcoded-secret",
+      "function": "test_it_handles_port_and_basic_auth"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 553,
+      "rule": "open-redirect",
+      "function": "add_check"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 570,
+      "rule": "open-redirect",
+      "function": "update_name"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 574,
+      "rule": "open-redirect",
+      "function": "update_name"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 599,
+      "rule": "open-redirect",
+      "function": "filtering_rules"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 666,
+      "rule": "open-redirect",
+      "function": "update_timeout"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 670,
+      "rule": "open-redirect",
+      "function": "update_timeout"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 814,
+      "rule": "xss",
+      "function": "ping_body"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 827,
+      "rule": "open-redirect",
+      "function": "pause"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 845,
+      "rule": "open-redirect",
+      "function": "pause"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 863,
+      "rule": "open-redirect",
+      "function": "resume"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 873,
+      "rule": "open-redirect",
+      "function": "remove_check"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 902,
+      "rule": "open-redirect",
+      "function": "clear_events"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1044,
+      "rule": "open-redirect",
+      "function": "uncloak"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1068,
+      "rule": "open-redirect",
+      "function": "transfer"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1115,
+      "rule": "open-redirect",
+      "function": "copy"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1230,
+      "rule": "open-redirect",
+      "function": "channels"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1297,
+      "rule": "open-redirect",
+      "function": "update_channel_name"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1334,
+      "rule": "open-redirect",
+      "function": "send_test_notification"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1344,
+      "rule": "open-redirect",
+      "function": "remove_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1353,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1357,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1361,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1365,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1369,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1373,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1377,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/front/views.py",
+      "line": 1381,
+      "rule": "open-redirect",
+      "function": "edit_channel"
+    },
+    {
+      "file": "hc/integrations/apprise/views.py",
+      "line": 31,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/call/views.py",
+      "line": 30,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/discord/tests/test_add_complete.py",
+      "line": 24,
+      "rule": "hardcoded-credential",
+      "function": "test_it_handles_oauth_response"
+    },
+    {
+      "file": "hc/integrations/discord/views.py",
+      "line": 57,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/discord/views.py",
+      "line": 75,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/discord/views.py",
+      "line": 83,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/discord/views.py",
+      "line": 90,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/email/views.py",
+      "line": 72,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/github/tests/test_add_save.py",
+      "line": 20,
+      "rule": "hardcoded-credential",
+      "function": "setUp"
+    },
+    {
+      "file": "hc/integrations/github/tests/test_add_select.py",
+      "line": 49,
+      "rule": "hardcoded-credential",
+      "function": "test_it_skips_oauth_code_exchange"
+    },
+    {
+      "file": "hc/integrations/github/tests/test_add_select.py",
+      "line": 71,
+      "rule": "hardcoded-credential",
+      "function": "test_it_requires_rw_access"
+    },
+    {
+      "file": "hc/integrations/github/tests/test_add_select.py",
+      "line": 109,
+      "rule": "hardcoded-credential",
+      "function": "test_it_redirects_to_install_page"
+    },
+    {
+      "file": "hc/integrations/github/tests/test_add_select.py",
+      "line": 154,
+      "rule": "hardcoded-credential",
+      "function": "test_it_handles_bad_credentials"
+    },
+    {
+      "file": "hc/integrations/github/tests/test_notify.py",
+      "line": 18,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/github/views.py",
+      "line": 61,
+      "rule": "open-redirect",
+      "function": "select"
+    },
+    {
+      "file": "hc/integrations/github/views.py",
+      "line": 79,
+      "rule": "open-redirect",
+      "function": "select"
+    },
+    {
+      "file": "hc/integrations/github/views.py",
+      "line": 113,
+      "rule": "open-redirect",
+      "function": "save"
+    },
+    {
+      "file": "hc/integrations/github/views.py",
+      "line": 113,
+      "rule": "open-redirect",
+      "function": "save"
+    },
+    {
+      "file": "hc/integrations/github/views.py",
+      "line": 132,
+      "rule": "open-redirect",
+      "function": "save"
+    },
+    {
+      "file": "hc/integrations/github/views.py",
+      "line": 132,
+      "rule": "open-redirect",
+      "function": "save"
+    },
+    {
+      "file": "hc/integrations/googlechat/tests/test_notify.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/googlechat/transport.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/googlechat/views.py",
+      "line": 33,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/gotify/tests/test_edit.py",
+      "line": 18,
+      "rule": "hardcoded-credential",
+      "function": "setUp"
+    },
+    {
+      "file": "hc/integrations/gotify/tests/test_edit.py",
+      "line": 37,
+      "rule": "hardcoded-credential",
+      "function": "test_it_updates_channel"
+    },
+    {
+      "file": "hc/integrations/gotify/tests/test_notify.py",
+      "line": 50,
+      "rule": "hardcoded-secret",
+      "function": "test_it_works"
+    },
+    {
+      "file": "hc/integrations/gotify/tests/test_notify.py",
+      "line": 93,
+      "rule": "hardcoded-secret",
+      "function": "test_it_handles_subpath"
+    },
+    {
+      "file": "hc/integrations/gotify/tests/test_notify.py",
+      "line": 105,
+      "rule": "hardcoded-secret",
+      "function": "test_it_handles_subpath_with_missing_slash"
+    },
+    {
+      "file": "hc/integrations/gotify/views.py",
+      "line": 26,
+      "rule": "open-redirect",
+      "function": "gotify_form"
+    },
+    {
+      "file": "hc/integrations/gotify/views.py",
+      "line": 54,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/group/views.py",
+      "line": 44,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/matrix/tests/test_notify.py",
+      "line": 15,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/matrix/views.py",
+      "line": 37,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/mattermost/views.py",
+      "line": 34,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/msteamsw/transport.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/msteamsw/views.py",
+      "line": 29,
+      "rule": "open-redirect",
+      "function": "add_msteams"
+    },
+    {
+      "file": "hc/integrations/ntfy/tests/test_add.py",
+      "line": 78,
+      "rule": "hardcoded-credential",
+      "function": "test_it_saves_token"
+    },
+    {
+      "file": "hc/integrations/ntfy/tests/test_edit.py",
+      "line": 21,
+      "rule": "hardcoded-credential",
+      "function": "setUp"
+    },
+    {
+      "file": "hc/integrations/ntfy/tests/test_edit.py",
+      "line": 71,
+      "rule": "hardcoded-credential",
+      "function": "test_it_updates_token"
+    },
+    {
+      "file": "hc/integrations/ntfy/tests/test_notify.py",
+      "line": 222,
+      "rule": "hardcoded-credential",
+      "function": "test_it_uses_access_token"
+    },
+    {
+      "file": "hc/integrations/ntfy/tests/test_notify.py",
+      "line": 233,
+      "rule": "hardcoded-credential",
+      "function": "test_it_obeys_rate_limit"
+    },
+    {
+      "file": "hc/integrations/ntfy/tests/test_notify.py",
+      "line": 245,
+      "rule": "hardcoded-credential",
+      "function": "test_it_uses_default_ntfy_sh_token"
+    },
+    {
+      "file": "hc/integrations/ntfy/tests/test_notify.py",
+      "line": 264,
+      "rule": "hardcoded-credential",
+      "function": "test_uses_default_token_only_on_ntfy_sh"
+    },
+    {
+      "file": "hc/integrations/ntfy/views.py",
+      "line": 25,
+      "rule": "open-redirect",
+      "function": "ntfy_form"
+    },
+    {
+      "file": "hc/integrations/ntfy/views.py",
+      "line": 47,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/opsgenie/transport.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/opsgenie/views.py",
+      "line": 31,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/pagertree/views.py",
+      "line": 32,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/pd/transport.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/pd/views.py",
+      "line": 52,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/pd/views.py",
+      "line": 85,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/po/tests/test_notify.py",
+      "line": 15,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/po/tests/test_notify.py",
+      "line": 146,
+      "rule": "hardcoded-credential",
+      "function": "test_it_obeys_rate_limit"
+    },
+    {
+      "file": "hc/integrations/po/views.py",
+      "line": 59,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/po/views.py",
+      "line": 73,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/po/views.py",
+      "line": 85,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/pushbullet/tests/test_add_complete.py",
+      "line": 22,
+      "rule": "hardcoded-credential",
+      "function": "test_it_handles_oauth_response"
+    },
+    {
+      "file": "hc/integrations/pushbullet/views.py",
+      "line": 66,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/pushbullet/views.py",
+      "line": 86,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/pushbullet/views.py",
+      "line": 93,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/rocketchat/transport.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/rocketchat/views.py",
+      "line": 34,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/shell/views.py",
+      "line": 28,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/signal/tests/test_notify.py",
+      "line": 273,
+      "rule": "hardcoded-credential",
+      "function": "test_it_obeys_rate_limit"
+    },
+    {
+      "file": "hc/integrations/signal/tests/test_notify.py",
+      "line": 483,
+      "rule": "hardcoded-credential",
+      "function": "test_it_handles_rate_limit_failure"
+    },
+    {
+      "file": "hc/integrations/signal/tests/test_verify_signal_number.py",
+      "line": 71,
+      "rule": "hardcoded-credential",
+      "function": "test_it_obeys_per_recipient_rate_limit"
+    },
+    {
+      "file": "hc/integrations/signal/views.py",
+      "line": 34,
+      "rule": "open-redirect",
+      "function": "signal_form"
+    },
+    {
+      "file": "hc/integrations/signal/views.py",
+      "line": 61,
+      "rule": "open-redirect",
+      "function": "add_signal"
+    },
+    {
+      "file": "hc/integrations/slack/transport.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/slack/views.py",
+      "line": 37,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/slack/views.py",
+      "line": 93,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/slack/views.py",
+      "line": 112,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/slack/views.py",
+      "line": 122,
+      "rule": "open-redirect",
+      "function": "add_complete"
+    },
+    {
+      "file": "hc/integrations/sms/views.py",
+      "line": 29,
+      "rule": "open-redirect",
+      "function": "sms_form"
+    },
+    {
+      "file": "hc/integrations/sms/views.py",
+      "line": 58,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/spike/views.py",
+      "line": 29,
+      "rule": "open-redirect",
+      "function": "add_spike"
+    },
+    {
+      "file": "hc/integrations/telegram/tests/test_add.py",
+      "line": 13,
+      "rule": "hardcoded-credential",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/telegram/views.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/integrations/trello/tests/test_notify.py",
+      "line": 36,
+      "rule": "hardcoded-credential",
+      "function": "setUp"
+    },
+    {
+      "file": "hc/integrations/trello/views.py",
+      "line": 39,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/victorops/views.py",
+      "line": 29,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/webhook/tests/test_add.py",
+      "line": 79,
+      "rule": "hardcoded-secret",
+      "function": "test_it_accepts_good_urls"
+    },
+    {
+      "file": "hc/integrations/webhook/tests/test_add.py",
+      "line": 80,
+      "rule": "hardcoded-secret",
+      "function": "test_it_accepts_good_urls"
+    },
+    {
+      "file": "hc/integrations/webhook/views.py",
+      "line": 30,
+      "rule": "open-redirect",
+      "function": "webhook_form"
+    },
+    {
+      "file": "hc/integrations/webhook/views.py",
+      "line": 58,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/whatsapp/views.py",
+      "line": 28,
+      "rule": "open-redirect",
+      "function": "whatsapp_form"
+    },
+    {
+      "file": "hc/integrations/whatsapp/views.py",
+      "line": 56,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/integrations/zulip/tests/test_add.py",
+      "line": 12,
+      "rule": "hardcoded-credential",
+      "function": "_get_payload"
+    },
+    {
+      "file": "hc/integrations/zulip/tests/test_notify.py",
+      "line": 46,
+      "rule": "hardcoded-credential",
+      "function": "definition"
+    },
+    {
+      "file": "hc/integrations/zulip/tests/test_notify.py",
+      "line": 133,
+      "rule": "hardcoded-credential",
+      "function": "test_it_uses_site_parameter"
+    },
+    {
+      "file": "hc/integrations/zulip/views.py",
+      "line": 29,
+      "rule": "open-redirect",
+      "function": "add"
+    },
+    {
+      "file": "hc/settings.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    },
+    {
+      "file": "hc/urls.py",
+      "line": 1,
+      "rule": "syntax-error",
+      "function": null
+    }
+  ]
+}

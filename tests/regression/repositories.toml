@@ -63,6 +63,11 @@ name = "yt-fts"
 url = "https://github.com/NotJoeMartinez/yt-fts.git"
 commit = "7fbc0088f30672b6fbfe2ea7351fa42bafe1f886"
 
+[[repository]]
+name = "healthchecks"
+url = "https://github.com/healthchecks/healthchecks.git"
+commit = "69dbd2a0801dfbcfcd554af8cbbdaaab0b39e2a3"
+
 # Intentionally vulnerable Flask fixture kept in the tree.
 [[repository]]
 name = "vulnerable-flask"

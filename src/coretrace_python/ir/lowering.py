@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import ClassVar, NoReturn
 
@@ -507,10 +508,28 @@ class PyIRAnalysis(FunctionAnalysis[FunctionIR]):
         return lowerer.function(function)
 
 
+_FUNCTIONS_CACHE: OrderedDict[int, tuple[nodes.Module, tuple[nodes.Function, ...]]] = OrderedDict()
+_FUNCTIONS_CACHE_SIZE = 32
+
+
 def analyzable_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
     """Top-level functions, the methods of top-level classes, and the functions and
-    lambdas nested inside them, in source order."""
+    lambdas nested inside them, in source order. Computed once per module: the result is
+    memoised for the last few modules seen, keyed by identity, so every consumer shares
+    one tuple and the synthesized lambda functions it holds."""
 
+    cached = _FUNCTIONS_CACHE.get(id(module))
+    if cached is not None and cached[0] is module:
+        _FUNCTIONS_CACHE.move_to_end(id(module))
+        return cached[1]
+    functions = _analyzable_functions(module)
+    _FUNCTIONS_CACHE[id(module)] = (module, functions)
+    while len(_FUNCTIONS_CACHE) > _FUNCTIONS_CACHE_SIZE:
+        _FUNCTIONS_CACHE.popitem(last=False)
+    return functions
+
+
+def _analyzable_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
     functions: list[nodes.Function] = []
     for statement in module.body:
         if isinstance(statement, nodes.Function):

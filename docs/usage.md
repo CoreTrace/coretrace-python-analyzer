@@ -284,6 +284,24 @@ first, so the result is the same whatever `N`.
 coretrace-python-analyzer --check src/ --cache .coretrace --jobs 4
 ```
 
+## Performance
+
+Measured on one core of a laptop, single process, cold start, with the bundled plugins
+(September 2026):
+
+| Project | Python lines | Functions | Time | Peak memory |
+|---|---:|---:|---:|---:|
+| healthchecks (Django application) | 45 000 | 2 566 | 7 s | 107 MB |
+| rich (library) | 52 000 | 1 198 | 6 s | 106 MB |
+| wagtail (Django CMS) | 273 000 | 12 146 | 85 s | 461 MB |
+
+Time grows a little faster than linearly with the size of the project, because the
+interprocedural summaries are iterated to a fixpoint over the module graph. A warm
+`--cache` brings an unchanged healthchecks to about one second, `--jobs 4` saves a
+quarter of the cold time at the cost of one process's memory per job. The
+`healthchecks` repository is part of the regression corpus, so the analysis time of a
+real 45 000-line project is exercised on every change.
+
 ## Plugins
 
 The package ships 26 plugins, loaded by default. Security models for the standard library
