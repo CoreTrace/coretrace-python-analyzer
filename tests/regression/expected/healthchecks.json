@@ -1,9 +1,9 @@
 {
   "coverage": {
     "files": 653,
-    "files_analysed": 636,
-    "functions": 2566,
-    "functions_analysed": 2566
+    "files_analysed": 653,
+    "functions": 2746,
+    "functions_analysed": 2746
   },
   "findings": [
     {
@@ -23,24 +23,6 @@
       "line": 44,
       "rule": "open-redirect",
       "function": "wrapper"
-    },
-    {
-      "file": "hc/accounts/middleware.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "hc/accounts/migrations/0049_convert_email_lowercase.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "hc/accounts/models.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "hc/accounts/tests/test_createsuperuser.py",
@@ -86,15 +68,69 @@
     },
     {
       "file": "hc/accounts/views.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
+      "line": 115,
+      "rule": "open-redirect",
+      "function": "_redirect_after_login"
     },
     {
-      "file": "hc/api/management/commands/sendalerts.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
+      "file": "hc/accounts/views.py",
+      "line": 120,
+      "rule": "open-redirect",
+      "function": "_redirect_after_login"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 142,
+      "rule": "open-redirect",
+      "function": "_check_2fa"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 170,
+      "rule": "open-redirect",
+      "function": "login"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 214,
+      "rule": "xss",
+      "function": "signup_csrf"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 281,
+      "rule": "open-redirect",
+      "function": "check_token"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 281,
+      "rule": "open-redirect",
+      "function": "check_token"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 314,
+      "rule": "hardcoded-credential",
+      "function": "profile"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 358,
+      "rule": "open-redirect",
+      "function": "add_project"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 637,
+      "rule": "open-redirect",
+      "function": "change_email_verify"
+    },
+    {
+      "file": "hc/accounts/views.py",
+      "line": 637,
+      "rule": "open-redirect",
+      "function": "change_email_verify"
     },
     {
       "file": "hc/api/models.py",
@@ -151,16 +187,22 @@
       "function": null
     },
     {
-      "file": "hc/api/transports.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
+      "file": "hc/api/views.py",
+      "line": 645,
+      "rule": "xss",
+      "function": "ping_body"
     },
     {
       "file": "hc/api/views.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
+      "line": 778,
+      "rule": "xss",
+      "function": "badge"
+    },
+    {
+      "file": "hc/api/views.py",
+      "line": 811,
+      "rule": "xss",
+      "function": "check_badge"
     },
     {
       "file": "hc/front/tests/test_webhook_validator.py",
@@ -469,18 +511,6 @@
       "function": "save"
     },
     {
-      "file": "hc/integrations/googlechat/tests/test_notify.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "hc/integrations/googlechat/transport.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
       "file": "hc/integrations/googlechat/views.py",
       "line": 33,
       "rule": "open-redirect",
@@ -553,12 +583,6 @@
       "function": "add"
     },
     {
-      "file": "hc/integrations/msteamsw/transport.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
       "file": "hc/integrations/msteamsw/views.py",
       "line": 29,
       "rule": "open-redirect",
@@ -619,12 +643,6 @@
       "function": "add"
     },
     {
-      "file": "hc/integrations/opsgenie/transport.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
       "file": "hc/integrations/opsgenie/views.py",
       "line": 31,
       "rule": "open-redirect",
@@ -635,12 +653,6 @@
       "line": 32,
       "rule": "open-redirect",
       "function": "add"
-    },
-    {
-      "file": "hc/integrations/pd/transport.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "hc/integrations/pd/views.py",
@@ -709,12 +721,6 @@
       "function": "add_complete"
     },
     {
-      "file": "hc/integrations/rocketchat/transport.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
       "file": "hc/integrations/rocketchat/views.py",
       "line": 34,
       "rule": "open-redirect",
@@ -755,12 +761,6 @@
       "line": 61,
       "rule": "open-redirect",
       "function": "add_signal"
-    },
-    {
-      "file": "hc/integrations/slack/transport.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     },
     {
       "file": "hc/integrations/slack/views.py",
@@ -812,9 +812,9 @@
     },
     {
       "file": "hc/integrations/telegram/views.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
+      "line": 124,
+      "rule": "open-redirect",
+      "function": "add"
     },
     {
       "file": "hc/integrations/trello/tests/test_notify.py",
@@ -893,18 +893,6 @@
       "line": 29,
       "rule": "open-redirect",
       "function": "add"
-    },
-    {
-      "file": "hc/settings.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "hc/urls.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
     }
   ]
 }

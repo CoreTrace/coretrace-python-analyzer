@@ -363,8 +363,10 @@ assignment, list, tuple, set and dict literals with unpacking, f-strings, slices
 boolean operators, chained comparisons, keyword and starred arguments, `with`, `assert`,
 `try`/`except`/`else`/`finally`, `await`, `yield`, `if`, `while` and `for` with their
 `else` clauses, `break`, `continue`, `raise` with `from`, conditional expressions,
-comprehensions, lambdas, nested functions and classes, `global`, `nonlocal`, `del` and
-`match` with every pattern kind. `finally` is modelled on the normal path only and a
+comprehensions, lambdas, nested functions and classes, `global`, `nonlocal`, `del`,
+assignment expressions (`(y := f(x))`, laid out as an assignment before the statement),
+`yield from`, starred assignment targets (`first, *rest = items`) and `match` with every
+pattern kind. `finally` is modelled on the normal path only and a
 `nonlocal` write stays inside the nested function. Methods of module-level classes are
 analysed like functions.
 

@@ -129,6 +129,9 @@ class _Builder:
             return result
         if isinstance(node, nodes.Comprehension):
             return self.comprehension(node, pending)
+        if isinstance(node, nodes.NamedExpr):
+            pending.append(nodes.Assign(node.target, self.hoist(node.value, pending), node.span))
+            return node.target
         if isinstance(node, nodes.Lambda):
             defaults = tuple(
                 replace(p, default=self.hoist(p.default, pending)) if p.default is not None else p
@@ -481,7 +484,7 @@ def _may_hold_expressions(value: object) -> bool:
 
 
 def _has_control_flow(node: object) -> bool:
-    if isinstance(node, nodes.Conditional | nodes.Comprehension):
+    if isinstance(node, nodes.Conditional | nodes.Comprehension | nodes.NamedExpr):
         return True
     if isinstance(node, nodes.Lambda):
         return False
@@ -492,9 +495,11 @@ def _has_control_flow(node: object) -> bool:
     return False
 
 
-def _bound_names(target: nodes.Target) -> list[str]:
+def _bound_names(target: nodes.Target | nodes.Starred) -> list[str]:
     if isinstance(target, nodes.Name):
         return [target.identifier]
+    if isinstance(target, nodes.Starred):
+        return _bound_names(target.value)  # type: ignore[arg-type]
     if isinstance(target, nodes.Tuple):
         return [name for element in target.elements for name in _bound_names(element)]  # type: ignore[arg-type]
     return []
