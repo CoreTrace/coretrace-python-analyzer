@@ -351,6 +351,13 @@ class _Collector:
         elif isinstance(node, nodes.Yield):
             if node.value is not None:
                 self.expression(node.value, scope)
+        elif isinstance(node, nodes.NamedExpr):
+            self.expression(node.value, scope)
+            # PEP 572: a walrus inside a comprehension binds in the containing scope.
+            owner = scope
+            while owner.kind is ScopeKind.COMPREHENSION and owner.parent is not None:
+                owner = owner.parent
+            owner.bind(node.target.identifier, BindingKind.LOCAL, node.target.span)
         elif isinstance(node, nodes.Tuple | nodes.List):
             for element in node.elements:
                 self.expression(element, scope)
@@ -419,6 +426,8 @@ class _Collector:
             scope.bind(node.identifier, BindingKind.LOCAL, node.span)
         elif isinstance(node, nodes.Tuple):
             for element in node.elements:
+                if isinstance(element, nodes.Starred):
+                    element = element.value
                 assert isinstance(element, nodes.Name | nodes.Attribute | nodes.Subscript | nodes.Tuple)
                 self.target(element, scope)
         else:

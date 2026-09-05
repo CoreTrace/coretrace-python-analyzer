@@ -163,7 +163,20 @@ class Await:
 
 @dataclass(frozen=True, slots=True)
 class Yield:
+    """``yield value``; with ``delegate``, ``yield from value``."""
+
     value: Expression | None
+    span: SourceSpan
+    delegate: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class NamedExpr:
+    """``(target := value)``: binds ``target`` in the enclosing function and evaluates to
+    the value. The CFG builder lays it out as an assignment before its statement."""
+
+    target: Name
+    value: Expression
     span: SourceSpan
 
 
@@ -210,6 +223,7 @@ Expression: TypeAlias = (
     | Lambda
     | Await
     | Yield
+    | NamedExpr
     | Comprehension
 )
 

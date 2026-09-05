@@ -209,10 +209,10 @@ def test_represents_raise_with_and_without_exception() -> None:
 @pytest.mark.parametrize(
     "source_text, message",
     [
-        ("def f(x):\n    yield from x\n", "yield from"),
-        ("a, *rest = items\n", "starred"),
+        ("async def f(x):\n    return [a async for a in x]\n", "async comprehensions"),
+        ("try:\n    pass\nexcept* ValueError:\n    pass\n", "except\\*"),
     ],
-    ids=["yield-from", "starred-target"],
+    ids=["async-comprehension", "exception-group"],
 )
 def test_unsupported_control_flow_forms_are_reported(source_text: str, message: str) -> None:
     from coretrace_python.frontend import HIRBuildError

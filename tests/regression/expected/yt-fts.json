@@ -1,17 +1,11 @@
 {
   "coverage": {
     "files": 20,
-    "files_analysed": 19,
-    "functions": 141,
-    "functions_analysed": 141
+    "files_analysed": 20,
+    "functions": 147,
+    "functions_analysed": 147
   },
   "findings": [
-    {
-      "file": "src/yt_fts/llm/get_embeddings.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
     {
       "file": "tests/test_export.py",
       "line": 48,

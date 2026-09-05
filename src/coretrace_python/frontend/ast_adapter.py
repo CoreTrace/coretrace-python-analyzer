@@ -146,7 +146,11 @@ class AstHIRBuilder:
             yielded = self.expression(node.value) if node.value is not None else None
             return nodes.Yield(yielded, span)
         if isinstance(node, ast.YieldFrom):
-            self.fail(node, "yield from is not supported yet")
+            return nodes.Yield(self.expression(node.value), span, True)
+        if isinstance(node, ast.NamedExpr):
+            assert isinstance(node.target, ast.Name)
+            target = nodes.Name(node.target.id, self.span(node.target))
+            return nodes.NamedExpr(target, self.expression(node.value), span)
         if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
             generators = tuple(self.generator(generator) for generator in node.generators)
             return nodes.Comprehension(
@@ -178,10 +182,13 @@ class AstHIRBuilder:
             assert isinstance(target, (nodes.Attribute, nodes.Subscript))
             return target
         if isinstance(node, (ast.Tuple, ast.List)):
+            elements: list[nodes.Expression] = []
             for element in node.elts:
                 if isinstance(element, ast.Starred):
-                    self.fail(element, "starred assignment targets are not supported yet")
-            return nodes.Tuple(tuple(self.target(element) for element in node.elts), self.span(node))
+                    elements.append(nodes.Starred(self.target(element.value), self.span(element)))
+                else:
+                    elements.append(self.target(element))
+            return nodes.Tuple(tuple(elements), self.span(node))
         self.fail(node, f"unsupported assignment target: {type(node).__name__}")
 
     def generator(self, node: ast.comprehension) -> nodes.ComprehensionGenerator:

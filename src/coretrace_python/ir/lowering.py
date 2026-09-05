@@ -240,11 +240,29 @@ class _FunctionLowerer:
             key = self.expression(target.key)
             self.emit_effect(SetItem(None, target.span, object_value, key, value))
         else:
-            for index, element in enumerate(target.elements):
-                position = self.emit(Constant(self.new_value(), element.span, index))
+            self.unpack(target, value)
+
+    def unpack(self, target: nodes.Tuple, value: Value) -> None:
+        """Store each element of ``value`` into the targets; a starred target receives
+        the slice the others leave, and the targets after it index from the end."""
+
+        count = len(target.elements)
+        starred = next((i for i, e in enumerate(target.elements) if isinstance(e, nodes.Starred)), None)
+        for index, element in enumerate(target.elements):
+            if isinstance(element, nodes.Starred):
+                lower = self.emit(Constant(self.new_value(), element.span, index))
+                upper = None
+                if index < count - 1:
+                    upper = self.emit(Constant(self.new_value(), element.span, index - count + 1))
+                bounds = self.emit(BuildSlice(self.new_value(), element.span, lower, upper, None))
+                item = self.emit(GetItem(self.new_value(), element.span, value, bounds))
+                element = element.value
+            else:
+                offset = index if starred is None or index < starred else index - count
+                position = self.emit(Constant(self.new_value(), element.span, offset))
                 item = self.emit(GetItem(self.new_value(), element.span, value, position))
-                assert isinstance(element, nodes.Name | nodes.Attribute | nodes.Subscript | nodes.Tuple)
-                self.store(element, item)
+            assert isinstance(element, nodes.Name | nodes.Attribute | nodes.Subscript | nodes.Tuple)
+            self.store(element, item)
 
     def statement(self, node: nodes.Statement) -> None:
         if isinstance(node, nodes.Assign):
@@ -466,9 +484,11 @@ def _reassigned_parameters(function: nodes.Function) -> frozenset[str]:
 
     assigned: set[str] = set()
 
-    def names(target: nodes.Target | None) -> None:
+    def names(target: nodes.Target | nodes.Starred | None) -> None:
         if isinstance(target, nodes.Name):
             assigned.add(target.identifier)
+        elif isinstance(target, nodes.Starred):
+            names(target.value)  # type: ignore[arg-type]
         elif isinstance(target, nodes.Tuple):
             for element in target.elements:
                 names(element)  # type: ignore[arg-type]
