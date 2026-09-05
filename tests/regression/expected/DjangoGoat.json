@@ -8,21 +8,9 @@
   "findings": [
     {
       "file": "authentication/views.py",
-      "line": 33,
-      "rule": "open-redirect",
-      "function": "sign_up"
-    },
-    {
-      "file": "authentication/views.py",
       "line": 57,
       "rule": "sql-injection",
       "function": "log_in"
-    },
-    {
-      "file": "authentication/views.py",
-      "line": 82,
-      "rule": "open-redirect",
-      "function": "profile_update"
     },
     {
       "file": "djangogoat/settings.py",
@@ -35,12 +23,6 @@
       "line": 196,
       "rule": "hardcoded-credential",
       "function": "after_all"
-    },
-    {
-      "file": "notes/views.py",
-      "line": 86,
-      "rule": "open-redirect",
-      "function": "conversation"
     },
     {
       "file": "requirements_app.txt",
