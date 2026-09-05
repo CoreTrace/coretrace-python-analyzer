@@ -90,7 +90,7 @@ def test_every_bundled_plugin_is_named_in_the_guides() -> None:
         re.search(r'^name = "([a-z-]+)"', manifest.read_text(encoding="utf-8"), re.MULTILINE).group(1)  # type: ignore[union-attr]
         for manifest in engine.BUNDLED_PLUGINS.rglob("plugin.toml")
     ]
-    assert len(names) == 26
+    assert len(names) == 28
     assert all(f"`{name}`" in text for name in names), [n for n in names if f"`{n}`" not in text]
 
 

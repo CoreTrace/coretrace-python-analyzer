@@ -162,11 +162,13 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
     by_name = {plugin.manifest.name: plugin.manifest for plugin in loaded}
 
     assert set(by_name) == {
+        "aiohttp-models",
         "cli-models",
         "command-injection",
         "config-secrets",
         "credential-models",
         "dangerous-eval",
+        "db-driver-models",
         "dependency-policy",
         "django-models",
         "fastapi-models",

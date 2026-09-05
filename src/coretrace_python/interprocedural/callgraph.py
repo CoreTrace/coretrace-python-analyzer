@@ -18,6 +18,7 @@ from coretrace_python.cfg import CFGError
 from coretrace_python.hir import nodes
 from coretrace_python.ir.lowering import LoweringError, analyzable_functions, qualified_name
 from coretrace_python.ir.model import (
+    Await,
     Call,
     FunctionIR,
     GetAttr,
@@ -139,6 +140,9 @@ def derive_symbols(
                         instruction.callee if isinstance(instruction, Call) else instruction.context
                     )
                     symbol = symbols.get(origin)
+                elif isinstance(instruction, Await) and instruction.value in symbols:
+                    # ``await asyncpg.connect()`` denotes what the awaited call denotes.
+                    symbol = symbols[instruction.value]
                 if symbol is not None:
                     symbols[instruction.result] = symbol
                     changed = True

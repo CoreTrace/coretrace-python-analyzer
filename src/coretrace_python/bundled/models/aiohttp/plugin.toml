@@ -1,0 +1,9 @@
+name = "aiohttp-models"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = []
+provides = ["model.http-sources", "model.aiohttp-routes", "model.ssrf-sinks"]
+
+[entrypoint]
+module = "aiohttp_models"
+class = "AiohttpModels"

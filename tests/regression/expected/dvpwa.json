@@ -29,6 +29,12 @@
       "line": 41,
       "rule": "weak-crypto",
       "function": "check_password"
+    },
+    {
+      "file": "sqli/views.py",
+      "line": 57,
+      "rule": "sql-injection",
+      "function": "students"
     }
   ]
 }

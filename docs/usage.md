@@ -79,7 +79,7 @@ report's per-file detail tell "no findings" from "nothing analysed".
 
 Taint follows values between functions and across files through function summaries,
 into objects (containers, attributes, instances of the project's own classes) and through
-closures. Flask, FastAPI and Django route handlers, class-based views and registered
+closures. Flask, FastAPI, Django and aiohttp route handlers, class-based views and registered
 URL patterns receive HTTP input; click and Typer commands receive `argv` input; `input()`,
 `sys.argv`, environment variables, the output of local processes and the responses of
 HTTP clients are further sources. The first three are operator-controlled: a command-line
@@ -309,10 +309,10 @@ real 45 000-line project is exercised on every change.
 
 ## Plugins
 
-The package ships 26 plugins, loaded by default. Security models for the standard library
+The package ships 28 plugins, loaded by default. Security models for the standard library
 and the supported frameworks: `python-stdlib-models`, `flask-models`, `fastapi-models`,
-`django-models`, `sqlalchemy-models`, `http-client-models`, `credential-models` and
-`cli-models`. Taint detectors: `command-injection`, `sql-injection`, `path-traversal`,
+`django-models`, `aiohttp-models`, `sqlalchemy-models`, `db-driver-models` (aiopg,
+asyncpg, psycopg2, PyMySQL), `http-client-models`, `credential-models` and `cli-models`. Taint detectors: `command-injection`, `sql-injection`, `path-traversal`,
 `ssrf`, `xss`, `insecure-deserialization`, `open-redirect` and `plaintext-credentials`.
 Dangerous API detectors: `dangerous-eval`, `weak-crypto`, `flask-debug` and
 `missing-timeout`. Secret scanners: `hardcoded-secrets` for Python sources and
