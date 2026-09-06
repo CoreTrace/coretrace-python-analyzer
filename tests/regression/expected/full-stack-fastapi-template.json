@@ -43,12 +43,6 @@
       "function": "recover_password_html_content"
     },
     {
-      "file": "backend/app/api/routes/login.py",
-      "line": 121,
-      "rule": "xss",
-      "function": "recover_password_html_content"
-    },
-    {
       "file": "backend/tests/api/routes/test_login.py",
       "line": 31,
       "rule": "hardcoded-credential",

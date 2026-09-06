@@ -31,6 +31,7 @@ from coretrace_python.interprocedural.callgraph import (
     ExternalSymbol,
     KnownFunction,
     UnknownTarget,
+    _is_staticmethod,
 )
 from coretrace_python.ir.model import (
     BasicBlock,
@@ -125,6 +126,8 @@ class FunctionSummary:
     mutations: tuple[Mutation, ...] = ()
     side_effects: frozenset[str] = frozenset()
     nonlocal_writes: tuple[NonlocalWrite, ...] = ()
+    # A ``@staticmethod``: ``Class.method(...)`` passes no receiver.
+    static: bool = False
 
 
 class SummaryIndex:
@@ -322,7 +325,7 @@ class _DependenceProblem(DataflowProblem[State]):
             if project is None:
                 project = self.project.get(target.symbol.attribute("__init__"))
             if project is not None:
-                bound = self.receiver(call, project.name)
+                bound = () if project.static else self.receiver(call, project.name)
                 arguments = (*(self.deep(r, state) for r in bound), *arguments)
                 return self.known(project, arguments, keywords, everything, call, state, bound)
             self.record(
@@ -337,9 +340,10 @@ class _DependenceProblem(DataflowProblem[State]):
             made = self.defs.get(call.callee)
             if isinstance(made, MakeFunction):
                 arguments = (*arguments, *(self.deep(v, state) for v in made.captured))
-            bound = self.receiver(call, target.name)
+            callee_summary = self.table[target.name]
+            bound = () if callee_summary.static else self.receiver(call, target.name)
             arguments = (*(self.deep(r, state) for r in bound), *arguments)
-            return self.known(self.table[target.name], arguments, keywords, everything, call, state, bound)
+            return self.known(callee_summary, arguments, keywords, everything, call, state, bound)
         assert isinstance(target, UnknownTarget)
         return everything | state.get(call.callee, EMPTY)
 
@@ -357,7 +361,7 @@ class _DependenceProblem(DataflowProblem[State]):
         made = self.defs.get(call.callee)
         if isinstance(made, MakeFunction):
             arguments = (*arguments, *(self.deep(v, state) for v in made.captured))
-        bound = self.receiver(call, target.name)
+        bound = () if callee.static else self.receiver(call, target.name)
         arguments = (*(self.deep(r, state) for r in bound), *arguments)
         keywords = EMPTY
         for value in (*call.starred, *(v for _, v in call.keywords)):
@@ -447,6 +451,7 @@ def summarize(
     table: Mapping[str, FunctionSummary],
     project: Mapping[SymbolId, FunctionSummary] | None = None,
     heap: HeapFacts | None = None,
+    static: bool = False,
 ) -> FunctionSummary:
     problem = _DependenceProblem(name, function, graph, table, project, heap)
     solution = solve(problem, cfg)
@@ -479,6 +484,7 @@ def summarize(
             for name, deps in sorted(problem.nonlocal_stores.items())
             if deps.parameters or deps.externals
         ),
+        static=static,
     )
 
 
@@ -509,7 +515,9 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         while changed:
             changed = False
             for name, (ssa, cfg, heap) in supported.items():
-                updated = summarize(name, ssa, cfg, graph, table, project, heap)
+                updated = summarize(
+                    name, ssa, cfg, graph, table, project, heap, _is_staticmethod(graph.definitions[name])
+                )
                 if updated != table[name]:
                     table[name] = updated
                     changed = True
