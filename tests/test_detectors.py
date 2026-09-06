@@ -163,6 +163,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
 
     assert set(by_name) == {
         "aiohttp-models",
+        "bottle-models",
         "cli-models",
         "command-injection",
         "config-secrets",
@@ -187,6 +188,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "sql-injection",
         "sqlalchemy-models",
         "ssrf",
+        "tornado-models",
         "vulnerable-dependency",
         "weak-crypto",
         "xss",

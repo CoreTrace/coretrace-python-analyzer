@@ -158,23 +158,43 @@ def resolve_targets(
     classes: Mapping[str, frozenset[str]] | None = None,
     owner: str | None = None,
     typed: Mapping[Value, str] | None = None,
+    bases: Mapping[str, SymbolId] | None = None,
 ) -> tuple[dict[Value, Target], dict[Value, SymbolId]]:
     """Map every callee value of ``function`` to its target, and every symbol value.
     ``nested`` names the functions defined inside this one (``outer.inner``);
     ``classes`` maps the module's classes to their methods, ``owner`` is the class of a
     method and ``typed`` the parameters annotated with a module class. ``App(x)`` is a
-    call to ``App.__init__``, ``app.run()`` and ``self.run()`` calls to ``App.run``."""
+    call to ``App.__init__``, ``app.run()`` and ``self.run()`` calls to ``App.run``.
+    ``bases`` maps a module class to the symbol of its base: an attribute the class does
+    not define is inherited, so ``self.get_argument`` in a ``RequestHandler`` subclass
+    denotes ``tornado.web.RequestHandler.get_argument``."""
 
     module = scopes.module_scope
-    symbols = derive_symbols(function, parameters)
-    targets: dict[Value, Target] = {
-        value: ExternalSymbol(symbol) for value, symbol in symbols.items()
-    }
     classes = classes or {}
     instance_of: dict[Value, str] = dict(typed or {})
     if owner is not None and function.parameters:
         instance_of[function.parameters[0]] = owner
     defs = {i.result: i for block in function.blocks for i in block.instructions if i.result}
+    for block in function.blocks:
+        for instruction in block.instructions:
+            if isinstance(instruction, Call):
+                callee = defs.get(instruction.callee)
+                if isinstance(callee, Global) and callee.name in classes:
+                    instance_of[instruction.result] = callee.name
+    inherited: dict[Value, SymbolId] = dict(parameters or {})
+    for block in function.blocks:
+        for instruction in block.instructions:
+            if isinstance(instruction, GetAttr) and instruction.object in instance_of:
+                if instruction.object in inherited:
+                    continue  # an annotated parameter denotes its own class
+                class_name = instance_of[instruction.object]
+                base = (bases or {}).get(class_name)
+                if base is not None and instruction.attribute not in classes.get(class_name, ()):
+                    inherited[instruction.result] = base.attribute(instruction.attribute)
+    symbols = derive_symbols(function, inherited)
+    targets: dict[Value, Target] = {
+        value: ExternalSymbol(symbol) for value, symbol in symbols.items()
+    }
     for block in function.blocks:
         for instruction in block.instructions:
             if isinstance(instruction, MakeFunction):
@@ -189,15 +209,27 @@ def resolve_targets(
                     targets[instruction.result] = KnownFunction(instruction.name)
                 elif binding.kind is BindingKind.CLASS and "__init__" in classes.get(instruction.name, ()):
                     targets[instruction.result] = KnownFunction(f"{instruction.name}.__init__")
-            elif isinstance(instruction, Call):
-                callee = defs.get(instruction.callee)
-                if isinstance(callee, Global) and callee.name in classes:
-                    instance_of[instruction.result] = callee.name
             elif isinstance(instruction, GetAttr) and instruction.object in instance_of:
                 method = f"{instance_of[instruction.object]}.{instruction.attribute}"
                 if method in nested:
                     targets[instruction.result] = KnownFunction(method)
+            elif isinstance(instruction, GetAttr):
+                # ``Student.create(...)``: a static or class method called on the class.
+                origin = defs.get(instruction.object)
+                if isinstance(origin, Global) and origin.name in classes:
+                    method = f"{origin.name}.{instruction.attribute}"
+                    if method in nested:
+                        targets[instruction.result] = KnownFunction(method)
     return targets, symbols
+
+
+def _is_staticmethod(function: nodes.Function) -> bool:
+    for decorator in function.decorators:
+        if isinstance(decorator, nodes.Name) and decorator.identifier == "staticmethod":
+            return True
+        if isinstance(decorator, nodes.Attribute) and decorator.name == "staticmethod":
+            return True
+    return False
 
 
 def _annotated(
@@ -257,6 +289,14 @@ class CallGraphAnalysis(Analysis[CallGraph]):
             for statement in ctx.module.body
             if isinstance(statement, nodes.Class)
         }
+        bases: dict[str, SymbolId] = {}
+        for statement in ctx.module.body:
+            if isinstance(statement, nodes.Class):
+                for base_expression in statement.bases:
+                    symbol = table.resolve_expression(scopes.module_scope.id, base_expression)
+                    if symbol is not None:
+                        bases[statement.name] = symbol
+                        break
         sites: dict[str, tuple[CallSite, ...]] = {}
         symbols: dict[str, Mapping[Value, SymbolId]] = {}
         unsupported: set[str] = set()
@@ -268,6 +308,8 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 sites[name] = ()
                 continue
             owner = name.rsplit(".", 1)[0] if "." in name and name.rsplit(".", 1)[0] in classes else None
+            if owner is not None and _is_staticmethod(function):
+                owner = None  # a static method has no receiver
             targets, symbols[name] = resolve_targets(
                 ssa,
                 scopes,
@@ -277,6 +319,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 classes,
                 owner,
                 _typed_with_module_classes(function, ssa, classes),
+                bases,
             )
             found: list[CallSite] = []
             for block in ssa.blocks:

@@ -292,7 +292,7 @@ class _TaintProblem(DataflowProblem[State]):
                 project = self.project.summary(target.symbol.attribute("__init__"))
             if project is not None:
                 through = target.symbol.canonical_name.removeprefix("python.")
-                bound = self.receiver(call, project.name)
+                bound = () if project.static else self.receiver(call, project.name)
                 arguments = (*(self.deep(r, state) for r in bound), *arguments)
                 return self.known(
                     project, through, arguments, keywords, everything, call, flows, state, (), bound
@@ -306,7 +306,7 @@ class _TaintProblem(DataflowProblem[State]):
         if isinstance(target, KnownFunction):
             summary = self.summaries.summary(target.name)
             captured = self.captured(call)
-            bound = self.receiver(call, target.name)
+            bound = () if summary.static else self.receiver(call, target.name)
             arguments = (
                 *(self.deep(r, state) for r in bound),
                 *arguments,
@@ -331,7 +331,7 @@ class _TaintProblem(DataflowProblem[State]):
             return Taint.none()
         summary = self.summaries.summary(target.name)
         arguments = (
-            *(self.deep(r, state) for r in self.receiver(call, target.name)),
+            *(self.deep(r, state) for r in (() if summary.static else self.receiver(call, target.name))),
             *(self.deep(a, state) for a in call.arguments),
             *(self.deep(v, state) for v in self.captured(call)),
         )
@@ -384,9 +384,9 @@ class _TaintProblem(DataflowProblem[State]):
         sink = self.models.sink(symbol)
         if sink is not None:
             for position, argument in enumerate(call.arguments):
-                self.report(flows, sink, self.deep(argument, state), argument, call, None, None, position)
+                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, position)
             for argument in (*call.starred, *(value for _, value in call.keywords)):
-                self.report(flows, sink, self.deep(argument, state), argument, call, None, None, None)
+                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, None)
         sanitizer = self.models.sanitizer(symbol)
         if sanitizer is not None:
             return everything.without(sanitizer.kinds)
@@ -396,6 +396,16 @@ class _TaintProblem(DataflowProblem[State]):
         if source is not None:
             return everything.join(Taint(source.kinds, frozenset({source})))
         return everything
+
+    def rendered(self, argument: Value, state: Mapping[Key, Taint]) -> Taint:
+        """The taint an argument brings to a sink. A container literal is serialised by
+        every framework (``self.write({...})`` answers JSON), never rendered as markup, so
+        it carries no ``HTML``."""
+
+        taint = self.deep(argument, state)
+        if isinstance(self.defs.get(argument), BuildDict | BuildList | BuildSet | BuildTuple):
+            return taint.without(TaintKind.HTML)
+        return taint
 
     def returned_symbol(self, call: Call) -> SymbolId | None:
         """``get_db().execute(...)``: the method of what a known function returns, when

@@ -20,6 +20,7 @@ from coretrace_python.taint import (
     RouteRegistrar,
     Sanitizer,
     Sink,
+    Source,
     SuffixSink,
     TaintKind,
     TypedParameter,
@@ -98,6 +99,8 @@ class DjangoModels(ModelPlugin):
     models: ClassVar[tuple[Model, ...]] = (
         *(TypedParameter(_sym(cls), "http") for cls in _REQUEST_CLASSES),
         *(EntryPoint(_sym(base), "http") for base in _VIEW_BASES),
+        # ``self.request`` in a class-based view: the attribute is inherited from the base.
+        *(Source(_sym(f"{base}.request"), "http") for base in _VIEW_BASES),
         *(EntryPoint(_sym(decorator), "http") for decorator in _VIEW_DECORATORS),
         Sink(_sym("django.db.connection.cursor.execute"), TaintKind.SQL | TaintKind.CREDENTIAL, ((TaintKind.SQL, (0,)),)),
         Sink(_sym("django.db.connection.cursor.executemany"), TaintKind.SQL | TaintKind.CREDENTIAL, ((TaintKind.SQL, (0,)),)),
