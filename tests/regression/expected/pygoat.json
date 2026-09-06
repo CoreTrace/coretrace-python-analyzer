@@ -49,6 +49,12 @@
       "function": null
     },
     {
+      "file": "dockerized_labs/sensitive_data_exposure/dataexposure/views.py",
+      "line": 42,
+      "rule": "weak-random",
+      "function": "generate_api_key"
+    },
+    {
       "file": "dockerized_labs/sensitive_data_exposure/sensitive_data_lab/settings.py",
       "line": 8,
       "rule": "hardcoded-credential",
@@ -146,6 +152,18 @@
     },
     {
       "file": "introduction/views.py",
+      "line": 258,
+      "rule": "unsafe-xml",
+      "function": "xxe_parse"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 260,
+      "rule": "unsafe-xml",
+      "function": "xxe_parse"
+    },
+    {
+      "file": "introduction/views.py",
       "line": 290,
       "rule": "xss",
       "function": "auth_lab_signup"
@@ -173,6 +191,12 @@
       "line": 460,
       "rule": "dangerous-eval",
       "function": "cmd_lab2"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 496,
+      "rule": "weak-random",
+      "function": "Otp"
     },
     {
       "file": "introduction/views.py",

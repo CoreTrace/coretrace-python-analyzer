@@ -7,6 +7,12 @@
   },
   "findings": [
     {
+      "file": "src/yt_fts/download/download_handler.py",
+      "line": 190,
+      "rule": "unsafe-xml",
+      "function": "get_channel_name"
+    },
+    {
       "file": "tests/test_export.py",
       "line": 48,
       "rule": "high-entropy-string",
@@ -16,6 +22,12 @@
       "file": "tests/testing_utils.py",
       "line": 17,
       "rule": "missing-timeout",
+      "function": "fetch_and_unzip_test_db"
+    },
+    {
+      "file": "tests/testing_utils.py",
+      "line": 26,
+      "rule": "unsafe-archive-extraction",
       "function": "fetch_and_unzip_test_db"
     }
   ]

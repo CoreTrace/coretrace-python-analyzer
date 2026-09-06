@@ -27,6 +27,12 @@
     {
       "file": "httpie/internal/update_warnings.py",
       "line": 44,
+      "rule": "insecure-tls",
+      "function": "_fetch_updates"
+    },
+    {
+      "file": "httpie/internal/update_warnings.py",
+      "line": 44,
       "rule": "missing-timeout",
       "function": "_fetch_updates"
     },
