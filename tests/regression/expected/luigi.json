@@ -31,6 +31,12 @@
       "function": "_run_job"
     },
     {
+      "file": "luigi/contrib/mrrunner.py",
+      "line": 64,
+      "rule": "unsafe-archive-extraction",
+      "function": "extract_packages_archive"
+    },
+    {
       "file": "luigi/contrib/pai.py",
       "line": 229,
       "rule": "missing-timeout",
@@ -52,6 +58,12 @@
       "file": "luigi/contrib/salesforce.py",
       "line": 258,
       "rule": "missing-timeout",
+      "function": "start_session"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 261,
+      "rule": "unsafe-xml",
       "function": "start_session"
     },
     {
@@ -80,6 +92,12 @@
     },
     {
       "file": "luigi/contrib/salesforce.py",
+      "line": 401,
+      "rule": "unsafe-xml",
+      "function": "create_operation_job"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
       "line": 412,
       "rule": "missing-timeout",
       "function": "get_job_details"
@@ -104,8 +122,20 @@
     },
     {
       "file": "luigi/contrib/salesforce.py",
+      "line": 468,
+      "rule": "unsafe-xml",
+      "function": "create_batch"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
       "line": 512,
       "rule": "missing-timeout",
+      "function": "get_batch_result_ids"
+    },
+    {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 515,
+      "rule": "unsafe-xml",
       "function": "get_batch_result_ids"
     },
     {
@@ -121,10 +151,22 @@
       "function": "_get_batch_info"
     },
     {
+      "file": "luigi/contrib/salesforce.py",
+      "line": 537,
+      "rule": "unsafe-xml",
+      "function": "_get_batch_info"
+    },
+    {
       "file": "luigi/contrib/sge.py",
       "line": 296,
       "rule": "command-injection",
       "function": "_run_job"
+    },
+    {
+      "file": "luigi/safe_extractor.py",
+      "line": 97,
+      "rule": "unsafe-archive-extraction",
+      "function": "safe_extract"
     },
     {
       "file": "test/_test_ftp.py",

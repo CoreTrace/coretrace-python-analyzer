@@ -1,0 +1,9 @@
+name = "unsafe-xml"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["interprocedural.callgraph", "ir.ssa"]
+provides = ["vulnerability.unsafe-xml"]
+
+[entrypoint]
+module = "unsafe_xml"
+class = "UnsafeXmlPlugin"

@@ -126,6 +126,11 @@ medium confidence. The verdict and its evidence are in the finding's metadata.
 | `weak-crypto` | `hashlib.md5`, `hashlib.sha1` and other broken algorithms. |
 | `debug-enabled` | `app.run(debug=True)` on a Flask application. |
 | `missing-timeout` | A Requests or httpx call without a `timeout`. |
+| `insecure-tls` | `verify=False` on a Requests or httpx call, or `ssl._create_unverified_context()`. |
+| `unsafe-xml` | A standard-library or lxml XML parser, which expands entities; `defusedxml` is the safe replacement. |
+| `unsafe-archive-extraction` | `tarfile` or `zipfile` extraction, or `shutil.unpack_archive`, without a member `filter`. |
+| `insecure-temp-file` | `tempfile.mktemp`, which names a file without creating it. |
+| `weak-random` | A `random` function whose result is assigned to a credential-like name, or produced by a function named like one. Medium confidence. |
 
 ### Secrets
 
@@ -310,13 +315,14 @@ real 45 000-line project is exercised on every change.
 
 ## Plugins
 
-The package ships 30 plugins, loaded by default. Security models for the standard library
+The package ships 35 plugins, loaded by default. Security models for the standard library
 and the supported frameworks: `python-stdlib-models`, `flask-models`, `fastapi-models`,
 `django-models`, `aiohttp-models`, `tornado-models`, `bottle-models`, `sqlalchemy-models`, `db-driver-models` (aiopg,
 asyncpg, psycopg2, PyMySQL), `http-client-models`, `credential-models` and `cli-models`. Taint detectors: `command-injection`, `sql-injection`, `path-traversal`,
 `ssrf`, `xss`, `insecure-deserialization`, `open-redirect` and `plaintext-credentials`.
-Dangerous API detectors: `dangerous-eval`, `weak-crypto`, `flask-debug` and
-`missing-timeout`. Secret scanners: `hardcoded-secrets` for Python sources and
+Dangerous API detectors: `dangerous-eval`, `weak-crypto`, `flask-debug`,
+`missing-timeout`, `insecure-tls`, `unsafe-xml`, `unsafe-archive-extraction`,
+`insecure-temp-file` and `weak-random`. Secret scanners: `hardcoded-secrets` for Python sources and
 `config-secrets` for configuration files. Dependency checks: `sample-advisories`,
 `vulnerable-dependency`, `reachable-vulnerability` and `dependency-policy`.
 

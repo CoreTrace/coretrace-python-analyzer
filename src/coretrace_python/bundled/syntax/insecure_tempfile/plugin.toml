@@ -1,0 +1,9 @@
+name = "insecure-temp-file"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["interprocedural.callgraph", "ir.ssa"]
+provides = ["vulnerability.insecure-temp-file"]
+
+[entrypoint]
+module = "insecure_tempfile"
+class = "InsecureTempFilePlugin"

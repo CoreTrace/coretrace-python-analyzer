@@ -8,13 +8,14 @@ by reading the SSA form.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import RefutationAnalysis, Status
-from coretrace_python.ir.model import Call, Symbol
+from coretrace_python.interprocedural import CallGraphAnalysis
+from coretrace_python.ir.model import Call, Instruction, Symbol, Value
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.plugins.api import Plugin, PluginContext
 from coretrace_python.semantic.symbols import SymbolId
@@ -75,37 +76,49 @@ def _lower(confidence: Confidence) -> Confidence:
 
 
 class SymbolCallDetector(Plugin):
-    """Report calls whose callee is one of ``symbols``, whatever name the file uses."""
+    """Report calls whose callee is one of ``symbols``, whatever name the file uses.
+    A subclass that also requires ``CallGraphAnalysis`` sees derived call-chain symbols
+    too (``tarfile.open(p).extractall`` is ``tarfile.open.extractall``); ``accepts``
+    lets it keep only some calls, such as those with a given keyword."""
 
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis})
     rule_id: ClassVar[str]
     symbols: ClassVar[frozenset[SymbolId]]
     severity: ClassVar[Severity]
     message_template: ClassVar[str]
+    confidence: ClassVar[Confidence] = Confidence.HIGH
+
+    def accepts(self, call: Call, symbol: SymbolId, defs: Mapping[Value, Instruction]) -> bool:
+        return True
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         findings: list[Finding] = []
+        graph = ctx.get(CallGraphAnalysis) if CallGraphAnalysis in self.requires else None
         for function in ctx.functions():
             ssa = ctx.get(SSAAnalysis, function)
-            defined = {
-                i.result: i.symbol_id
-                for block in ssa.blocks
-                for i in block.instructions
-                if isinstance(i, Symbol)
+            defs: dict[Value, Instruction] = {
+                i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None
             }
+            symbols: Mapping[Value, SymbolId]
+            if graph is not None:
+                symbols = graph.symbols(graph.name_of(function))
+            else:
+                symbols = {v: i.symbol_id for v, i in defs.items() if isinstance(i, Symbol)}
             for block in ssa.blocks:
                 for instruction in block.instructions:
                     if not isinstance(instruction, Call):
                         continue
-                    symbol = defined.get(instruction.callee)
+                    symbol = symbols.get(instruction.callee)
                     if symbol is None or symbol not in self.symbols:
+                        continue
+                    if not self.accepts(instruction, symbol, defs):
                         continue
                     findings.append(
                         Finding(
                             rule_id=self.rule_id,
                             message=self.message_template.format(symbol=symbol),
                             severity=self.severity,
-                            confidence=Confidence.HIGH,
+                            confidence=self.confidence,
                             span=instruction.location,
                             function=function.name,
                             metadata={"symbol": str(symbol)},
