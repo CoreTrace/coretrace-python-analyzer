@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Analysis
+
+- New taint kinds: `NOSQL` in `TaintKind.ALL`; `LOG` and `PII` outside it, carried only by the values a model marks, so a NoSQL-injection, log-injection or personal-data detector no longer has to share a kind with another rule (#96).
+
 ## 0.2.0 (2026-09-06)
 
 ### Adoption in an existing repository
