@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- A `Sanitizer` declared on a function of the analysed project takes precedence over the summary derived from its body, in the same file and across files, so a code base can declare its own validation layer (#95).
+
 ## 0.2.0 (2026-09-06)
 
 ### Adoption in an existing repository

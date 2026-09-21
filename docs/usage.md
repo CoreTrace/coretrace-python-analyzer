@@ -335,6 +335,29 @@ coretrace-python-analyzer --check src/ --plugins ./coretrace-plugins
 coretrace-python-analyzer --check src/ --no-bundled-plugins --plugins ./coretrace-plugins
 ```
 
+### Your own validation layer
+
+A code base that already validates its input has functions the analyzer cannot know are
+safe: a `clean()` that returns its argument looks, from its body, like a function that
+passes taint through. Declare them in a model plugin by their project symbol,
+`python.<module>.<function>`, and the analyzer takes your word over what it derived:
+
+```python
+from coretrace_python.plugins import ModelPlugin
+from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.taint import Sanitizer, TaintKind, Validator
+
+
+class HouseModels(ModelPlugin):
+    name = "house-models"
+    models = (
+        # the result of app.validation.clean is safe for commands, whatever the body does
+        Sanitizer(SymbolId("python.app.validation.clean"), TaintKind.COMMAND),
+        # a flow behind ``if app.validation.is_slug(value):`` is refuted
+        Validator(SymbolId("python.app.validation.is_slug")),
+    )
+```
+
 ## Continuous integration
 
 The exit status gates the job and the SARIF report feeds code scanning. On GitHub
