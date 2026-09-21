@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- Two plugins may declare the same symbol: an identical model is registered once and sinks merge their kinds and positions; a real conflict names both plugins instead of failing the run on the first duplicate (#92).
+
 ## 0.2.0 (2026-09-06)
 
 ### Adoption in an existing repository

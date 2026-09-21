@@ -257,7 +257,7 @@ def load_plugins(plugin_roots: Sequence[Path], manager: AnalysisManager) -> Plug
 def plugin_models(plugins: Iterable[Plugin]) -> ModelTable:
     models = SecurityModelRegistry()
     for plugin in plugins:
-        models.register(*plugin.models)
+        models.register(*plugin.models, origin=plugin.name)
     return models.freeze()
 
 
