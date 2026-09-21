@@ -136,6 +136,38 @@ def test_taint_flows_into_a_function_defined_in_another_file(tmp_path: Path) -> 
     assert findings[0].metadata["sink_line"] == "4"
 
 
+def test_a_sanitizer_declared_on_a_function_of_another_file_refutes_the_flow(tmp_path: Path) -> None:
+    root = project(
+        tmp_path / "src",
+        {
+            "app/__init__.py": "",
+            "app/validation.py": "def clean(value):\n    return value\n",
+            "app/main.py": "import os\nfrom app.validation import clean\n\ndef run():\n    os.system(clean(input()))\n",
+        },
+    )
+    models = project(
+        tmp_path / "models",
+        {
+            "plugin.toml": (
+                'name = "house-models"\nversion = "1.0.0"\nplugin_api = ">=1,<2"\n'
+                'requires = []\nprovides = ["models.house"]\n\n'
+                '[entrypoint]\nmodule = "house"\nclass = "HouseModels"\n'
+            ),
+            "house.py": (
+                "from coretrace_python.plugins import ModelPlugin\n"
+                "from coretrace_python.semantic.symbols import SymbolId\n"
+                "from coretrace_python.taint import Sanitizer, TaintKind\n\n\n"
+                "class HouseModels(ModelPlugin):\n"
+                '    name = "house-models"\n'
+                '    models = (Sanitizer(SymbolId("python.app.validation.clean"), TaintKind.COMMAND),)\n'
+            ),
+        },
+    )
+
+    assert rules(engine.analyze_project(root, [PLUGINS]).findings) == [("main.py", "command-injection", 5)]
+    assert rules(engine.analyze_project(root, [PLUGINS, models]).findings) == []
+
+
 def test_module_attribute_calls_resolve_too(tmp_path: Path) -> None:
     root = project(
         tmp_path,

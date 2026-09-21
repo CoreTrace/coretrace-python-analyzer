@@ -147,8 +147,10 @@ class _TaintProblem(DataflowProblem[State]):
         project: SummaryIndex | None = None,
         heap: HeapFacts | None = None,
         seeds: Mapping[HeapLocation, Taint] | None = None,
+        module: str = "",
     ) -> None:
         self.name = name
+        self.module = module
         self.function = function
         self.models = models
         self.graph = graph
@@ -294,9 +296,10 @@ class _TaintProblem(DataflowProblem[State]):
                 through = target.symbol.canonical_name.removeprefix("python.")
                 bound = () if project.static else self.receiver(call, project.name)
                 arguments = (*(self.deep(r, state) for r in bound), *arguments)
-                return self.known(
+                result = self.known(
                     project, through, arguments, keywords, everything, call, flows, state, (), bound
                 )
+                return self.declared_clean(target.symbol, result)
             symbol = target.symbol
             if not self.modelled(symbol):
                 # ``get_conn().execute`` derived ``app.database.get_conn.execute``; what
@@ -312,9 +315,10 @@ class _TaintProblem(DataflowProblem[State]):
                 *arguments,
                 *(self.deep(value, state) for value in captured),
             )
-            return self.known(
+            result = self.known(
                 summary, target.name, arguments, keywords, everything, call, flows, state, captured, bound
             )
+            return self.declared_clean(project_symbol(self.module, target.name), result)
         returned = self.returned_symbol(call)
         if returned is not None:
             return self.external(returned, everything, call, state, flows)
@@ -368,6 +372,13 @@ class _TaintProblem(DataflowProblem[State]):
 
         made = self.defs.get(call.callee)
         return made.captured if isinstance(made, MakeFunction) else ()
+
+    def declared_clean(self, symbol: SymbolId, result: Taint) -> Taint:
+        """A ``Sanitizer`` declared on a project function is the project's own knowledge
+        of what its result carries; it wins over what the summary derived from the body."""
+
+        sanitizer = self.models.sanitizer(symbol)
+        return result if sanitizer is None else result.without(sanitizer.kinds)
 
     def modelled(self, symbol: SymbolId) -> bool:
         return (
@@ -730,8 +741,9 @@ def propagate_taint(
     project: SummaryIndex | None = None,
     heap: HeapFacts | None = None,
     seeds: Mapping[HeapLocation, Taint] | None = None,
+    module: str = "",
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds)
+    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds, module)
     solution = solve(problem, cfg)
     taints: dict[Key, Taint] = {}
     flows: list[TaintFlow] = []
@@ -794,6 +806,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             ctx.get(ProjectSummaries),
             heap,
             seeds,
+            ctx.module.name,
         )
 
 

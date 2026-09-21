@@ -12,6 +12,10 @@
 
 - New taint kinds: `NOSQL` in `TaintKind.ALL`; `LOG` and `PII` outside it, carried only by the values a model marks, so a NoSQL-injection, log-injection or personal-data detector no longer has to share a kind with another rule (#96).
 
+### Precision
+
+- A `Sanitizer` declared on a function of the analysed project takes precedence over the summary derived from its body, in the same file and across files, so a code base can declare its own validation layer (#95).
+
 ## 0.2.0 (2026-09-06)
 
 ### Adoption in an existing repository
