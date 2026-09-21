@@ -50,12 +50,12 @@ def require_interprocedural_taint() -> None:
         pytest.fail("TaintAnalysis does not consume the call graph and summaries yet")
 
 
-def facts(source_text: str, name: str = "run") -> TaintFacts:
+def facts(source_text: str, name: str = "run", *extra: Sanitizer) -> TaintFacts:
     module = build_hir(SourceManager().add_source("ip.py", source_text))
     manager = AnalysisManager(module)
     manager.register(*engine.ALL_ANALYSES)
     registry = SecurityModelRegistry()
-    registry.register(*MODELS)
+    registry.register(*MODELS, *extra)
     manager.provide(SecurityModelAnalysis, registry.freeze())
     function = next(s for s in module.body if isinstance(s, nodes.Function) and s.name == name)
     return manager.get(TaintAnalysis, function)
@@ -128,6 +128,17 @@ def test_sanitizing_before_the_call_removes_the_flow() -> None:
         "def run():\n    execute(shlex.quote(input()))\n",
     )
     assert result.flows == ()
+
+
+def test_a_sanitizer_declared_on_a_project_function_overrides_its_summary() -> None:
+    source = (
+        "import os\n\n"
+        "def clean(value):\n    return value\n\n"
+        "def run():\n    os.system(clean(input()))\n"
+    )
+
+    assert lines(facts(source)) == [7]
+    assert facts(source, "run", Sanitizer(SymbolId("python.ip.clean"), TaintKind.COMMAND)).flows == ()
 
 
 def test_keyword_arguments_flow_through_summaries() -> None:
