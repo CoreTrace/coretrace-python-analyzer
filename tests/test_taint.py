@@ -101,6 +101,38 @@ def test_taint_kinds_form_a_bitset() -> None:
     assert {TaintKind.SQL, TaintKind.COMMAND, TaintKind.HTML, TaintKind.PATH, TaintKind.SSRF} <= set(TaintKind)
 
 
+def test_nosql_is_ordinary_input_while_log_and_pii_are_opt_in() -> None:
+    assert TaintKind.NOSQL in TaintKind.ALL
+    assert TaintKind.LOG not in TaintKind.ALL
+    assert TaintKind.PII not in TaintKind.ALL
+    assert TaintKind.CREDENTIAL not in TaintKind.ALL
+
+
+def test_ordinary_input_reaches_a_nosql_sink_but_not_a_log_sink() -> None:
+    registry = SecurityModelRegistry()
+    registry.register(
+        Source(sym("python.flask.request.args"), HTTP),
+        Source(sym("python.app.record"), "record", TaintKind.LOG),
+        Sink(sym("python.db.find"), TaintKind.NOSQL),
+        Sink(sym("python.logging.info"), TaintKind.LOG),
+    )
+    _, facts = analyze(
+        "from flask import request\n"
+        "import db, logging\n"
+        "from app import record\n\n"
+        "def run():\n"
+        "    db.find(request.args['q'])\n"
+        "    logging.info(request.args['q'])\n"
+        "    logging.info(record())\n",
+        registry.freeze(),
+    )
+
+    assert [(f.sink.symbol, f.kinds) for f in facts.flows] == [
+        (sym("python.db.find"), TaintKind.NOSQL),
+        (sym("python.logging.info"), TaintKind.LOG),
+    ]
+
+
 def test_taint_joins_with_or() -> None:
     a = Taint(TaintKind.SQL, frozenset({Source(sym("python.a"), "a")}))
     b = Taint(TaintKind.HTML, frozenset({Source(sym("python.b"), "b")}))
