@@ -357,6 +357,51 @@ def test_discovers_plugins_recursively_in_sorted_order(tmp_path: Path) -> None:
     assert [plugin.manifest.name for plugin in loaded] == ["first", "second"]
 
 
+def write_package(directory: Path, label: str) -> None:
+    package = directory / "sample"
+    (package / "tables").mkdir(parents=True)
+    (package / "__init__.py").write_text(
+        "from typing import ClassVar\n\n"
+        "from coretrace_python.plugins import ModelPlugin\n\n"
+        "from .tables.celery import MODELS\n\n\n"
+        "class SamplePlugin(ModelPlugin):\n"
+        '    name: ClassVar[str] = "sample"\n'
+        "    models = MODELS\n",
+        encoding="utf-8",
+    )
+    (package / "tables" / "__init__.py").write_text("", encoding="utf-8")
+    (package / "tables" / "celery.py").write_text(
+        "from coretrace_python.semantic.symbols import SymbolId\n"
+        "from coretrace_python.taint import EntryPoint\n\n"
+        f'MODELS = (EntryPoint(SymbolId("python.celery.{label}"), "{label}"),)\n',
+        encoding="utf-8",
+    )
+
+
+def test_loads_a_plugin_package_with_relative_imports(tmp_path: Path) -> None:
+    write_manifest(tmp_path)
+    write_package(tmp_path, "task")
+
+    loaded = load_plugin(tmp_path, manager_for(""))
+
+    assert [m.symbol for m in loaded.plugin.models] == [SymbolId("python.celery.task")]
+
+
+def test_plugin_packages_with_the_same_module_name_do_not_collide(tmp_path: Path) -> None:
+    for name in ("a", "b"):
+        directory = tmp_path / name
+        directory.mkdir()
+        write_manifest(directory, name=name)
+        write_package(directory, name)
+
+    loaded = discover_plugins(tmp_path, manager_for(""))
+
+    assert [m.symbol for p in loaded for m in p.plugin.models] == [
+        SymbolId("python.celery.a"),
+        SymbolId("python.celery.b"),
+    ]
+
+
 # --------------------------------------------------------------------------- registry
 
 

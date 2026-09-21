@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,16 +64,31 @@ def discover_plugins(root: Path, manager: AnalysisManager) -> tuple[LoadedPlugin
 
 
 def _import_entrypoint(directory: Path, manifest: PluginManifest) -> type[Plugin]:
-    module_path = directory / f"{manifest.entrypoint.module}.py"
+    """Import the entrypoint, a module ``<name>.py`` or a package ``<name>/__init__.py``.
+
+    The module name derives from the path, so two plugins may both call their module
+    ``models``; a package is registered in ``sys.modules`` under that name before it
+    runs, which is what its relative imports resolve through."""
+
+    package_path = directory / manifest.entrypoint.module / "__init__.py"
+    is_package = package_path.is_file()
+    module_path = package_path if is_package else directory / f"{manifest.entrypoint.module}.py"
     if not module_path.is_file():
         raise ManifestError(
             f"{directory / MANIFEST_FILENAME}: entrypoint module"
             f" {manifest.entrypoint.module!r} not found"
         )
     unique = hashlib.sha1(str(module_path.resolve()).encode()).hexdigest()[:12]
-    spec = importlib.util.spec_from_file_location(f"coretrace_plugin_{unique}", module_path)
+    name = f"coretrace_plugin_{unique}"
+    spec = importlib.util.spec_from_file_location(
+        name,
+        module_path,
+        submodule_search_locations=[str(module_path.parent)] if is_package else None,
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    if is_package:
+        sys.modules[name] = module
     spec.loader.exec_module(module)
 
     candidate = getattr(module, manifest.entrypoint.class_name, None)
