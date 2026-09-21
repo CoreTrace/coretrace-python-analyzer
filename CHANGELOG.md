@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- The cache key covers every file of a plugin directory, not only `.py` and `.toml`, so rules or advisories shipped as data invalidate cached results when they change (#94).
+
 ## 0.2.0 (2026-09-06)
 
 ### Adoption in an existing repository
