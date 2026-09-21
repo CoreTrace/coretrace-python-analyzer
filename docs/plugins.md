@@ -38,7 +38,12 @@ class = "SensitiveLoggingPlugin"
 | `plugin_api` | The range of plugin API versions the plugin supports. The current API is version 1. |
 | `requires` | Capabilities the plugin needs; a mismatch with the class's `requires` is a manifest error. |
 | `provides` | Capabilities the plugin offers, for documentation and conflict detection. |
-| `entrypoint` | The module file (without `.py`, next to the manifest) and the class in it. |
+| `entrypoint` | The module (without `.py`, next to the manifest) and the class in it. |
+
+The entrypoint module may be a package, `<module>/__init__.py`, when a plugin grows past
+one file: its submodules are reached through relative imports (`from .tables import
+celery`). Two plugins may use the same module name; each is imported under a name derived
+from its path.
 
 ## Symbols
 

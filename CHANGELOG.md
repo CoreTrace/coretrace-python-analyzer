@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- A plugin's entrypoint may be a package, `<module>/__init__.py`, so a plugin can split its tables across files and import them relatively (#93).
+
 ## 0.2.0 (2026-09-06)
 
 ### Adoption in an existing repository
