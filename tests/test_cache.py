@@ -13,6 +13,7 @@ Expected to remain red until ``coretrace_python.cache`` and the ``--cache`` opti
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,25 @@ def test_keys_depend_on_dependency_files(tmp_path: Path) -> None:
     after = engine.analyze_project(root, [PLUGINS]).keys
 
     assert all(after[name] != before[name] for name in before)
+
+
+def test_keys_depend_on_every_plugin_file(tmp_path: Path) -> None:
+    root = standard(tmp_path)
+    plugins = tmp_path / "plugins"
+    shutil.copytree(
+        PLUGINS / "syntax" / "dangerous_eval",
+        plugins / "dangerous_eval",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    before = engine.analyze_project(root, [plugins]).keys
+    (plugins / "dangerous_eval" / "rules.json").write_text('{"v": 1}', encoding="utf-8")
+    after = engine.analyze_project(root, [plugins]).keys
+    (plugins / "dangerous_eval" / "__pycache__").mkdir(exist_ok=True)
+    (plugins / "dangerous_eval" / "__pycache__" / "x.pyc").write_bytes(b"\0")
+    with_bytecode = engine.analyze_project(root, [plugins]).keys
+
+    assert all(after[name] != before[name] for name in before)
+    assert with_bytecode == after
 
 
 # --------------------------------------------------------------------------- reuse

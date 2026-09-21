@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -64,15 +64,18 @@ def fingerprint(*parts: str) -> str:
     return digest.hexdigest()
 
 
-def directory_fingerprint(directory: Path, suffixes: Iterable[str] = (".py", ".toml")) -> str:
-    """A digest of the source files under ``directory``, so edited plugin code misses."""
+def directory_fingerprint(directory: Path) -> str:
+    """A digest of every file under ``directory``, so an edited plugin misses: its code,
+    its manifest and the rule or advisory data it ships in any format. Bytecode and
+    hidden files are not part of what the plugin does."""
 
-    wanted = tuple(suffixes)
     parts: list[str] = []
     for path in sorted(directory.rglob("*")):
-        if path.is_file() and path.suffix in wanted:
-            parts.append(str(path.relative_to(directory)))
-            parts.append(path.read_text(encoding="utf-8", errors="replace"))
+        relative = path.relative_to(directory)
+        if not path.is_file() or any(p == "__pycache__" or p.startswith(".") for p in relative.parts):
+            continue
+        parts.append(str(relative))
+        parts.append(path.read_bytes().hex())
     return fingerprint(*parts)
 
 

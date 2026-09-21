@@ -283,8 +283,9 @@ coretrace-python-analyzer --check src/ --sbom sbom.json --policy security/policy
 ## Large projects
 
 `--cache DIR` keeps the results of a directory check on disk, one entry per module,
-keyed by the module's source, the tool and plugin versions, the security models, the
-advisories, the dependency graph and the modules it imports. On the next run an unchanged
+keyed by the module's source, the tool version, every file of every plugin directory
+(code, manifest and data alike), the security models, the advisories, the dependency
+graph and the modules it imports. On the next run an unchanged
 module is served from the cache, so editing one file re-analyses that file and its
 importers only. Entries are plain data; an unreadable entry is recomputed.
 
