@@ -106,10 +106,14 @@ class CommandInjectionPlugin(TaintDetector):
 ```
 
 `confidence` defaults to high; a hotspot, a flow behind a guard that mentions the value
-or an authorization decorator, is reported at medium. The taint kinds are `SQL`,
-`COMMAND`, `HTML`, `PATH`, `SSRF`, `CODE`, `DESERIALIZATION`, `REDIRECT`, `ADVISORY`
-(APIs affected by advisories) and `CREDENTIAL`, which only credential-named parameters
-carry so that ordinary input reaching a database write is not a plaintext credential.
+or an authorization decorator, is reported at medium. The taint kinds every source
+carries by default (`TaintKind.ALL`) are `SQL`, `NOSQL`, `COMMAND`, `HTML`, `PATH`,
+`SSRF`, `CODE`, `DESERIALIZATION`, `REDIRECT` and `ADVISORY` (APIs affected by
+advisories). Three kinds are outside `ALL`, so only a value a model marks with them
+reaches their sinks: `CREDENTIAL`, which credential-named parameters carry so that
+ordinary input reaching a database write is not a plaintext credential; `LOG`, for
+values that must not be written to a log as they are; and `PII`, for personal data
+that must not leave the application through a log, a third party or plain storage.
 
 ### Security models: `ModelPlugin`
 

@@ -30,10 +30,14 @@ class TaintKind(Flag):
     ADVISORY = auto()
     DESERIALIZATION = auto()
     REDIRECT = auto()
-    ALL = SQL | COMMAND | HTML | PATH | SSRF | CODE | ADVISORY | DESERIALIZATION | REDIRECT
-    # Outside ALL on purpose: only credential-named parameters carry it, so a database
-    # write reached by ordinary input is not a plaintext credential.
+    NOSQL = auto()
+    ALL = SQL | COMMAND | HTML | PATH | SSRF | CODE | ADVISORY | DESERIALIZATION | REDIRECT | NOSQL
+    # Outside ALL on purpose: only the values a model marks carry them, so a database
+    # write reached by ordinary input is not a plaintext credential, and ordinary input
+    # reaching a logger is neither log forging nor a personal-data leak.
     CREDENTIAL = auto()
+    LOG = auto()
+    PII = auto()
 
 
 class ModelError(Exception):

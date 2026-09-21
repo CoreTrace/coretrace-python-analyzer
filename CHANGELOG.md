@@ -8,6 +8,10 @@
 - A plugin's entrypoint may be a package, `<module>/__init__.py`, so a plugin can split its tables across files and import them relatively (#93).
 - The cache key covers every file of a plugin directory, not only `.py` and `.toml`, so rules or advisories shipped as data invalidate cached results when they change (#94).
 
+### Analysis
+
+- New taint kinds: `NOSQL` in `TaintKind.ALL`; `LOG` and `PII` outside it, carried only by the values a model marks, so a NoSQL-injection, log-injection or personal-data detector no longer has to share a kind with another rule (#96).
+
 ## 0.2.0 (2026-09-06)
 
 ### Adoption in an existing repository
