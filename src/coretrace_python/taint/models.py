@@ -73,6 +73,11 @@ class Sink:
                 kinds &= ~restricted
         return kinds
 
+    def merged(self, other: Sink) -> Sink:
+        """This sink with ``other``'s kinds and positions added."""
+
+        return Sink(self.symbol, self.kinds | other.kinds, self.positions + other.positions)
+
 
 @dataclass(frozen=True)
 class Sanitizer:
@@ -255,11 +260,7 @@ class ModelTable:
         merged = {sink.symbol: sink for sink in self.sinks}
         for sink in sinks:
             current = merged.get(sink.symbol)
-            merged[sink.symbol] = (
-                Sink(sink.symbol, current.kinds | sink.kinds, current.positions + sink.positions)
-                if current is not None
-                else sink
-            )
+            merged[sink.symbol] = sink if current is None else current.merged(sink)
         return ModelTable(
             self.sources,
             tuple(merged.values()),
@@ -283,15 +284,31 @@ class SecurityModelRegistry:
 
     def __init__(self) -> None:
         self._models: dict[tuple[type[Model], SymbolId], Model] = {}
+        self._origins: dict[tuple[type[Model], SymbolId], str | None] = {}
 
-    def register(self, *models: Model) -> None:
+    def register(self, *models: Model, origin: str | None = None) -> None:
+        """Add models; ``origin`` names the plugin so a conflict can name both sides.
+
+        Two plugins may describe the same symbol: an identical model is ignored, sinks
+        merge their kinds and positions, any other difference is a conflict."""
+
         for model in models:
             key = (type(model), model.symbol)
-            if key in self._models:
+            current = self._models.get(key)
+            if current is None:
+                self._models[key] = model
+                self._origins[key] = origin
+            elif current == model:
+                continue
+            elif isinstance(model, Sink) and isinstance(current, Sink):
+                self._models[key] = current.merged(model)
+            else:
+                registered = self._origins[key]
+                sides = f" by {registered!r} and {origin!r}" if registered and origin else ""
                 raise ModelError(
-                    f"{type(model).__name__.lower()} model for {model.symbol} is already registered"
+                    f"{type(model).__name__.lower()} model for {model.symbol}"
+                    f" is registered twice{sides} with different values"
                 )
-            self._models[key] = model
 
     def freeze(self) -> ModelTable:
         models = list(self._models.values())

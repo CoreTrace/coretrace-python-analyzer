@@ -163,10 +163,44 @@ def test_registry_indexes_models_by_symbol() -> None:
 
 def test_registry_rejects_conflicting_models() -> None:
     registry = SecurityModelRegistry()
-    registry.register(Sink(sym("python.os.system"), TaintKind.COMMAND))
+    registry.register(Source(sym("python.flask.request.args"), "http"))
 
-    with pytest.raises(ModelError, match="python.os.system"):
-        registry.register(Sink(sym("python.os.system"), TaintKind.SQL))
+    with pytest.raises(ModelError, match="python.flask.request.args"):
+        registry.register(Source(sym("python.flask.request.args"), "cli"))
+
+
+def test_registry_ignores_an_identical_model() -> None:
+    registry = SecurityModelRegistry()
+    registry.register(Sanitizer(sym("python.html.escape"), TaintKind.HTML))
+    registry.register(Sanitizer(sym("python.html.escape"), TaintKind.HTML))
+
+    assert registry.freeze().sanitizers == (Sanitizer(sym("python.html.escape"), TaintKind.HTML),)
+
+
+def test_registry_merges_sinks_on_one_symbol() -> None:
+    registry = SecurityModelRegistry()
+    registry.register(Sink(sym("python.os.system"), TaintKind.COMMAND, ((TaintKind.COMMAND, (0,)),)))
+    registry.register(Sink(sym("python.os.system"), TaintKind.SQL))
+
+    sink = registry.freeze().sink(sym("python.os.system"))
+    assert sink == Sink(
+        sym("python.os.system"), TaintKind.COMMAND | TaintKind.SQL, ((TaintKind.COMMAND, (0,)),)
+    )
+
+
+def test_plugin_models_names_both_plugins_of_a_conflict() -> None:
+    from coretrace_python.plugins import ModelPlugin
+
+    class First(ModelPlugin):
+        name = "first-models"
+        models = (Source(sym("python.flask.request.args"), "http"),)
+
+    class Second(ModelPlugin):
+        name = "second-models"
+        models = (Source(sym("python.flask.request.args"), "cli"),)
+
+    with pytest.raises(ModelError, match="'first-models' and 'second-models'"):
+        engine.plugin_models([First(), Second()])
 
 
 def test_models_and_tables_are_immutable() -> None:

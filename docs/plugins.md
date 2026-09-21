@@ -146,6 +146,11 @@ class BottleModels(ModelPlugin):
 | `Validator(symbol, kinds=ALL, argument=0)` | A callable whose truth proves its argument safe, such as `re.fullmatch`; a flow guarded by it is refuted. |
 | `AuthorizationGuard(symbol, label)` | A decorator or a condition restricting who reaches the code, such as `login_required`; a flow behind it is a hotspot. |
 
+Two plugins may describe the same symbol. An identical model is registered once; two
+`Sink` models merge their kinds and positions, so a plugin can add `SQL` to a sink
+another plugin declared for `COMMAND`; any other difference is a conflict that stops
+the analysis with a `ModelError` naming both plugins.
+
 A model plugin may also carry `advisories`, a tuple of `Advisory` values
 (`coretrace_python.dependency`) with the package, the vulnerable range and the affected
 symbols, as the shipped `sample-advisories` plugin does. Requirements matching them are
