@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Plugins
+
+- Two plugins may declare the same symbol: an identical model is registered once and sinks merge their kinds and positions; a real conflict names both plugins instead of failing the run on the first duplicate (#92).
+
 ### Precision
 
 - A `Sanitizer` declared on a function of the analysed project takes precedence over the summary derived from its body, in the same file and across files, so a code base can declare its own validation layer (#95).
