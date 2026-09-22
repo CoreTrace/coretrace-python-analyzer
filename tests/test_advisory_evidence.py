@@ -186,3 +186,33 @@ def test_every_advisory_matching_a_call_is_reported(tmp_path: Path) -> None:
         "CVE-2099-0001",
         "CVE-2099-0002",
     ]
+
+
+# --------------------------------------------------------------------------- one advisory per identifier
+
+
+def test_a_later_contributor_replaces_an_advisory_by_identifier(tmp_path: Path) -> None:
+    """The bundled sample says CVE-2099-0001 is ``<2``; the project's curated file says
+    ``<1.1`` with entry points. One advisory survives, the curated one."""
+
+    from coretrace_python.plugins import ModelPlugin
+
+    class Sample(ModelPlugin):
+        name = "sample"
+        advisories = (Advisory("CVE-2099-0001", "vulnlib", "<2", "coarse", Severity.LOW),)
+
+    root = project(tmp_path, {"requirements.txt": "vulnlib==1.5\n", "app.py": "import vulnlib\n\ndef f(t):\n    return vulnlib.parse(t)\n"})
+
+    findings = engine.analyze_project(root, [PLUGINS], plugins=[Sample()]).findings
+
+    assert [f.metadata["advisory"] for f in findings] == []  # 1.5 is outside the curated range
+
+
+def test_the_sample_advisories_name_the_modules_their_packages_install() -> None:
+    from coretrace_python.bundled.dependency.sample_advisories.sample_advisories import (
+        SampleAdvisories,
+    )
+
+    modules = {a.package: a.modules for a in SampleAdvisories.advisories}
+    assert modules["pyyaml"] == ("yaml",)
+    assert modules["pillow"] == ("PIL",)
