@@ -5,8 +5,8 @@ OSV dump into ``Advisory`` values, keeping the PyPI ecosystem and turning each r
 events into a version specifier; ``dump_advisories`` writes them as a small JSON file
 that a project keeps at its root as ``advisories.json`` or passes with ``--advisories``.
 OSV records name no affected APIs, so imported advisories feed the requirement checks
-and the SBOM; a file completed by hand with ``affected_symbols`` also feeds the
-reachability and correlation checks.
+and the SBOM; a file completed by hand with ``affected_symbols``, ``entry_points`` and
+their ``conditions`` also feeds the reachability and correlation checks.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from coretrace_python.dependency.graph import Advisory, normalize
+from coretrace_python.dependency.graph import Advisory, AdvisoryEntryPoint, Condition, normalize
 from coretrace_python.findings import Severity
 from coretrace_python.semantic.symbols import SymbolId
 
@@ -137,11 +137,29 @@ def dump_advisories(advisories: Iterable[Advisory]) -> str:
                 "severity": a.severity.value,
                 "affected_symbols": [str(s) for s in a.affected_symbols],
                 "aliases": list(a.aliases),
+                "entry_points": [
+                    {
+                        "symbol": str(e.symbol),
+                        "justification": e.justification,
+                        "conditions": [_condition_entry(c) for c in e.conditions],
+                    }
+                    for e in a.entry_points
+                ],
+                "modules": list(a.modules),
             }
             for a in advisories
         ],
     }
     return json.dumps(document, indent=2) + "\n"
+
+
+def _condition_entry(condition: Condition) -> dict[str, Any]:
+    entry: dict[str, Any] = {"kind": condition.kind, "text": condition.text}
+    if condition.argument is not None:
+        entry["argument"] = condition.argument
+    if condition.values:
+        entry["values"] = list(condition.values)
+    return entry
 
 
 def load_advisories(path: Path) -> tuple[Advisory, ...]:
@@ -165,4 +183,22 @@ def _advisory(entry: Mapping[str, Any]) -> Advisory:
         Severity(entry["severity"]),
         tuple(SymbolId(str(s)) for s in entry.get("affected_symbols") or []),
         tuple(str(a) for a in entry.get("aliases") or []),
+        tuple(_entry_point(e) for e in entry.get("entry_points") or []),
+        tuple(str(m) for m in entry.get("modules") or []),
+    )
+
+
+def _entry_point(entry: Mapping[str, Any]) -> AdvisoryEntryPoint:
+    return AdvisoryEntryPoint(
+        SymbolId(str(entry["symbol"])),
+        str(entry["justification"]),
+        tuple(
+            Condition(
+                str(c["kind"]),
+                str(c["text"]),
+                None if c.get("argument") is None else str(c["argument"]),
+                tuple(str(v) for v in c.get("values") or []),
+            )
+            for c in entry.get("conditions") or []
+        ),
     )

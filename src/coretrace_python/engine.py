@@ -48,7 +48,12 @@ from coretrace_python.dependency import (
     load_policy,
     parse_dependencies,
 )
-from coretrace_python.dependency.correlation import advisory_sinks, affected_symbols, correlate
+from coretrace_python.dependency.correlation import (
+    Affected,
+    advisory_sinks,
+    affected_symbols,
+    correlate,
+)
 from coretrace_python.findings import (
     FINDING_SCHEMA_VERSION,
     Confidence,
@@ -481,12 +486,13 @@ def analyze_project(
 def _merge_advisories(
     from_plugins: Iterable[Advisory], from_files: Iterable[Advisory]
 ) -> tuple[Advisory, ...]:
-    """One advisory per identifier, package and range; a local file's version wins over
-    a plugin's, since the file is the project's own curated feed."""
+    """One advisory per identifier and package: a later contributor replaces an earlier
+    one, so a curated plugin refines a bundled sample and a local file, the project's
+    own feed, wins over every plugin."""
 
-    merged: dict[tuple[str, str, str], Advisory] = {}
+    merged: dict[tuple[str, str], Advisory] = {}
     for advisory in (*from_plugins, *from_files):
-        merged[(advisory.id, advisory.package, advisory.vulnerable)] = advisory
+        merged[(advisory.id, advisory.package)] = advisory
     return tuple(merged.values())
 
 
@@ -524,7 +530,7 @@ def _analyse_managers(
     managers: Mapping[str, AnalysisManager],
     seed: SummaryIndex,
     plugins: tuple[Plugin, ...],
-    affected: Mapping[SymbolId, Advisory],
+    affected: Affected,
 ) -> dict[str, CachedModule]:
     """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
     then extract what the rest of the run needs from each module."""
@@ -638,7 +644,7 @@ def _configuration_key(
 
 
 def _analyse_module(
-    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Mapping[SymbolId, Advisory]
+    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Affected
 ) -> CachedModule:
     """One module's findings, summaries and call sites: what the cache keeps (§11)."""
 

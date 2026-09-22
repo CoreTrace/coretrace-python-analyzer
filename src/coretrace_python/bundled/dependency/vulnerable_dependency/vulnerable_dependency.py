@@ -17,11 +17,13 @@ class VulnerableDependencyPlugin(ProjectPlugin):
 
     def analyze_project(self, ctx: ProjectContext) -> Sequence[Finding]:
         findings: list[Finding] = []
+        imported = [s for module in ctx.modules for s in ctx.imports(module).all_symbols()]
         for requirement in ctx.dependencies.requirements:
             for advisory in ctx.advisories:
                 if not advisory.affects(requirement):
                     continue
                 pinned = requirement.pinned is not None
+                level = "imported" if advisory.imported_by(imported) else "declared"
                 findings.append(
                     Finding(
                         rule_id="vulnerable-dependency",
@@ -37,6 +39,7 @@ class VulnerableDependencyPlugin(ProjectPlugin):
                             "advisory": advisory.id,
                             "package": advisory.package,
                             "specifier": requirement.specifier,
+                            "level": level,
                         },
                     )
                 )

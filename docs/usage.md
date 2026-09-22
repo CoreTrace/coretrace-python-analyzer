@@ -254,12 +254,44 @@ affected APIs that feed reachability and correlation:
       "vulnerable": "<5.4",
       "summary": "yaml.load can execute arbitrary code from untrusted documents",
       "severity": "critical",
-      "affected_symbols": ["python.yaml.load", "python.yaml.full_load"],
+      "affected_symbols": ["python.yaml.constructor.FullConstructor.construct_python_object_apply"],
+      "entry_points": [
+        {
+          "symbol": "python.yaml.full_load",
+          "justification": "FullLoader uses FullConstructor (commit 5080ba5)",
+          "conditions": [
+            {"kind": "semantic", "text": "the document carries a python/object/apply tag"}
+          ]
+        },
+        {
+          "symbol": "python.yaml.load",
+          "justification": "same path when Loader is FullLoader",
+          "conditions": [
+            {"kind": "argument", "text": "Loader is FullLoader", "argument": "Loader", "values": ["python.yaml.FullLoader"]},
+            {"kind": "semantic", "text": "the document carries a python/object/apply tag"}
+          ]
+        }
+      ],
+      "modules": ["yaml"],
       "aliases": ["GHSA-8q59-q68h-6hv4"]
     }
   ]
 }
 ```
+
+`affected_symbols` are the functions the fix changed; `entry_points` the public APIs
+through which a project reaches them, each with the justification that ties it to the
+fix — the commit, or the call path — and the `conditions` under which it is affected: an
+argument value the engine can check, or a `semantic` condition it cannot yet, kept on the
+finding as pending review rather than dropped. A call to either kind of symbol is
+reachable. `modules` names the top-level modules the package installs, so the analyzer
+can tell an imported package from a merely required one; it defaults to the package name.
+
+Every dependency finding records the highest level of evidence established in its
+`level` metadata: `declared` (the requirement allows a vulnerable version), `imported`
+(a module of the package is imported somewhere), `reachable` (an entry point or affected
+symbol is called) or `exploitable` (attacker input reaches it), with `entry_point`,
+`justification`, `conditions` and `conditions_pending_review` on the last two.
 
 A `coretrace-policy.toml` at the root, or the file passed with `--policy`, denies
 packages, requires pins and lists accepted advisories whose findings are dropped:

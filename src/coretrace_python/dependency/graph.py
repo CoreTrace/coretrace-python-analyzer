@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import PurePath
 from types import MappingProxyType
@@ -131,6 +131,37 @@ class Requirement:
 
 
 @dataclass(frozen=True)
+class Condition:
+    """What must hold for an entry point to reach, or exploit, the affected code: the
+    value of an argument, the loader or algorithm used, the format decoded, the kind of
+    input, a configuration. ``kind`` says whether the engine can check it: an
+    ``argument`` condition names the argument and the values that satisfy it; a
+    ``semantic`` condition cannot be checked yet and is reported as pending review."""
+
+    kind: str
+    text: str
+    argument: str | None = None
+    values: tuple[str, ...] = ()
+
+    @property
+    def checkable(self) -> bool:
+        return self.kind == "argument"
+
+
+@dataclass(frozen=True)
+class AdvisoryEntryPoint:
+    """A public API through which a project reaches an affected symbol, justified by the
+    fixing commit or by a call path, with the conditions under which it is affected."""
+
+    symbol: SymbolId
+    justification: str
+    conditions: tuple[Condition, ...] = ()
+
+
+DIRECT = "affected symbol, changed by the fix"
+
+
+@dataclass(frozen=True)
 class Advisory:
     id: str
     package: str
@@ -139,9 +170,35 @@ class Advisory:
     severity: Severity
     affected_symbols: tuple[SymbolId, ...] = ()
     aliases: tuple[str, ...] = ()
+    entry_points: tuple[AdvisoryEntryPoint, ...] = ()
+    # Top-level modules the package installs, to tell an imported package from a merely
+    # required one; defaults to the package name (``pyyaml`` installs ``yaml``: say so).
+    modules: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.modules:
+            object.__setattr__(self, "modules", (normalize(self.package).replace("-", "_"),))
 
     def affects(self, requirement: Requirement) -> bool:
         return requirement.name == normalize(self.package) and requirement.may_match(self.vulnerable)
+
+    @property
+    def reachable_symbols(self) -> tuple[SymbolId, ...]:
+        """Every symbol a call to which reaches the vulnerability: the entry points and
+        the affected symbols themselves."""
+
+        return (*(e.symbol for e in self.entry_points), *self.affected_symbols)
+
+    def entry_point(self, symbol: SymbolId) -> AdvisoryEntryPoint | None:
+        return next((e for e in self.entry_points if e.symbol == symbol), None)
+
+    def imported_by(self, symbols: Iterable[SymbolId]) -> bool:
+        """Whether any of the ``symbols`` a project imports belongs to this package."""
+
+        prefixes = tuple(f"python.{m}" for m in self.modules)
+        return any(
+            s.canonical_name == p or s.canonical_name.startswith(p + ".") for s in symbols for p in prefixes
+        )
 
 
 class DependencyGraph:
