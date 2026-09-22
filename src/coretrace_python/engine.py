@@ -89,6 +89,7 @@ from coretrace_python.plugins import (
     PluginRegistry,
     ProjectContext,
     ProjectPlugin,
+    apply_refinement,
     discover_plugins,
     run_plugins,
 )
@@ -460,6 +461,9 @@ def analyze_project(
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
+    for plugin in all_plugins:
+        if isinstance(plugin, ProjectPlugin):
+            findings = list(apply_refinement(plugin, findings, plugin.refine(context, tuple(findings))))
     kept, suppressed = partition(apply_policy(policy, findings), _text_of(sources))
     return ProjectAnalysis(
         graph,

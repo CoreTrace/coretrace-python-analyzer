@@ -7,6 +7,8 @@ from coretrace_python.plugins.api import (
     PluginContext,
     ProjectContext,
     ProjectPlugin,
+    RefinementError,
+    apply_refinement,
     run_plugins,
 )
 from coretrace_python.plugins.detectors import SymbolCallDetector, TaintDetector
@@ -44,11 +46,13 @@ __all__ = [
     "PluginRegistry",
     "ProjectContext",
     "ProjectPlugin",
+    "RefinementError",
     "SecretDetector",
     "SecretPattern",
     "SymbolCallDetector",
     "TaintDetector",
     "VersionRange",
+    "apply_refinement",
     "discover_plugins",
     "literals",
     "load_manifest",

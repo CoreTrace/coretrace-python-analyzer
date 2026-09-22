@@ -5,6 +5,7 @@
 ### Plugins
 
 - Every plugin module is registered in `sys.modules` before it runs, so a single-file plugin may define a dataclass under `from __future__ import annotations` (#105).
+- `ProjectPlugin.refine(ctx, findings)` lets a project plugin reclassify the findings of a run: severity, confidence and added metadata only, with `refined_by` and the original values recorded; anything else raises `RefinementError` (#106).
 
 ## 0.3.0 (2026-09-22)
 
