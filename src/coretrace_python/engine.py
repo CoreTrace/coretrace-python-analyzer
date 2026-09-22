@@ -48,7 +48,12 @@ from coretrace_python.dependency import (
     load_policy,
     parse_dependencies,
 )
-from coretrace_python.dependency.correlation import advisory_sinks, affected_symbols, correlate
+from coretrace_python.dependency.correlation import (
+    Affected,
+    advisory_sinks,
+    affected_symbols,
+    correlate,
+)
 from coretrace_python.findings import (
     FINDING_SCHEMA_VERSION,
     Confidence,
@@ -524,7 +529,7 @@ def _analyse_managers(
     managers: Mapping[str, AnalysisManager],
     seed: SummaryIndex,
     plugins: tuple[Plugin, ...],
-    affected: Mapping[SymbolId, Advisory],
+    affected: Affected,
 ) -> dict[str, CachedModule]:
     """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
     then extract what the rest of the run needs from each module."""
@@ -638,7 +643,7 @@ def _configuration_key(
 
 
 def _analyse_module(
-    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Mapping[SymbolId, Advisory]
+    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Affected
 ) -> CachedModule:
     """One module's findings, summaries and call sites: what the cache keeps (§11)."""
 

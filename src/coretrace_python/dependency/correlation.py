@@ -13,26 +13,30 @@ from collections.abc import Iterable, Mapping
 
 from coretrace_python.dependency.graph import DIRECT, Advisory, DependencyGraph
 from coretrace_python.findings import Confidence, Finding, Severity
-from coretrace_python.findings.refutation import Status, Verdicts
+from coretrace_python.findings.refutation import Status, Verdict, Verdicts
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import Sink, TaintFlow, TaintKind
 
+Affected = Mapping[SymbolId, tuple[Advisory, ...]]
 
-def affected_symbols(
-    dependencies: DependencyGraph, advisories: Iterable[Advisory]
-) -> Mapping[SymbolId, Advisory]:
-    """The APIs affected by advisories whose package is required in a vulnerable version."""
 
-    affected: dict[SymbolId, Advisory] = {}
+def affected_symbols(dependencies: DependencyGraph, advisories: Iterable[Advisory]) -> Affected:
+    """The APIs affected by advisories whose package is required in a vulnerable version,
+    each with every such advisory: a call to ``yaml.load`` reaches every CVE of the
+    pinned release, not the first one listed."""
+
+    affected: dict[SymbolId, list[Advisory]] = {}
     for requirement in dependencies.requirements:
         for advisory in advisories:
             if advisory.affects(requirement):
                 for symbol in advisory.reachable_symbols:
-                    affected.setdefault(symbol, advisory)
-    return affected
+                    found = affected.setdefault(symbol, [])
+                    if advisory not in found:
+                        found.append(advisory)
+    return {symbol: tuple(found) for symbol, found in affected.items()}
 
 
-def advisory_sinks(affected: Mapping[SymbolId, Advisory]) -> tuple[Sink, ...]:
+def advisory_sinks(affected: Affected) -> tuple[Sink, ...]:
     return tuple(Sink(symbol, TaintKind.ADVISORY) for symbol in affected)
 
 
@@ -60,46 +64,50 @@ def correlate(
     function: str,
     flows: Iterable[TaintFlow],
     verdicts: Verdicts | None,
-    affected: Mapping[SymbolId, Advisory],
+    affected: Affected,
 ) -> tuple[Finding, ...]:
-    """Exploitable-vulnerability findings for the non-refuted ADVISORY flows of a function."""
+    """Exploitable-vulnerability findings for the non-refuted ADVISORY flows of a function,
+    one per advisory the sink is affected by."""
 
     findings: list[Finding] = []
     for flow in flows:
         if not flow.kinds & TaintKind.ADVISORY:
             continue
-        advisory = affected.get(flow.sink.symbol)
-        if advisory is None:
-            continue
         verdict = verdicts.verdict(flow) if verdicts is not None else None
         if verdict is not None and verdict.status is Status.REFUTED:
             continue
         hotspot = verdict is not None and verdict.status is Status.HOTSPOT
-        message = (
-            f"{advisory.id}: {flow.source.label} input reaches {flow.sink.symbol}, affected in "
-            f"the required {advisory.package} {advisory.vulnerable}: {advisory.summary}"
-        )
-        metadata = {
-            **evidence(advisory, flow.sink.symbol, "exploitable"),
-            "source": str(flow.source.symbol),
-            "source_label": flow.source.label,
-            "verdict": "hotspot" if hotspot else "vulnerability",
-        }
-        if verdict is not None:
-            metadata["evidence"] = verdict.evidence
-        if flow.through is not None and flow.sink_location is not None:
-            message += f" through {flow.through}"
-            metadata["through"] = flow.through
-            metadata["sink_line"] = str(flow.sink_location.start_line)
-        findings.append(
-            Finding(
-                rule_id="exploitable-vulnerability",
-                message=message,
-                severity=Severity.CRITICAL,
-                confidence=Confidence.MEDIUM if hotspot else Confidence.HIGH,
-                span=flow.location,
-                function=function,
-                metadata=metadata,
-            )
+        findings.extend(
+            _exploitable(function, flow, advisory, verdict, hotspot) for advisory in affected.get(flow.sink.symbol, ())
         )
     return tuple(findings)
+
+
+def _exploitable(
+    function: str, flow: TaintFlow, advisory: Advisory, verdict: Verdict | None, hotspot: bool
+) -> Finding:
+    message = (
+        f"{advisory.id}: {flow.source.label} input reaches {flow.sink.symbol}, affected in "
+        f"the required {advisory.package} {advisory.vulnerable}: {advisory.summary}"
+    )
+    metadata = {
+        **evidence(advisory, flow.sink.symbol, "exploitable"),
+        "source": str(flow.source.symbol),
+        "source_label": flow.source.label,
+        "verdict": "hotspot" if hotspot else "vulnerability",
+    }
+    if verdict is not None:
+        metadata["evidence"] = verdict.evidence
+    if flow.through is not None and flow.sink_location is not None:
+        message += f" through {flow.through}"
+        metadata["through"] = flow.through
+        metadata["sink_line"] = str(flow.sink_location.start_line)
+    return Finding(
+        rule_id="exploitable-vulnerability",
+        message=message,
+        severity=Severity.CRITICAL,
+        confidence=Confidence.MEDIUM if hotspot else Confidence.HIGH,
+        span=flow.location,
+        function=function,
+        metadata=metadata,
+    )
