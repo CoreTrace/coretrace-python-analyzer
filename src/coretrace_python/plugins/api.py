@@ -8,6 +8,7 @@ room for out-of-process isolation later.
 
 from __future__ import annotations
 
+import dataclasses
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -98,6 +99,50 @@ class ProjectPlugin(Plugin):
     @abstractmethod
     def analyze_project(self, ctx: ProjectContext) -> Sequence[Finding]:
         raise NotImplementedError
+
+    def refine(self, ctx: ProjectContext, findings: tuple[Finding, ...]) -> Sequence[Finding]:
+        """Reclassify the findings of the run, once every plugin has reported.
+
+        A refinement returns the same findings in the same order and may change only
+        their severity, their confidence and add metadata: what a finding is, where it
+        is and the evidence behind it are not the refiner's to touch. The engine records
+        who reclassified a finding and what it was before, and rejects anything else."""
+
+        return findings
+
+
+class RefinementError(Exception):
+    """A refinement did more than reclassify a finding."""
+
+
+REFINABLE = ("severity", "confidence")
+
+
+def apply_refinement(plugin: Plugin, original: Sequence[Finding], refined: Sequence[Finding]) -> tuple[Finding, ...]:
+    """The refined findings, checked against the contract of ``ProjectPlugin.refine`` and
+    stamped with a trace of the reclassification."""
+
+    if len(refined) != len(original):
+        raise RefinementError(f"plugin {plugin.name!r} returned {len(refined)} findings for {len(original)}")
+    kept: list[Finding] = []
+    for before, after in zip(original, refined, strict=True):
+        for attribute in ("rule_id", "message", "span", "function"):
+            if getattr(before, attribute) != getattr(after, attribute):
+                raise RefinementError(f"plugin {plugin.name!r} changed the {attribute} of a finding")
+        lost = [k for k, v in before.metadata.items() if after.metadata.get(k) != v]
+        if lost:
+            raise RefinementError(f"plugin {plugin.name!r} changed the evidence {lost} of a finding")
+        changed = [a for a in REFINABLE if getattr(before, a) != getattr(after, a)]
+        if not changed:
+            kept.append(after)
+            continue
+        trace = dict(after.metadata)
+        for attribute in changed:
+            trace.setdefault(f"original_{attribute}", getattr(before, attribute).value)
+        refiners = trace.get("refined_by", "")
+        trace["refined_by"] = f"{refiners},{plugin.name}" if refiners else plugin.name
+        kept.append(dataclasses.replace(after, metadata=trace))
+    return tuple(kept)
 
 
 class PluginContext:

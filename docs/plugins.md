@@ -162,6 +162,38 @@ symbols, as the shipped `sample-advisories` plugin does. Requirements matching t
 reported, calls to the affected symbols become reachable vulnerabilities and tainted
 calls become exploitable ones.
 
+### Reclassifying findings: `ProjectPlugin.refine`
+
+A project plugin may also implement `refine(ctx, findings)`, called once with every
+finding of the run after all plugins have reported. It returns the same findings, in
+the same order, and may only change their `severity` and `confidence` or add metadata:
+the rule, the location, the message and the evidence a finding already carries are not
+the refiner's to touch, and the engine rejects a refinement that changes or drops any
+of them with a `RefinementError`. A reclassified finding records `refined_by` and the
+`original_severity` or `original_confidence` it had, so a report always shows what the
+detector said and who changed it.
+
+```python
+from dataclasses import replace
+
+from coretrace_python.findings import Confidence
+from coretrace_python.plugins import ProjectContext, ProjectPlugin
+
+
+class InternalOnly(ProjectPlugin):
+    name = "internal-only"
+
+    def analyze_project(self, ctx: ProjectContext):
+        return ()
+
+    def refine(self, ctx: ProjectContext, findings):
+        return tuple(
+            replace(f, confidence=Confidence.LOW, metadata={**f.metadata, "exposure": "internal"})
+            if f.function in INTERNAL else f
+            for f in findings
+        )
+```
+
 ### Secret scanners: `SecretDetector`
 
 Judges every string literal of the module, or every value of a configuration file,
