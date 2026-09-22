@@ -163,6 +163,11 @@ def test_graphs_merge_and_locks_pin_declared_requirements() -> None:
         ("1.26.4", ">=1.26.5", False),
         ("2.11.0", "^2.11", True),
         ("3.0.0", "^2.11", False),
+        # An advisory over several release series is a union of ranges.
+        ("4.2.27", ">=4.2,<4.2.28 || >=5.2,<5.2.11", True),
+        ("5.2.10", ">=4.2,<4.2.28 || >=5.2,<5.2.11", True),
+        ("5.0.0", ">=4.2,<4.2.28 || >=5.2,<5.2.11", False),
+        ("5.2.11", ">=4.2,<4.2.28 || >=5.2,<5.2.11", False),
     ],
 )
 def test_version_matching(version: str, specifier: str, expected: bool) -> None:
@@ -180,6 +185,13 @@ def test_requirements_may_allow_a_vulnerable_version() -> None:
     assert floor.may_match("<5.4") is True
     assert safe.may_match("<5.4") is False
     assert unspecified.may_match("<5.4") is True
+
+
+def test_an_unpinned_requirement_may_match_any_series_of_a_union() -> None:
+    union = ">=4.2,<4.2.28 || >=5.2,<5.2.11"
+    assert Requirement.parse("django>=5.2", SourceId("r.txt"), 1).may_match(union) is True
+    assert Requirement.parse("django>=5.0,<5.1", SourceId("r.txt"), 1).may_match(union) is False
+    assert Requirement.parse("django==5.2.10", SourceId("r.txt"), 1).may_match(union) is True
 
 
 # --------------------------------------------------------------------------- engine
