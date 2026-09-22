@@ -486,12 +486,13 @@ def analyze_project(
 def _merge_advisories(
     from_plugins: Iterable[Advisory], from_files: Iterable[Advisory]
 ) -> tuple[Advisory, ...]:
-    """One advisory per identifier, package and range; a local file's version wins over
-    a plugin's, since the file is the project's own curated feed."""
+    """One advisory per identifier and package: a later contributor replaces an earlier
+    one, so a curated plugin refines a bundled sample and a local file, the project's
+    own feed, wins over every plugin."""
 
-    merged: dict[tuple[str, str, str], Advisory] = {}
+    merged: dict[tuple[str, str], Advisory] = {}
     for advisory in (*from_plugins, *from_files):
-        merged[(advisory.id, advisory.package, advisory.vulnerable)] = advisory
+        merged[(advisory.id, advisory.package)] = advisory
     return tuple(merged.values())
 
 

@@ -6,6 +6,7 @@
 
 - Advisories distinguish the `affected_symbols` a fix changed from the public `entry_points` through which they are reached, each justified and carrying `conditions` (checkable argument values, or `semantic` ones kept as pending review); `modules` names what the package installs. Every dependency finding records its evidence `level`: `declared`, `imported`, `reachable` or `exploitable`.
 - A call to an API affected by several advisories of the pinned release reports every one of them, not the first listed.
+- One advisory per identifier and package: a later contributor replaces an earlier one, so a curated feed refines the bundled sample, and the sample names the modules its packages install.
 
 ### Plugins
 

@@ -28,6 +28,7 @@ class SampleAdvisories(ModelPlugin):
             "yaml.load and full_load can execute arbitrary code from untrusted documents",
             Severity.CRITICAL,
             (_sym("yaml.load"), _sym("yaml.full_load"), _sym("yaml.unsafe_load")),
+            modules=("yaml",),
         ),
         Advisory(
             "CVE-2018-18074",
@@ -105,5 +106,6 @@ class SampleAdvisories(ModelPlugin):
             Severity.HIGH,
             (_sym("PIL.Image.open"),),
             ("GHSA-cfh3-3jmp-rvhc",),
+            modules=("PIL",),
         ),
     )
