@@ -155,3 +155,34 @@ def test_attacker_input_reaching_an_entry_point_is_exploitable(tmp_path: Path) -
     assert exploitable.metadata["entry_point"] == "python.vulnlib.parse"
     assert exploitable.metadata["conditions_pending_review"] != ""
     assert by_rule(findings, "reachable-vulnerability").metadata["level"] == "reachable"
+
+
+# --------------------------------------------------------------------------- several advisories on one symbol
+
+
+def test_every_advisory_matching_a_call_is_reported(tmp_path: Path) -> None:
+    second = Advisory(
+        "CVE-2099-0002",
+        "vulnlib",
+        "<1.0.5",
+        "parse leaks memory on a crafted document",
+        Severity.HIGH,
+        entry_points=(AdvisoryEntryPoint(SymbolId("python.vulnlib.parse"), "parse reads the document (commit 9abc)"),),
+        modules=("vulnlib",),
+    )
+    root = project(
+        tmp_path,
+        {"requirements.txt": "vulnlib==1.0\n", "app.py": "import vulnlib\n\ndef load():\n    return vulnlib.parse(input())\n"},
+    )
+    (root / "advisories.json").write_text(dump_advisories((ADVISORY, second)), encoding="utf-8")
+
+    findings = engine.analyze_project(root, [PLUGINS]).findings
+
+    assert sorted(f.metadata["advisory"] for f in findings if f.rule_id == "reachable-vulnerability") == [
+        "CVE-2099-0001",
+        "CVE-2099-0002",
+    ]
+    assert sorted(f.metadata["advisory"] for f in findings if f.rule_id == "exploitable-vulnerability") == [
+        "CVE-2099-0001",
+        "CVE-2099-0002",
+    ]
