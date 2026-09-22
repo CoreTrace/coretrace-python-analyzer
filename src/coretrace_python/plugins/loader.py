@@ -67,8 +67,9 @@ def _import_entrypoint(directory: Path, manifest: PluginManifest) -> type[Plugin
     """Import the entrypoint, a module ``<name>.py`` or a package ``<name>/__init__.py``.
 
     The module name derives from the path, so two plugins may both call their module
-    ``models``; a package is registered in ``sys.modules`` under that name before it
-    runs, which is what its relative imports resolve through."""
+    ``models``. The module is registered in ``sys.modules`` under that name before it
+    runs: a package's relative imports resolve through it, and so does ``dataclasses``
+    when it evaluates postponed annotations."""
 
     package_path = directory / manifest.entrypoint.module / "__init__.py"
     is_package = package_path.is_file()
@@ -87,8 +88,7 @@ def _import_entrypoint(directory: Path, manifest: PluginManifest) -> type[Plugin
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    if is_package:
-        sys.modules[name] = module
+    sys.modules[name] = module
     spec.loader.exec_module(module)
 
     candidate = getattr(module, manifest.entrypoint.class_name, None)
