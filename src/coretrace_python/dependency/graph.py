@@ -50,6 +50,13 @@ class Version:
         return self.parts + (0,) * (length - len(self.parts))
 
     def satisfies(self, specifier: str) -> bool:
+        """Whether this version is in ``specifier``: comma-separated clauses all hold, and
+        ``||`` separates alternatives, as an advisory over several release series needs
+        (``>=4.2,<4.2.28 || >=5.2,<5.2.11``)."""
+
+        return any(self._satisfies_all(alternative) for alternative in _alternatives(specifier))
+
+    def _satisfies_all(self, specifier: str) -> bool:
         for clause in [c.strip() for c in specifier.split(",") if c.strip()]:
             match = _CLAUSE.match(clause)
             if match is None:
@@ -91,12 +98,17 @@ class Version:
         return True
 
 
+def _alternatives(specifier: str) -> list[str]:
+    return [a for a in specifier.split("||") if a.strip()] or [""]
+
+
 def _lower_bounds(specifier: str) -> list[Version]:
     bounds: list[Version] = []
-    for clause in [c.strip() for c in specifier.split(",") if c.strip()]:
-        match = _CLAUSE.match(clause)
-        if match is not None and match.group(1) in (">=", ">", "~=", "^", "==", "==="):
-            bounds.append(Version.parse(match.group(2)))
+    for alternative in _alternatives(specifier):
+        for clause in [c.strip() for c in alternative.split(",") if c.strip()]:
+            match = _CLAUSE.match(clause)
+            if match is not None and match.group(1) in (">=", ">", "~=", "^", "==", "==="):
+                bounds.append(Version.parse(match.group(2)))
     return bounds
 
 
