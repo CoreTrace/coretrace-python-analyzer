@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
-from coretrace_python.dependency.graph import Advisory, DependencyGraph
+from coretrace_python.dependency.graph import DIRECT, Advisory, DependencyGraph
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import Status, Verdicts
 from coretrace_python.semantic.symbols import SymbolId
@@ -27,13 +27,33 @@ def affected_symbols(
     for requirement in dependencies.requirements:
         for advisory in advisories:
             if advisory.affects(requirement):
-                for symbol in advisory.affected_symbols:
+                for symbol in advisory.reachable_symbols:
                     affected.setdefault(symbol, advisory)
     return affected
 
 
 def advisory_sinks(affected: Mapping[SymbolId, Advisory]) -> tuple[Sink, ...]:
     return tuple(Sink(symbol, TaintKind.ADVISORY) for symbol in affected)
+
+
+def evidence(advisory: Advisory, symbol: SymbolId, level: str) -> dict[str, str]:
+    """What a finding keeps of the advisory for ``symbol``: the level of evidence
+    established, how the symbol relates to the vulnerability and under which
+    conditions, the ones the engine could not check listed as pending review."""
+
+    metadata = {"advisory": advisory.id, "package": advisory.package, "symbol": str(symbol), "level": level}
+    entry = advisory.entry_point(symbol)
+    if entry is None:
+        metadata["justification"] = DIRECT
+        return metadata
+    metadata["entry_point"] = str(entry.symbol)
+    metadata["justification"] = entry.justification
+    if entry.conditions:
+        metadata["conditions"] = "; ".join(c.text for c in entry.conditions)
+        # ponytail: no condition is checked yet, so every one awaits review; argument
+        # conditions get checked at the call site once call sites carry argument symbols.
+        metadata["conditions_pending_review"] = "; ".join(c.text for c in entry.conditions)
+    return metadata
 
 
 def correlate(
@@ -60,9 +80,7 @@ def correlate(
             f"the required {advisory.package} {advisory.vulnerable}: {advisory.summary}"
         )
         metadata = {
-            "advisory": advisory.id,
-            "package": advisory.package,
-            "symbol": str(flow.sink.symbol),
+            **evidence(advisory, flow.sink.symbol, "exploitable"),
             "source": str(flow.source.symbol),
             "source_label": flow.source.label,
             "verdict": "hotspot" if hotspot else "vulnerability",

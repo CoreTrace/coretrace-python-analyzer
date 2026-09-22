@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Dependencies
+
+- Advisories distinguish the `affected_symbols` a fix changed from the public `entry_points` through which they are reached, each justified and carrying `conditions` (checkable argument values, or `semantic` ones kept as pending review); `modules` names what the package installs. Every dependency finding records its evidence `level`: `declared`, `imported`, `reachable` or `exploitable`.
+
 ### Plugins
 
 - Every plugin module is registered in `sys.modules` before it runs, so a single-file plugin may define a dataclass under `from __future__ import annotations` (#105).

@@ -11,6 +11,8 @@ from coretrace_python.dependency.advisories import (
 from coretrace_python.dependency.graph import (
     DEPENDENCY_FILES,
     Advisory,
+    AdvisoryEntryPoint,
+    Condition,
     DependencyAnalysis,
     DependencyGraph,
     Requirement,
@@ -26,7 +28,9 @@ __all__ = [
     "DEPENDENCY_FILES",
     "POLICY_FILE",
     "Advisory",
+    "AdvisoryEntryPoint",
     "AdvisoryFileError",
+    "Condition",
     "DependencyAnalysis",
     "DependencyGraph",
     "Policy",
