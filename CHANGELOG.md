@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- Every plugin module is registered in `sys.modules` before it runs, so a single-file plugin may define a dataclass under `from __future__ import annotations` (#105).
+
 ## 0.3.0 (2026-09-22)
 
 ### Plugins

@@ -378,6 +378,29 @@ def write_package(directory: Path, label: str) -> None:
     )
 
 
+def test_a_single_file_plugin_may_define_a_dataclass_with_postponed_annotations(tmp_path: Path) -> None:
+    write_manifest(tmp_path)
+    (tmp_path / "sample.py").write_text(
+        "from __future__ import annotations\n\n"
+        "from dataclasses import dataclass\n"
+        "from typing import ClassVar\n\n"
+        "from coretrace_python.plugins import Plugin, PluginContext\n\n\n"
+        "@dataclass(frozen=True)\n"
+        "class Rule:\n"
+        "    prefix: str\n\n\n"
+        "class SamplePlugin(Plugin):\n"
+        '    name: ClassVar[str] = "sample"\n'
+        "    rule = Rule('app')\n\n"
+        "    def analyze(self, ctx: PluginContext) -> list:\n"
+        "        return []\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_plugin(tmp_path, manager_for(""))
+
+    assert loaded.plugin.rule.prefix == "app"
+
+
 def test_loads_a_plugin_package_with_relative_imports(tmp_path: Path) -> None:
     write_manifest(tmp_path)
     write_package(tmp_path, "task")
