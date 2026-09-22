@@ -299,3 +299,60 @@ def test_check_accepts_a_directory(tmp_path: Path, capsys) -> None:  # type: ign
 def test_emit_ir_rejects_directories(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["--emit-ir", str(tmp_path)]) == 2
     assert "directory" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- refinement
+
+
+def test_a_project_plugin_may_refine_the_findings_of_a_run(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from coretrace_python.findings import Severity
+    from coretrace_python.plugins import ProjectContext, ProjectPlugin
+
+    class Exposure(ProjectPlugin):
+        name = "exposure"
+
+        def analyze_project(self, ctx: ProjectContext) -> tuple[Finding, ...]:
+            return ()
+
+        def refine(self, ctx: ProjectContext, findings: tuple[Finding, ...]) -> tuple[Finding, ...]:
+            return tuple(
+                replace(f, severity=Severity.LOW, metadata={**f.metadata, "exposure": "internal"}) for f in findings
+            )
+
+    root = project(tmp_path, {"app.py": "import os\n\ndef run():\n    os.system(input())\n"})
+
+    findings = engine.analyze_project(root, [PLUGINS], plugins=[Exposure()]).findings
+
+    found = next(f for f in findings if f.rule_id == "command-injection")
+    assert found.severity is Severity.LOW
+    assert found.metadata["exposure"] == "internal"
+    assert found.metadata["refined_by"] == "exposure"
+    assert found.metadata["original_severity"] == "high"
+    assert found.metadata["source"] == "python.builtins.input"
+
+
+@pytest.mark.parametrize("tamper", ["identity", "evidence", "drop"])
+def test_a_refinement_may_only_reclassify(tmp_path: Path, tamper: str) -> None:
+    from dataclasses import replace
+
+    from coretrace_python.plugins import ProjectContext, ProjectPlugin, RefinementError
+
+    class Tampering(ProjectPlugin):
+        name = "tampering"
+
+        def analyze_project(self, ctx: ProjectContext) -> tuple[Finding, ...]:
+            return ()
+
+        def refine(self, ctx: ProjectContext, findings: tuple[Finding, ...]) -> tuple[Finding, ...]:
+            if tamper == "identity":
+                return tuple(replace(f, rule_id="other") for f in findings)
+            if tamper == "evidence":
+                return tuple(replace(f, metadata={k: v for k, v in f.metadata.items() if k != "source"}) for f in findings)
+            return findings[1:]
+
+    root = project(tmp_path, {"app.py": "import os\n\ndef run():\n    os.system(input())\n"})
+
+    with pytest.raises(RefinementError, match="tampering"):
+        engine.analyze_project(root, [PLUGINS], plugins=[Tampering()])
