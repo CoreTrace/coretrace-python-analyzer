@@ -71,7 +71,10 @@ its package (`app/views.py` is `app.views`). Hidden directories, `node_modules`,
 dependency graph. Configuration files under the root (`.env`, YAML, TOML, JSON, INI,
 properties) are scanned for secrets.
 
-Functions and methods are analysed; module-level statements outside functions are not.
+Functions and methods are analysed, and so are the module body and the bodies of
+top-level classes, as the functions `<module>` and `Cls.<body>`: `application =
+get_asgi_application()` in `asgi.py` or `email = forms.EmailField()` in a form class are
+calls the analyzer sees, and a module-level `os.system(input())` is a finding in `<module>`.
 A function using syntax outside the supported subset is reported as an
 `unsupported-syntax` note and the other functions are still analysed; a file Python
 itself cannot parse is reported as a `syntax-error`. The coverage line and the JSON

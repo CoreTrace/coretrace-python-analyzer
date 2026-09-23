@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Analysis
+
+- The module body and the bodies of top-level classes are analysed as the functions `<module>` and `Cls.<body>`: their calls are call sites, their values carry taint, and an advisory entry point called at import time or in a class body is reachable. Coverage counts them; the cache format is bumped so cached results gain their findings (#113).
+
 ### Dependencies
 
 - Advisories distinguish the `affected_symbols` a fix changed from the public `entry_points` through which they are reached, each justified and carrying `conditions` (checkable argument values, or `semantic` ones kept as pending review); `modules` names what the package installs. Every dependency finding records its evidence `level`: `declared`, `imported`, `reachable` or `exploitable`.

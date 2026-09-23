@@ -120,7 +120,19 @@ class _FunctionLowerer:
     def resolve(self, name: str) -> Resolution:
         if name in self.cfg.synthetic_locals:
             return Resolution(ResolutionKind.LOCAL, self.scope.id)
-        return self.scopes.resolve(self.scope.id, name)
+        resolution = self.scopes.resolve(self.scope.id, name)
+        # The module body runs as a script: the variables it assigns are its locals, so
+        # ``x = input(); os.system(x)`` connects in SSA and ``for x in ...`` has a target.
+        # Its functions, classes and imports stay globals, which is how the call graph
+        # and the symbol resolution find them.
+        if (
+            resolution.kind is ResolutionKind.GLOBAL
+            and self.scope.kind is ScopeKind.MODULE
+            and (binding := self.scope.bindings.get(name)) is not None
+            and binding.kind is BindingKind.LOCAL
+        ):
+            return Resolution(ResolutionKind.LOCAL, self.scope.id)
+        return resolution
 
     # ------------------------------------------------------------------ expressions
 
@@ -360,6 +372,9 @@ class _FunctionLowerer:
             # records that the import runs here (§39 rule 3).
             module = "." * node.level + (node.module or "") if isinstance(node, nodes.ImportFrom) else ""
             for alias in node.names:
+                if alias.name == "*":
+                    # ``from m import *`` binds through the scope's wildcards, not a name.
+                    continue
                 bound = alias.as_name or alias.name.partition(".")[0]
                 symbol = self.symbols.resolve(self.scope.id, bound)
                 if symbol is None:
@@ -563,8 +578,9 @@ _FUNCTIONS_CACHE_SIZE = 32
 
 
 def analyzable_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
-    """Top-level functions, the methods of top-level classes, and the functions and
-    lambdas nested inside them, in source order. Computed once per module: the result is
+    """The module body, top-level functions, top-level classes' bodies and methods, and
+    the functions and lambdas nested inside them, in source order. Computed once per
+    module: the result is
     memoised for the last few modules seen, keyed by identity, so every consumer shares
     one tuple and the synthesized lambda functions it holds."""
 
@@ -581,14 +597,52 @@ def analyzable_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
 
 def _analyzable_functions(module: nodes.Module) -> tuple[nodes.Function, ...]:
     functions: list[nodes.Function] = []
+    body = module_function(module)
+    if body is not None:
+        _collect(body, functions)
     for statement in module.body:
         if isinstance(statement, nodes.Function):
             _collect(statement, functions)
         elif isinstance(statement, nodes.Class):
+            body = class_body_function(statement)
+            if body is not None:
+                _collect(body, functions)
             for member in statement.body:
                 if isinstance(member, nodes.Function):
                     _collect(member, functions)
     return tuple(functions)
+
+
+MODULE_BODY = "<module>"
+CLASS_BODY = ".<body>"
+
+
+def module_function(module: nodes.Module) -> nodes.Function | None:
+    """The module's statements outside its definitions, as a function named ``<module>``
+    with the module's span, so its names resolve in the module scope; ``None`` when the
+    module only defines things."""
+
+    statements = tuple(s for s in module.body if not isinstance(s, nodes.Function | nodes.Class))
+    if not statements:
+        return None
+    return nodes.Function(MODULE_BODY, (), statements, False, module.span)
+
+
+def class_body_function(cls: nodes.Class) -> nodes.Function | None:
+    """A top-level class's statements outside its methods (``field = Field()``), as a
+    function named ``Cls.<body>`` with the class's span, so its names resolve in the
+    class scope."""
+
+    statements = tuple(s for s in cls.body if not isinstance(s, nodes.Function))
+    if not statements:
+        return None
+    return nodes.Function(f"{cls.name}{CLASS_BODY}", (), statements, False, cls.span)
+
+
+def is_body_function(function: nodes.Function) -> bool:
+    """Whether ``function`` is a synthetic module or class body rather than a definition."""
+
+    return function.name == MODULE_BODY or function.name.endswith(CLASS_BODY)
 
 
 def _collect(function: nodes.Function, into: list[nodes.Function]) -> None:

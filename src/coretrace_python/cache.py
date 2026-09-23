@@ -37,7 +37,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 4
+CACHE_FORMAT = 5
 
 
 @dataclass(frozen=True)

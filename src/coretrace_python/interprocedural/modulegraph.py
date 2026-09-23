@@ -73,7 +73,10 @@ def project_symbol(module_name: str, qualified_name: str) -> SymbolId:
     symbols: invalid characters become underscores."""
 
     module = ".".join(_component(part) for part in module_name.split("."))
-    return SymbolId(f"python.{module}.{qualified_name}")
+    # A synthetic body function is ``<module>`` or ``Cls.<body>``: valid as a name, not
+    # as a symbol component. Nothing calls a body, so its symbol only needs to be one.
+    qualified = ".".join(_component(part) for part in qualified_name.split("."))
+    return SymbolId(f"python.{module}.{qualified}")
 
 
 def _component(part: str) -> str:
