@@ -124,10 +124,11 @@ def test_osv_severity_summary_and_ecosystem_handling() -> None:
         ("GHSA-6", Severity.MEDIUM),
         ("GHSA-7", Severity.MEDIUM),
         ("GHSA-9", Severity.MEDIUM),
-        ("GHSA-9", Severity.MEDIUM),
     ]
     assert advisories[2].summary == "Long details."
-    assert [a.vulnerable for a in advisories if a.id == "GHSA-9"] == ["<1.1", ">=2.0,<2.1"]
+    # Several ranges of one package are one advisory over a union of ranges: advisories
+    # are merged by identifier, so two records would keep only the last series.
+    assert [a.vulnerable for a in advisories if a.id == "GHSA-9"] == ["<1.1 || >=2.0,<2.1"]
 
 
 def test_osv_dumps_are_read_from_files_directories_and_archives(tmp_path: Path) -> None:

@@ -241,7 +241,8 @@ coretrace-python-analyzer --check src/ --advisories advisories.json
 
 A directory check reads `advisories.json` at the project root and every file passed
 with `--advisories`; a local entry wins over a plugin's for the same advisory. The file
-lists advisories with the package, the vulnerable version range and, optionally, the
+lists advisories with the package, the vulnerable version range (a specifier, or several
+separated by `||` when several release series are affected) and, optionally, the
 affected APIs that feed reachability and correlation:
 
 ```json

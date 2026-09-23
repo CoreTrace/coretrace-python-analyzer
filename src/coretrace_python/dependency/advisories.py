@@ -84,8 +84,9 @@ def import_osv(records: Iterable[Mapping[str, Any]]) -> tuple[Advisory, ...]:
             if str(package.get("ecosystem", "")).lower() != "pypi" or not package.get("name"):
                 continue
             name = normalize(str(package["name"]))
-            for specifier in _specifiers(affected.get("ranges") or []):
-                advisories.append(Advisory(identifier, name, specifier, summary, severity, (), aliases))
+            specifiers = _specifiers(affected.get("ranges") or [])
+            if specifiers:
+                advisories.append(Advisory(identifier, name, " || ".join(specifiers), summary, severity, (), aliases))
     return tuple(advisories)
 
 
