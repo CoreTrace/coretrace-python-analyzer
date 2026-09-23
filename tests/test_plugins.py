@@ -166,8 +166,8 @@ def test_plugins_consume_declared_analyses() -> None:
 
     findings = run_plugins(manager, [UsesSymbols()])
 
-    assert [f.rule_id for f in findings] == ["test.os"]
-    assert findings[0].span.start_line == 3
+    # The module body resolves ``os`` too; ``idle`` shadows it with a parameter.
+    assert [(f.rule_id, f.span.start_line) for f in findings] == [("test.os", 1), ("test.os", 3)]
 
 
 def test_undeclared_analysis_requests_are_rejected() -> None:
@@ -191,7 +191,7 @@ def test_findings_are_returned_in_plugin_order() -> None:
 
     findings = run_plugins(manager, [UsesSymbols(), CountFunctions()])
 
-    assert [f.rule_id for f in findings] == ["test.os", "test.function"]
+    assert [f.rule_id for f in findings] == ["test.os", "test.os", "test.function", "test.function"]
 
 
 # --------------------------------------------------------------------------- version ranges

@@ -248,7 +248,9 @@ def test_emit_ir_module_level_code_and_methods(tmp_path, capsys) -> None:  # typ
         tmp_path,
         capsys,
     )
-    assert output.startswith("func @Store.get(%0, %1) {\n")
+    assert output.startswith("func @<module>() {\n")
+    assert "func @Store.<body>() {\n" in output
+    assert "func @Store.get(%0, %1) {\n" in output
     assert "func @top() {\n" in output
 
 
@@ -280,7 +282,7 @@ def test_check_reports_unsupported_functions_and_keeps_going(tmp_path, capsys) -
     assert "mixed.py:3:1: info unsupported-syntax: " in output
     assert "break" in output
     assert "mixed.py:8:9: high dangerous-eval:" in output
-    assert output.endswith("2 findings\ncoverage: 1/1 files, 1/2 functions\n")
+    assert output.endswith("2 findings\ncoverage: 1/1 files, 2/3 functions\n")
 
 
 def test_unsupported_syntax_findings_are_notes() -> None:

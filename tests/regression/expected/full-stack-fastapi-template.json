@@ -1,9 +1,9 @@
 {
   "coverage": {
     "files": 43,
-    "files_analysed": 42,
-    "functions": 140,
-    "functions_analysed": 140
+    "files_analysed": 43,
+    "functions": 198,
+    "functions_analysed": 198
   },
   "findings": [
     {
@@ -28,12 +28,6 @@
       "file": ".env",
       "line": 18,
       "rule": "hardcoded-secret",
-      "function": null
-    },
-    {
-      "file": "backend/app/api/deps.py",
-      "line": 1,
-      "rule": "syntax-error",
       "function": null
     },
     {

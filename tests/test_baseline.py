@@ -104,7 +104,7 @@ def test_the_first_run_records_the_baseline_and_passes(tmp_path: Path, capsys) -
     out = capsys.readouterr().out
 
     assert baseline.is_file()
-    assert out == "no findings, 1 baselined\ncoverage: 1/1 files, 1/1 functions\n"
+    assert out == "no findings, 1 baselined\ncoverage: 1/1 files, 2/2 functions\n"
 
 
 def test_only_new_findings_fail_later_runs(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]

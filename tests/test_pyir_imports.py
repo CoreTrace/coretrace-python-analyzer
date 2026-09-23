@@ -45,7 +45,7 @@ PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
 
 def lower(text: str, *, ssa: bool = False, name: str = "ir.py") -> FunctionIR:
     module = lower_module(build_hir(SourceManager().add_source(name, text)), ssa=ssa)
-    return module.functions[0]
+    return next(f for f in module.functions if f.name != "<module>")
 
 
 def instructions(function: FunctionIR, kind: type[Instruction]) -> list[Instruction]:

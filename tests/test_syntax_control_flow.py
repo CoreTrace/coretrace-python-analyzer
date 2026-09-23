@@ -68,7 +68,7 @@ def hir(text: str) -> nodes.Module:
 
 
 def lower(text: str, *, ssa: bool = False) -> FunctionIR:
-    return lower_module(hir(text), ssa=ssa).functions[0]
+    return next(f for f in lower_module(hir(text), ssa=ssa).functions if f.name != "<module>")
 
 
 def printed(text: str) -> str:
@@ -222,7 +222,7 @@ def test_clean_comprehensions_stay_clean() -> None:
 
 def test_assignments_to_global_names_lower_to_set_global() -> None:
     text = printed("counter = 0\n\ndef f():\n    global counter\n    counter = 1\n    counter += 1\n")
-    assert text.count('set_global "counter"') == 2
+    assert text.count('set_global "counter"') == 2  # the module body's ``counter = 0`` is its own local
     (store, _) = [i for b in lower("counter = 0\n\ndef f():\n    global counter\n    counter = 1\n    counter += 1\n").blocks for i in b.instructions if isinstance(i, SetGlobal)]
     assert store.name == "counter"
     assert notes("counter = 0\n\ndef f():\n    global counter\n    counter = input()\n") == []

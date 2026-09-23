@@ -2,8 +2,8 @@
   "coverage": {
     "files": 132,
     "files_analysed": 132,
-    "functions": 1070,
-    "functions_analysed": 1070
+    "functions": 1305,
+    "functions_analysed": 1305
   },
   "findings": [
     {
@@ -11,6 +11,12 @@
       "line": 200,
       "rule": "missing-timeout",
       "function": "fetch"
+    },
+    {
+      "file": "docs/contributors/fetch.py",
+      "line": 266,
+      "rule": "command-injection",
+      "function": "<module>"
     },
     {
       "file": "httpie/client.py",

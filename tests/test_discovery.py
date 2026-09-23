@@ -110,7 +110,7 @@ def test_duplicate_qualified_names_get_distinct_call_graph_names() -> None:
     manager = engine.build_manager(module)
     graph = manager.get(CallGraphAnalysis)
 
-    assert graph.functions == ("Box.cmd", "Box.cmd__2", "run", "run__2")
+    assert graph.functions == ("<module>", "Box.cmd", "Box.cmd__2", "run", "run__2")
     setter = module.body[1].body[1]  # type: ignore[union-attr]
     assert graph.name_of(setter) == "Box.cmd__2"  # type: ignore[arg-type]
     assert manager.get(TaintAnalysis, setter) is not None  # type: ignore[arg-type]
