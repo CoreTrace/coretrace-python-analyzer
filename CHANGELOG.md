@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-09-24)
 
 ### Analysis
 
@@ -8,10 +8,10 @@
 
 ### Dependencies
 
-- Advisories distinguish the `affected_symbols` a fix changed from the public `entry_points` through which they are reached, each justified and carrying `conditions` (checkable argument values, or `semantic` ones kept as pending review); `modules` names what the package installs. Every dependency finding records its evidence `level`: `declared`, `imported`, `reachable` or `exploitable`.
-- A call to an API affected by several advisories of the pinned release reports every one of them, not the first listed.
-- One advisory per identifier and package: a later contributor replaces an earlier one, so a curated feed refines the bundled sample, and the sample names the modules its packages install.
-- A version specifier may be a union of ranges separated by `||`, as an advisory over several release series needs (`>=4.2,<4.2.28 || >=5.2,<5.2.11`); the OSV import produces one such advisory per package instead of one per range.
+- Advisories distinguish the `affected_symbols` a fix changed from the public `entry_points` through which they are reached, each justified and carrying `conditions` (checkable argument values, or `semantic` ones kept as pending review); `modules` names what the package installs. Every dependency finding records its evidence `level`: `declared`, `imported`, `reachable` or `exploitable` (#109).
+- A call to an API affected by several advisories of the pinned release reports every one of them, not the first listed (#109).
+- One advisory per identifier and package: a later contributor replaces an earlier one, so a curated feed refines the bundled sample, and the sample names the modules its packages install (#109).
+- A version specifier may be a union of ranges separated by `||`, as an advisory over several release series needs (`>=4.2,<4.2.28 || >=5.2,<5.2.11`); the OSV import produces one such advisory per package instead of one per range (#112).
 
 ### Plugins
 
