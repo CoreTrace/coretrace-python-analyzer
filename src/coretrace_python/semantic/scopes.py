@@ -218,7 +218,9 @@ class _Collector:
             ScopeId(str(module.span.source_id)), ScopeKind.MODULE, "<module>", None, module.span
         )
         self.builders: list[_ScopeBuilder] = [self.module]
-        self.spans: dict[SourceSpan, ScopeId] = {}
+        # The module scope is found by the module's span, as the synthetic ``<module>``
+        # function carries it.
+        self.spans: dict[SourceSpan, ScopeId] = {module.span: self.module.id}
         self.body(module.body, self.module)
 
     def body(self, statements: tuple[nodes.Statement, ...], scope: _ScopeBuilder) -> None:

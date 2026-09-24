@@ -38,7 +38,7 @@ from coretrace_python.interprocedural import (
     SummaryTable,
     project_symbol,
 )
-from coretrace_python.ir.lowering import analyzable_functions
+from coretrace_python.ir.lowering import analyzable_functions, is_body_function
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
@@ -593,7 +593,12 @@ def local_instances(function: nodes.Function, scopes: ScopeTable, symbols: Symbo
 
 
 def _enclosing(module: nodes.Module, function: nodes.Function) -> nodes.Function | None:
-    """The function whose body defines ``function``, if it is nested."""
+    """The function whose body defines ``function``, if it is nested. A module or class
+    body is nested in nothing, and encloses nothing: a lambda at module level reads
+    globals, not the locals of a function."""
+
+    if is_body_function(function):
+        return None
 
     def search(
         body: tuple[nodes.Statement, ...], parent: nodes.Function | None
@@ -618,6 +623,8 @@ def _enclosing(module: nodes.Module, function: nodes.Function) -> nodes.Function
     # analysable function whose span contains theirs.
     innermost: nodes.Function | None = None
     for candidate in analyzable_functions(module):
+        if is_body_function(candidate):
+            continue
         if candidate.span != function.span and _contains(candidate.span, function.span):
             innermost = candidate
     return innermost

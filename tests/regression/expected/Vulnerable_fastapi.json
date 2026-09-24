@@ -2,8 +2,8 @@
   "coverage": {
     "files": 20,
     "files_analysed": 20,
-    "functions": 27,
-    "functions_analysed": 27
+    "functions": 46,
+    "functions_analysed": 46
   },
   "findings": [
     {
@@ -19,16 +19,76 @@
       "function": "download"
     },
     {
+      "file": "exploit_scripts/brute_force_login.py",
+      "line": 18,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
       "file": "exploit_scripts/csrf_change_email.py",
       "line": 22,
       "rule": "hardcoded-credential",
       "function": null
     },
     {
+      "file": "exploit_scripts/csrf_change_email.py",
+      "line": 22,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/csrf_change_email.py",
+      "line": 28,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
       "file": "exploit_scripts/idor_orders.py",
       "line": 12,
       "rule": "hardcoded-credential",
       "function": null
+    },
+    {
+      "file": "exploit_scripts/idor_orders.py",
+      "line": 12,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/idor_orders.py",
+      "line": 16,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/idor_orders.py",
+      "line": 22,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/path_traversal_download.py",
+      "line": 13,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/path_traversal_download.py",
+      "line": 18,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/reflected_xss_search.py",
+      "line": 15,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/sqli_login_bypass.py",
+      "line": 22,
+      "rule": "missing-timeout",
+      "function": "<module>"
     },
     {
       "file": "exploit_scripts/sqli_login_bypass.py",
@@ -41,6 +101,36 @@
       "line": 19,
       "rule": "hardcoded-credential",
       "function": null
+    },
+    {
+      "file": "exploit_scripts/stored_xss_profile.py",
+      "line": 19,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/stored_xss_profile.py",
+      "line": 24,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/stored_xss_profile.py",
+      "line": 24,
+      "rule": "ssrf",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/stored_xss_profile.py",
+      "line": 28,
+      "rule": "missing-timeout",
+      "function": "<module>"
+    },
+    {
+      "file": "exploit_scripts/stored_xss_profile.py",
+      "line": 28,
+      "rule": "ssrf",
+      "function": "<module>"
     }
   ]
 }

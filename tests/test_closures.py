@@ -85,9 +85,9 @@ def test_nested_functions_and_lambdas_are_analysable_functions() -> None:
 
     names = [f.name for f in analyzable_functions(module)]
 
-    assert names == ["outer", "run", "lambda_8_11"]
+    assert names == ["<module>", "outer", "run", "lambda_8_11"]
     functions = lower_module(module).functions
-    assert [f.name for f in functions] == ["outer", "outer.run", "outer.lambda_8_11"]
+    assert [f.name for f in functions] == ["<module>", "outer", "outer.run", "outer.lambda_8_11"]
 
 
 def test_captured_variables_become_implicit_parameters() -> None:
@@ -109,7 +109,7 @@ def test_captured_variables_become_implicit_parameters() -> None:
 
 
 def test_make_function_carries_the_captured_values() -> None:
-    (outer, *_) = lower_module(hir(NESTED)).functions
+    outer = next(f for f in lower_module(hir(NESTED)).functions if f.name == "outer")
     made = [i for b in outer.blocks for i in b.instructions if isinstance(i, MakeFunction)]
 
     assert [(m.name, len(m.captured)) for m in made] == [("run", 2), ("lambda_8_11", 0)]
@@ -174,7 +174,7 @@ def test_routes_defined_inside_an_application_factory_are_entry_points() -> None
 
 def test_coverage_counts_nested_functions() -> None:
     analysis = engine.analyze_file(SourceManager().add_source("c.py", NESTED), [PLUGINS])
-    assert analysis.coverage.summary() == "coverage: 1/1 files, 3/3 functions"
+    assert analysis.coverage.summary() == "coverage: 1/1 files, 4/4 functions"
 
 
 def test_call_graph_names_nested_functions_by_their_enclosing_ones() -> None:
@@ -183,6 +183,6 @@ def test_call_graph_names_nested_functions_by_their_enclosing_ones() -> None:
     manager = engine.build_manager(hir(NESTED))
     graph = manager.get(CallGraphAnalysis)
 
-    assert graph.functions == ("outer", "outer.run", "outer.lambda_8_11")
+    assert graph.functions == ("<module>", "outer", "outer.run", "outer.lambda_8_11")
     assert [s.target for s in graph.sites("outer") if isinstance(s.target, KnownFunction)] == [KnownFunction("outer.run")]
     assert SymbolId("python.c.outer.run") is not None

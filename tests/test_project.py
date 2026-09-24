@@ -292,7 +292,7 @@ def test_check_accepts_a_directory(tmp_path: Path, capsys) -> None:  # type: ign
         "app/main.py:4:5: high command-injection: Command injection:"
         " stdin input reaches python.os.system through app.helpers.execute [run]\n"
         "1 finding\n"
-        "coverage: 4/4 files, 3/3 functions\n"
+        "coverage: 4/4 files, 5/5 functions\n"
     )
 
 

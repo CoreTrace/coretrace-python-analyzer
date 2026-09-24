@@ -16,7 +16,12 @@ from typing import ClassVar
 from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
 from coretrace_python.cfg import CFGError
 from coretrace_python.hir import nodes
-from coretrace_python.ir.lowering import LoweringError, analyzable_functions, qualified_name
+from coretrace_python.ir.lowering import (
+    MODULE_BODY,
+    LoweringError,
+    analyzable_functions,
+    qualified_name,
+)
 from coretrace_python.ir.model import (
     Await,
     Call,
@@ -198,7 +203,9 @@ def resolve_targets(
     for block in function.blocks:
         for instruction in block.instructions:
             if isinstance(instruction, MakeFunction):
-                qualified = f"{function.name}.{instruction.name}"
+                # A lambda or def made by the module body is named without a prefix, as
+                # its scope's parent is the module.
+                qualified = instruction.name if function.name == MODULE_BODY else f"{function.name}.{instruction.name}"
                 if qualified in nested:
                     targets[instruction.result] = KnownFunction(qualified)
             elif isinstance(instruction, Global):

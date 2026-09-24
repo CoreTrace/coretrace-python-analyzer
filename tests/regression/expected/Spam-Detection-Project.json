@@ -2,8 +2,8 @@
   "coverage": {
     "files": 1,
     "files_analysed": 1,
-    "functions": 2,
-    "functions_analysed": 2
+    "functions": 3,
+    "functions_analysed": 3
   },
   "findings": [
     {

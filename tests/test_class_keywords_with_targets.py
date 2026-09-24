@@ -73,7 +73,7 @@ def test_methods_of_a_class_with_keyword_arguments_are_analysed() -> None:
     analysis = engine.analyze_file(SourceManager().add_source("m.py", text), [PLUGINS])
 
     assert rules(analysis.findings) == ["command-injection"]
-    assert analysis.coverage.summary() == "coverage: 1/1 files, 1/1 functions"
+    assert analysis.coverage.summary() == "coverage: 1/1 files, 2/2 functions"
 
 
 def test_a_local_class_with_keyword_arguments_evaluates_them() -> None:
@@ -81,7 +81,7 @@ def test_a_local_class_with_keyword_arguments_evaluates_them() -> None:
     analysis = engine.analyze_file(SourceManager().add_source("m.py", text), [PLUGINS])
 
     assert rules(analysis.findings) == ["command-injection"]
-    assert analysis.coverage.summary() == "coverage: 1/1 files, 2/2 functions"
+    assert analysis.coverage.summary() == "coverage: 1/1 files, 3/3 functions"
 
 
 def test_with_targets_receive_the_entered_value() -> None:

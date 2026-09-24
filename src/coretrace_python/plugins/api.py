@@ -163,7 +163,8 @@ class PluginContext:
         return self._manager.module
 
     def functions(self) -> tuple[nodes.Function, ...]:
-        """Top-level functions and methods the engine can analyse."""
+        """The functions the engine analyses: the module body (``<module>``), top-level
+        functions, class bodies (``Cls.<body>``) and methods."""
 
         return self._functions
 

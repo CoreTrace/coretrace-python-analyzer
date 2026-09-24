@@ -130,7 +130,7 @@ def test_classes_defined_inside_functions_are_values_with_analysed_methods() -> 
     lowered = printed(text)
     assert 'make_class "Inner"' in lowered and 'store_local "Inner"' in lowered
     assert "func @outer.Inner.run" in lowered
-    assert [f.name for f in analyzable_functions(hir(text))] == ["outer", "run"]
+    assert [f.name for f in analyzable_functions(hir(text))] == ["<module>", "outer", "run"]
     assert rules(check(text)) == [("command-injection", 6, "run")]
     (made,) = [i for f in lower_module(hir(text)).functions for b in f.blocks for i in b.instructions if isinstance(i, MakeClass)]
     assert made.name == "Inner"

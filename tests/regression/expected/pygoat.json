@@ -2,8 +2,8 @@
   "coverage": {
     "files": 78,
     "files_analysed": 76,
-    "functions": 170,
-    "functions_analysed": 170
+    "functions": 287,
+    "functions_analysed": 287
   },
   "findings": [
     {
@@ -95,6 +95,12 @@
       "line": 84,
       "rule": "missing-timeout",
       "function": "log_function_checker"
+    },
+    {
+      "file": "introduction/lab_code/test.py",
+      "line": 23,
+      "rule": "reachable-vulnerability",
+      "function": "<module>"
     },
     {
       "file": "introduction/mitre.py",
