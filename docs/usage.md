@@ -109,7 +109,7 @@ a sanitizer for that kind of sink.
 | `path-traversal` | A file system path (`open`, `send_file`, `os.remove`, …). |
 | `ssrf` | The URL of an HTTP client request (Requests, httpx, `urllib`). |
 | `xss` | An HTTP response body built without escaping. |
-| `insecure-deserialization` | `pickle`, `yaml.load` and similar loaders. |
+| `insecure-deserialization` | `pickle`, `marshal`, `dill`, `jsonpickle`, `shelve`, and the YAML loaders (`yaml.load`, `load_all`, `full_load`, `unsafe_load` and their several-document versions); `yaml.load` and `load_all` given a safe loader (`SafeLoader`, `BaseLoader`) are not. |
 | `open-redirect` | An HTTP redirect target. |
 | `plaintext-credential-storage` | A parameter named like a password stored in a database without hashing. Medium confidence, since a name is a hint. |
 | `exploitable-vulnerability` | An API affected by an advisory of a vulnerable requirement, see Dependencies. |
