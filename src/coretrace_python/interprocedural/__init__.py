@@ -8,6 +8,7 @@ from coretrace_python.interprocedural.callgraph import (
     ExternalSymbol,
     KnownFunction,
     ModuleFunction,
+    SymbolRead,
     Target,
     UnknownTarget,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "SummaryAnalysis",
     "SummaryIndex",
     "SummaryTable",
+    "SymbolRead",
     "Target",
     "UnknownTarget",
     "build_module_graph",

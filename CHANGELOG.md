@@ -6,6 +6,14 @@
 
 - `yaml.load_all`, `yaml.full_load_all` and `yaml.unsafe_load_all` are deserialization sinks like their single-document versions; `yaml.load_all` with a safe loader is not, and `yaml.safe_load_all` stays safe (#123).
 
+### Dependencies
+
+- An advisory entry point marked `read` is an attribute whose getter runs the affected code, such as `request.form`: reading it is reachable, called or not — a subscript, an iteration or a method called on it reads it — with one finding per function, where it is first read (#111).
+
+### Plugins
+
+- The call graph records the symbols each function reads, called or not, where it first reads each: `CallGraph.reads(function)` gives them as `SymbolRead` records, modules served from the cache keep them, and the cache format is bumped (#111).
+
 ### Precision
 
 - A sink call can be made safe by one of its arguments: a `SafeArgument` model names the argument and the values that take kinds off the sink, only when the call gives one explicitly. `yaml.load` with `SafeLoader`, `BaseLoader` or their C versions, under every spelling, is no longer an insecure deserialization; an absent loader, another loader, a variable or unpacked arguments still are (#121).

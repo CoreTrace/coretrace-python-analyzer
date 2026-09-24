@@ -4,9 +4,10 @@ A module's results are stored under a key derived from everything they depend on
 source text and identity, the engine, schema and plugin API versions, the plugins and
 their code, the security models, the advisories, the dependency graph, and the keys of
 the project modules it imports transitively. A module whose key is unchanged on a later
-run is served from the cache: its summaries seed the project index, its call sites serve
-the project plugins and its findings are reported as they were. Entries are JSON, so a
-tampered or foreign file can never execute anything; an unreadable entry is a miss.
+run is served from the cache: its summaries seed the project index, its call sites and
+symbol reads serve the project plugins and its findings are reported as they were.
+Entries are JSON, so a tampered or foreign file can never execute anything; an
+unreadable entry is a miss.
 """
 
 from __future__ import annotations
@@ -33,13 +34,14 @@ from coretrace_python.interprocedural import (
     Mutation,
     NonlocalWrite,
     SummaryIndex,
+    SymbolRead,
     Target,
     UnknownTarget,
 )
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 7
+CACHE_FORMAT = 8
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class CachedModule:
     summaries: Mapping[str, FunctionSummary]
     sites: tuple[CallSite, ...]
     findings: tuple[Finding, ...]
+    reads: tuple[SymbolRead, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "summaries", MappingProxyType(dict(self.summaries)))
@@ -134,6 +137,7 @@ def encode(module: CachedModule) -> dict[str, Any]:
         "summaries": {name: _encode_summary(s) for name, s in module.summaries.items()},
         "sites": [_encode_site(site) for site in module.sites],
         "findings": [_encode_finding(finding) for finding in module.findings],
+        "reads": [[r.function, _encode_span(r.location), str(r.symbol)] for r in module.reads],
     }
 
 
@@ -145,6 +149,7 @@ def decode(data: Mapping[str, Any]) -> CachedModule:
         {_string(name): _decode_summary(s) for name, s in data["summaries"].items()},
         tuple(_decode_site(site) for site in data["sites"]),
         tuple(_decode_finding(finding) for finding in data["findings"]),
+        tuple(_decode_read(read) for read in data["reads"]),
     )
 
 
@@ -192,6 +197,11 @@ def _decode_span(data: Any) -> SourceSpan:
 def _decode_function(data: Any) -> ModuleFunction:
     name, span, entry_point = data
     return ModuleFunction(_string(name), _decode_span(span), None if entry_point is None else _string(entry_point))
+
+
+def _decode_read(data: Any) -> SymbolRead:
+    function, span, symbol = data
+    return SymbolRead(_string(function), _decode_span(span), SymbolId(_string(symbol)))
 
 
 def _encode_finding(finding: Finding) -> dict[str, Any]:

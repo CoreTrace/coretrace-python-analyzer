@@ -151,7 +151,7 @@ sources and in configuration files.
 | Rule | Trigger |
 |---|---|
 | `vulnerable-dependency` | A requirement allows a version affected by an advisory, reported at its line. |
-| `reachable-vulnerability` | A call in the project to an API the advisory affects. |
+| `reachable-vulnerability` | A call in the project to an API the advisory affects, or a read of an entry point marked `read`. |
 | `exploitable-vulnerability` | Attacker-controlled data reaches such a call. Critical. |
 | `denied-dependency` | A package the policy denies. |
 | `unpinned-dependency` | A requirement without an exact pin when the policy requires pins. |
@@ -291,6 +291,13 @@ call to either kind of symbol is reachable. `modules` names the top-level module
 package installs, so the analyzer can tell an imported package from a merely required
 one; it defaults to the package name.
 
+An entry point marked `"read": true` is an attribute whose getter runs the affected code,
+such as a request body parsed on first access
+(`{"symbol": "python.flask.request.form", "justification": "…", "read": true}`): reading
+it is reachable, called or not — `request.form['name']`, `for key in request.form`,
+`request.form.get('name')` all read it. A function reading it several times is reported
+once, where it first reads it.
+
 An `argument` condition is decided at each call. It names the argument by keyword and,
 when it may be passed positionally, by `position` (counted from 0, the receiver of a
 method excluded); `values` are what makes the call affected, written as the analyzer
@@ -305,7 +312,8 @@ template's origin — cannot be decided and is always pending review, never drop
 Every dependency finding records the highest level of evidence established in its
 `level` metadata: `declared` (the requirement allows a vulnerable version), `imported`
 (a module of the package is imported somewhere), `reachable` (an entry point or affected
-symbol is called) or `exploitable` (attacker input reaches it). The last two carry
+symbol is called, or an entry point marked `read` is read) or `exploitable` (attacker
+input reaches it). The last two carry
 `entry_point`, `justification`, `conditions`, and which of them the call meets
 (`conditions_met`) or leaves to review (`conditions_pending_review`). A requirement whose
 entry points are only called with arguments that contradict a condition stays

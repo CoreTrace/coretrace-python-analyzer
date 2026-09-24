@@ -138,20 +138,24 @@ def dump_advisories(advisories: Iterable[Advisory]) -> str:
                 "severity": a.severity.value,
                 "affected_symbols": [str(s) for s in a.affected_symbols],
                 "aliases": list(a.aliases),
-                "entry_points": [
-                    {
-                        "symbol": str(e.symbol),
-                        "justification": e.justification,
-                        "conditions": [_condition_entry(c) for c in e.conditions],
-                    }
-                    for e in a.entry_points
-                ],
+                "entry_points": [_entry_point_entry(e) for e in a.entry_points],
                 "modules": list(a.modules),
             }
             for a in advisories
         ],
     }
     return json.dumps(document, indent=2) + "\n"
+
+
+def _entry_point_entry(entry_point: AdvisoryEntryPoint) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "symbol": str(entry_point.symbol),
+        "justification": entry_point.justification,
+        "conditions": [_condition_entry(c) for c in entry_point.conditions],
+    }
+    if entry_point.read:
+        entry["read"] = True
+    return entry
 
 
 def _condition_entry(condition: Condition) -> dict[str, Any]:
@@ -194,10 +198,14 @@ def _advisory(entry: Mapping[str, Any]) -> Advisory:
 
 
 def _entry_point(entry: Mapping[str, Any]) -> AdvisoryEntryPoint:
+    read = entry.get("read", False)
+    if not isinstance(read, bool):
+        raise TypeError(f"entry point read must be true or false, got {read!r}")
     return AdvisoryEntryPoint(
         SymbolId(str(entry["symbol"])),
         str(entry["justification"]),
         tuple(_condition(c) for c in entry.get("conditions") or []),
+        read,
     )
 
 
