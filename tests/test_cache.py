@@ -68,7 +68,7 @@ def rules(findings: tuple[Finding, ...]) -> list[tuple[str, str, int]]:
 
 
 def test_findings_and_summaries_round_trip_through_json() -> None:
-    from coretrace_python.interprocedural import ExternalCall, FunctionSummary
+    from coretrace_python.interprocedural import ExternalCall, FunctionSummary, ModuleFunction
     from coretrace_python.semantic.symbols import SymbolId
 
     span = SourceSpan(SourceId("/p/a.py"), 3, 5, 3, 9)
@@ -82,12 +82,13 @@ def test_findings_and_summaries_round_trip_through_json() -> None:
         frozenset({SymbolId("python.builtins.input")}),
     )
 
-    text = json.dumps(encode(CachedModule(("f",), {"f": summary}, (), (finding,))))
+    functions = (ModuleFunction("f", span, "http"), ModuleFunction("g", span))
+    text = json.dumps(encode(CachedModule(functions, {"f": summary}, (), (finding,))))
     restored = decode(json.loads(text))
 
     assert restored.findings == (finding,)
     assert restored.summaries["f"] == summary
-    assert restored.functions == ("f",)
+    assert restored.functions == functions
 
 
 # --------------------------------------------------------------------------- keys
