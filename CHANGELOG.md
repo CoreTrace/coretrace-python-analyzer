@@ -5,6 +5,11 @@
 ### Plugins
 
 - `ProjectContext.functions(module)` gives project plugins every function of a module as its call graph names it, with its span and the label of the entry point it is (`http` for a route, `argv` for a command), decided by the taint engine's own rule; modules served from the cache keep them, and the cache format is bumped (#116).
+- Call sites and external calls record what each argument denotes — a symbol, a constant as Python writes it, or nothing known — in an `Arguments` record: `CallSite.arguments` (formerly the argument counts), `ExternalCall.arguments`, and `TaintFlow.sink_arguments` for the sink call of a flow, through callees in other modules too (#110).
+
+### Dependencies
+
+- Argument conditions of advisory entry points are decided at each call, with a `position` for positional arguments and a `default` for absent ones: a call meeting them is reported with `conditions_met`, a call passing another known value does not reach the vulnerability and is listed in the requirement's `ruled_out`, and a call the analyzer cannot decide leaves them pending review (#110).
 
 ## 0.4.0 (2026-09-24)
 

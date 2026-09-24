@@ -27,6 +27,7 @@ from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.dataflow import DataflowProblem, Direction, solve
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import (
+    Arguments,
     CallGraph,
     CallGraphAnalysis,
     ExternalSymbol,
@@ -112,6 +113,8 @@ class TaintFlow:
     location: SourceSpan
     through: str | None = None
     sink_location: SourceSpan | None = None
+    # What the arguments of the sink call denote, to decide the conditions on them.
+    sink_arguments: Arguments | None = None
 
 
 Key = Value | HeapLocation
@@ -395,10 +398,11 @@ class _TaintProblem(DataflowProblem[State]):
 
         sink = self.models.sink(symbol)
         if sink is not None:
+            given = self.graph.arguments_at(self.name, call.location)
             for position, argument in enumerate(call.arguments):
-                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, position)
+                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, position, given)
             for argument in (*call.starred, *(value for _, value in call.keywords)):
-                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, None)
+                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, None, given)
         sanitizer = self.models.sanitizer(symbol)
         if sanitizer is not None:
             return everything.without(sanitizer.kinds)
@@ -484,7 +488,7 @@ class _TaintProblem(DataflowProblem[State]):
             for position, deps in zip(positions, (*reached.argument_dependencies, reached.keyword_dependencies), strict=True):
                 taint, witness = mapped(deps)
                 if witness is not None:
-                    self.report(flows, sink, taint, witness, call, through, reached.location, position)
+                    self.report(flows, sink, taint, witness, call, through, reached.location, position, reached.arguments)
         for mutation in summary.mutations:
             if mutation.parameter < len(values):
                 stored = mapped(mutation.dependencies)[0]
@@ -510,6 +514,7 @@ class _TaintProblem(DataflowProblem[State]):
         through: str | None,
         sink_location: SourceSpan | None,
         position: int | None = None,
+        arguments: Arguments | None = None,
     ) -> None:
         reaching = taint.kinds & sink.kinds_at(position)
         if not reaching:
@@ -524,6 +529,7 @@ class _TaintProblem(DataflowProblem[State]):
                     call.location,
                     through,
                     call.location if sink_location is None else sink_location,
+                    arguments,
                 )
             )
 

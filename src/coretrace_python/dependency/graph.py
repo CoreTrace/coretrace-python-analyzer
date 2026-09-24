@@ -147,13 +147,18 @@ class Condition:
     """What must hold for an entry point to reach, or exploit, the affected code: the
     value of an argument, the loader or algorithm used, the format decoded, the kind of
     input, a configuration. ``kind`` says whether the engine can check it: an
-    ``argument`` condition names the argument and the values that satisfy it; a
-    ``semantic`` condition cannot be checked yet and is reported as pending review."""
+    ``argument`` condition names the argument by keyword, and by ``position`` when it may
+    be passed positionally, and lists the ``values`` that satisfy it — symbols
+    (``python.yaml.FullLoader``) or constants as Python writes them (``True``);
+    ``default`` says an absent argument means a vulnerable value. A ``semantic``
+    condition cannot be checked and is reported as pending review."""
 
     kind: str
     text: str
     argument: str | None = None
     values: tuple[str, ...] = ()
+    position: int | None = None
+    default: bool = False
 
     @property
     def checkable(self) -> bool:

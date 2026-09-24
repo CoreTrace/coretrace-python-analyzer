@@ -10,10 +10,18 @@ are correlated here into one high-confidence ``exploitable-vulnerability`` findi
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
-from coretrace_python.dependency.graph import DIRECT, Advisory, DependencyGraph
+from coretrace_python.dependency.graph import (
+    DIRECT,
+    Advisory,
+    AdvisoryEntryPoint,
+    Condition,
+    DependencyGraph,
+)
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import Status, Verdict, Verdicts
+from coretrace_python.interprocedural import Arguments, CallSite, ExternalSymbol
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import Sink, TaintFlow, TaintKind
 
@@ -40,10 +48,68 @@ def advisory_sinks(affected: Affected) -> tuple[Sink, ...]:
     return tuple(Sink(symbol, TaintKind.ADVISORY) for symbol in affected)
 
 
-def evidence(advisory: Advisory, symbol: SymbolId, level: str) -> dict[str, str]:
+@dataclass(frozen=True)
+class ConditionCheck:
+    """What one call tells of an entry point's conditions: those it meets, those left to
+    review (every semantic one, and every argument one the call does not decide), and
+    the argument condition it contradicts with what it passes instead (None: absent),
+    in which case the call does not reach the vulnerability."""
+
+    met: tuple[Condition, ...] = ()
+    pending: tuple[Condition, ...] = ()
+    contradicted: Condition | None = None
+    passed: str | None = None
+
+
+def check_conditions(entry: AdvisoryEntryPoint | None, arguments: Arguments | None) -> ConditionCheck:
+    """Decide ``entry``'s conditions against what the call's ``arguments`` denote."""
+
+    if entry is None:
+        return ConditionCheck()
+    met: list[Condition] = []
+    pending: list[Condition] = []
+    for condition in entry.conditions:
+        given = _given(condition, arguments) if condition.checkable and arguments is not None else None
+        if given is None:
+            pending.append(condition)
+            continue
+        explicit, value = given
+        if explicit and value is None:
+            pending.append(condition)
+            continue
+        affected = value in condition.values if explicit else condition.default
+        if not affected:
+            return ConditionCheck(tuple(met), tuple(pending), condition, value)
+        met.append(condition)
+    return ConditionCheck(tuple(met), tuple(pending))
+
+
+def _given(condition: Condition, arguments: Arguments) -> tuple[bool, str | None] | None:
+    """Whether the call gives the condition's argument, and what it denotes: ``(True,
+    value)`` when given, ``(False, None)`` when surely absent, None when it cannot tell."""
+
+    for name, value in arguments.keywords:
+        if name == condition.argument:
+            return True, value
+    if condition.position is not None and condition.position < len(arguments.positional):
+        return True, arguments.positional[condition.position]
+    return None if arguments.unpacked else (False, None)
+
+
+def ruled_out(module: str, site: CallSite, check: ConditionCheck) -> str:
+    """Which call a contradicted condition rules out, and why: ``app:12
+    python.yaml.load(Loader=python.yaml.SafeLoader)``."""
+
+    assert check.contradicted is not None and isinstance(site.target, ExternalSymbol)
+    argument = check.contradicted.argument or f"#{check.contradicted.position}"
+    passed = f"{argument} absent" if check.passed is None else f"{argument}={check.passed}"
+    return f"{module}:{site.location.start_line} {site.target.symbol}({passed})"
+
+
+def evidence(advisory: Advisory, symbol: SymbolId, level: str, check: ConditionCheck) -> dict[str, str]:
     """What a finding keeps of the advisory for ``symbol``: the level of evidence
-    established, how the symbol relates to the vulnerability and under which
-    conditions, the ones the engine could not check listed as pending review."""
+    established, how the symbol relates to the vulnerability, and its conditions — those
+    the call meets and those left to review."""
 
     metadata = {"advisory": advisory.id, "package": advisory.package, "symbol": str(symbol), "level": level}
     entry = advisory.entry_point(symbol)
@@ -54,9 +120,10 @@ def evidence(advisory: Advisory, symbol: SymbolId, level: str) -> dict[str, str]
     metadata["justification"] = entry.justification
     if entry.conditions:
         metadata["conditions"] = "; ".join(c.text for c in entry.conditions)
-        # ponytail: no condition is checked yet, so every one awaits review; argument
-        # conditions get checked at the call site once call sites carry argument symbols.
-        metadata["conditions_pending_review"] = "; ".join(c.text for c in entry.conditions)
+    if check.met:
+        metadata["conditions_met"] = "; ".join(c.text for c in check.met)
+    if check.pending:
+        metadata["conditions_pending_review"] = "; ".join(c.text for c in check.pending)
     return metadata
 
 
@@ -77,21 +144,22 @@ def correlate(
         if verdict is not None and verdict.status is Status.REFUTED:
             continue
         hotspot = verdict is not None and verdict.status is Status.HOTSPOT
-        findings.extend(
-            _exploitable(function, flow, advisory, verdict, hotspot) for advisory in affected.get(flow.sink.symbol, ())
-        )
+        for advisory in affected.get(flow.sink.symbol, ()):
+            check = check_conditions(advisory.entry_point(flow.sink.symbol), flow.sink_arguments)
+            if check.contradicted is None:
+                findings.append(_exploitable(function, flow, advisory, verdict, hotspot, check))
     return tuple(findings)
 
 
 def _exploitable(
-    function: str, flow: TaintFlow, advisory: Advisory, verdict: Verdict | None, hotspot: bool
+    function: str, flow: TaintFlow, advisory: Advisory, verdict: Verdict | None, hotspot: bool, check: ConditionCheck
 ) -> Finding:
     message = (
         f"{advisory.id}: {flow.source.label} input reaches {flow.sink.symbol}, affected in "
         f"the required {advisory.package} {advisory.vulnerable}: {advisory.summary}"
     )
     metadata = {
-        **evidence(advisory, flow.sink.symbol, "exploitable"),
+        **evidence(advisory, flow.sink.symbol, "exploitable", check),
         "source": str(flow.source.symbol),
         "source_label": flow.source.label,
         "verdict": "hotspot" if hotspot else "vulnerability",

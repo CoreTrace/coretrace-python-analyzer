@@ -68,27 +68,37 @@ def rules(findings: tuple[Finding, ...]) -> list[tuple[str, str, int]]:
 
 
 def test_findings_and_summaries_round_trip_through_json() -> None:
-    from coretrace_python.interprocedural import ExternalCall, FunctionSummary, ModuleFunction
+    from coretrace_python.interprocedural import (
+        Arguments,
+        CallSite,
+        ExternalCall,
+        ExternalSymbol,
+        FunctionSummary,
+        ModuleFunction,
+    )
     from coretrace_python.semantic.symbols import SymbolId
 
     span = SourceSpan(SourceId("/p/a.py"), 3, 5, 3, 9)
     finding = Finding("r", "m", Severity.HIGH, Confidence.MEDIUM, span, "f", {"k": "v"})
+    arguments = Arguments(("python.yaml.Loader", None, "True"), (("mode", "'x'"), ("other", None)), True)
     summary = FunctionSummary(
         "f",
         2,
         frozenset({0}),
-        (ExternalCall(SymbolId("python.os.system"), (frozenset({0}), frozenset()), frozenset({1}), span, None),),
+        (ExternalCall(SymbolId("python.os.system"), (frozenset({0}), frozenset()), frozenset({1}), span, None, arguments),),
         False,
         frozenset({SymbolId("python.builtins.input")}),
     )
 
     functions = (ModuleFunction("f", span, "http"), ModuleFunction("g", span))
-    text = json.dumps(encode(CachedModule(functions, {"f": summary}, (), (finding,))))
+    site = CallSite("f", span, ExternalSymbol(SymbolId("python.yaml.load")), arguments)
+    text = json.dumps(encode(CachedModule(functions, {"f": summary}, (site,), (finding,))))
     restored = decode(json.loads(text))
 
     assert restored.findings == (finding,)
     assert restored.summaries["f"] == summary
     assert restored.functions == functions
+    assert restored.sites == (site,)
 
 
 # --------------------------------------------------------------------------- keys

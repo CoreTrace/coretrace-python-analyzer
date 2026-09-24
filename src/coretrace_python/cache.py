@@ -22,6 +22,7 @@ from typing import Any
 
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.interprocedural import (
+    Arguments,
     CallSite,
     ExternalCall,
     ExternalSymbol,
@@ -38,7 +39,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 6
+CACHE_FORMAT = 7
 
 
 @dataclass(frozen=True)
@@ -225,6 +226,7 @@ def _encode_call(call: ExternalCall) -> dict[str, Any]:
         "keywords": sorted(call.keyword_dependencies),
         "location": _encode_span(call.location),
         "call_site": None if call.call_site is None else _encode_span(call.call_site),
+        "given": _encode_arguments(call.arguments),
     }
 
 
@@ -236,6 +238,7 @@ def _decode_call(data: Mapping[str, Any]) -> ExternalCall:
         _indices(data["keywords"]),
         _decode_span(data["location"]),
         None if site is None else _decode_span(site),
+        _decode_arguments(data["given"]),
     )
 
 
@@ -317,8 +320,7 @@ def _encode_site(site: CallSite) -> dict[str, Any]:
         "caller": site.caller,
         "location": _encode_span(site.location),
         "target": _encode_target(site.target),
-        "arguments": site.arguments,
-        "keywords": site.keywords,
+        "arguments": _encode_arguments(site.arguments),
     }
 
 
@@ -327,6 +329,27 @@ def _decode_site(data: Mapping[str, Any]) -> CallSite:
         _string(data["caller"]),
         _decode_span(data["location"]),
         _decode_target(data["target"]),
-        _integer(data["arguments"]),
-        _integer(data["keywords"]),
+        _decode_arguments(data["arguments"]),
+    )
+
+
+def _encode_arguments(arguments: Arguments) -> dict[str, Any]:
+    return {
+        "positional": list(arguments.positional),
+        "keywords": [[name, value] for name, value in arguments.keywords],
+        "unpacked": arguments.unpacked,
+    }
+
+
+def _decode_arguments(data: Mapping[str, Any]) -> Arguments:
+    def denoted(value: Any) -> str | None:
+        return None if value is None else _string(value)
+
+    unpacked = data["unpacked"]
+    if not isinstance(unpacked, bool):
+        raise TypeError(f"expected a boolean, got {unpacked!r}")
+    return Arguments(
+        tuple(denoted(value) for value in data["positional"]),
+        tuple((_string(name), denoted(value)) for name, value in data["keywords"]),
+        unpacked,
     )

@@ -160,6 +160,10 @@ def _condition_entry(condition: Condition) -> dict[str, Any]:
         entry["argument"] = condition.argument
     if condition.values:
         entry["values"] = list(condition.values)
+    if condition.position is not None:
+        entry["position"] = condition.position
+    if condition.default:
+        entry["default"] = True
     return entry
 
 
@@ -193,13 +197,22 @@ def _entry_point(entry: Mapping[str, Any]) -> AdvisoryEntryPoint:
     return AdvisoryEntryPoint(
         SymbolId(str(entry["symbol"])),
         str(entry["justification"]),
-        tuple(
-            Condition(
-                str(c["kind"]),
-                str(c["text"]),
-                None if c.get("argument") is None else str(c["argument"]),
-                tuple(str(v) for v in c.get("values") or []),
-            )
-            for c in entry.get("conditions") or []
-        ),
+        tuple(_condition(c) for c in entry.get("conditions") or []),
+    )
+
+
+def _condition(entry: Mapping[str, Any]) -> Condition:
+    position = entry.get("position")
+    if position is not None and (not isinstance(position, int) or isinstance(position, bool) or position < 0):
+        raise TypeError(f"condition position must be a non-negative integer, got {position!r}")
+    default = entry.get("default", False)
+    if not isinstance(default, bool):
+        raise TypeError(f"condition default must be true or false, got {default!r}")
+    return Condition(
+        str(entry["kind"]),
+        str(entry["text"]),
+        None if entry.get("argument") is None else str(entry["argument"]),
+        tuple(str(v) for v in entry.get("values") or []),
+        position,
+        default,
     )

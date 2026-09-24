@@ -41,7 +41,14 @@ ADVISORY = Advisory(
             SymbolId("python.vulnlib.parse"),
             "calls _parser.parse_unsafe when mode is UNSAFE (commit 1234abc)",
             (
-                Condition("argument", "mode is UNSAFE, the default", argument="mode", values=("python.vulnlib.UNSAFE",)),
+                Condition(
+                    "argument",
+                    "mode is UNSAFE, the default",
+                    argument="mode",
+                    values=("python.vulnlib.UNSAFE",),
+                    position=1,
+                    default=True,
+                ),
                 Condition("semantic", "the document carries a custom tag"),
             ),
         ),

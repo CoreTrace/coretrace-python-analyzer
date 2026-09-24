@@ -1,7 +1,7 @@
 name = "vulnerable-dependency"
 version = "1.0.0"
 plugin_api = ">=1,<2"
-requires = ["dependency.graph"]
+requires = ["dependency.graph", "interprocedural.callgraph"]
 provides = ["vulnerability.vulnerable-dependency"]
 
 [entrypoint]
