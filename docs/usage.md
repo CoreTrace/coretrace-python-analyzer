@@ -101,7 +101,11 @@ confidence (`high`, `medium`, `low`).
 ### Taint flows
 
 Reported when attacker-controlled data reaches a sensitive call without passing through
-a sanitizer for that kind of sink.
+a sanitizer for that kind of sink. The sanitizer may also sit inside a project function
+the data goes through, like a helper that escapes before it answers, or a view that
+redirects to `reverse(...)`. It then protects every caller, on every path through the
+function where it is called. What a function stores into an object or a `nonlocal`
+variable is not treated that way yet.
 
 | Rule | Reached sink |
 |---|---|

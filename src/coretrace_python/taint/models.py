@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext, MissingInputError
+from coretrace_python.interprocedural import Clearing
 from coretrace_python.semantic.symbols import SymbolId
 
 
@@ -333,6 +334,17 @@ class ModelTable:
     def template_render(self, symbol: SymbolId) -> TemplateRender | None:
         found = self._by_symbol[TemplateRender].get(symbol)
         return found if isinstance(found, TemplateRender) else None
+
+    def clearing(self, escaped: frozenset[str] = frozenset()) -> Clearing:
+        """What calls clear from the data they return: every sanitizer its kinds, every
+        template render ``HTML`` when it names one of the ``escaped`` templates."""
+
+        return Clearing(
+            MappingProxyType({s.symbol: s.kinds.value for s in self.sanitizers}),
+            MappingProxyType({r.symbol: (r.position, r.keyword, TaintKind.HTML.value) for r in self.template_renders}),
+            # As call sites record a constant argument: the way Python writes it.
+            frozenset(repr(name) for name in escaped),
+        )
 
 
 class SecurityModelRegistry:
