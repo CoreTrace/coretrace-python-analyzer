@@ -9,7 +9,7 @@ and framework models narrow it down.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import ClassVar
 
@@ -25,10 +25,12 @@ from coretrace_python.ir.lowering import (
 from coretrace_python.ir.model import (
     Await,
     Call,
+    Constant,
     FunctionIR,
     GetAttr,
     GetItem,
     Global,
+    Instruction,
     MakeFunction,
     Symbol,
     Value,
@@ -59,12 +61,24 @@ Target = KnownFunction | ExternalSymbol | UnknownTarget
 
 
 @dataclass(frozen=True)
+class Arguments:
+    """What the arguments of a call denote: a symbol's canonical name
+    (``python.yaml.FullLoader``), a constant as Python writes it (``True``, ``'/static'``),
+    or None for anything else (a parameter, an expression). ``unpacked`` says the call
+    unpacks ``*args`` or ``**kwargs``, so an argument it does not give explicitly may
+    still be given; after ``*args`` no position is known, and ``positional`` is empty."""
+
+    positional: tuple[str | None, ...] = ()
+    keywords: tuple[tuple[str, str | None], ...] = ()
+    unpacked: bool = False
+
+
+@dataclass(frozen=True)
 class CallSite:
     caller: str
     location: SourceSpan
     target: Target
-    arguments: int
-    keywords: int
+    arguments: Arguments = field(default_factory=Arguments)
 
 
 @dataclass(frozen=True)
@@ -93,9 +107,7 @@ class CallGraph:
         self._names = {function.span: name for name, function in definitions.items()}
         self.unsupported = unsupported
         self._sites = MappingProxyType(dict(sites))
-        self._targets = {
-            (site.caller, site.location): site.target for found in sites.values() for site in found
-        }
+        self._at = {(site.caller, site.location): site for found in sites.values() for site in found}
         callers: dict[str, set[str]] = {name: set() for name in definitions}
         for found in sites.values():
             for site in found:
@@ -115,7 +127,14 @@ class CallGraph:
         return self._sites.get(caller, ())
 
     def target_at(self, caller: str, location: SourceSpan) -> Target:
-        return self._targets.get((caller, location), UnknownTarget())
+        site = self._at.get((caller, location))
+        return site.target if site is not None else UnknownTarget()
+
+    def arguments_at(self, caller: str, location: SourceSpan) -> Arguments:
+        """What the arguments of the call at ``location`` in ``caller`` denote."""
+
+        site = self._at.get((caller, location))
+        return site.arguments if site is not None else Arguments()
 
     def callees(self, caller: str) -> frozenset[str]:
         return frozenset(
@@ -163,6 +182,29 @@ def derive_symbols(
                     symbols[instruction.result] = symbol
                     changed = True
     return symbols
+
+
+# Conditions name short constants (``True``, ``None``, a mode); a log message or a query
+# passed as an argument is not recorded, so call sites stay small in the cache.
+MAX_CONSTANT_LENGTH = 64
+
+
+def _arguments(call: Call, symbols: Mapping[Value, SymbolId], defs: Mapping[Value, Instruction]) -> Arguments:
+    def denoted(value: Value) -> str | None:
+        symbol = symbols.get(value)
+        if symbol is not None:
+            return str(symbol)
+        made = defs.get(value)
+        if not isinstance(made, Constant):
+            return None
+        written = repr(made.value)
+        return written if len(written) <= MAX_CONSTANT_LENGTH else None
+
+    return Arguments(
+        () if call.starred else tuple(denoted(value) for value in call.arguments),
+        tuple((name, denoted(value)) for name, value in call.keywords if name is not None),
+        bool(call.starred) or any(name is None for name, _ in call.keywords),
+    )
 
 
 def resolve_targets(
@@ -339,6 +381,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 _typed_with_module_classes(function, ssa, classes),
                 bases,
             )
+            defs = {i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None}
             found: list[CallSite] = []
             for block in ssa.blocks:
                 for instruction in block.instructions:
@@ -348,8 +391,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                                 name,
                                 instruction.location,
                                 targets.get(instruction.callee, UnknownTarget()),
-                                len(instruction.arguments),
-                                len(instruction.keywords),
+                                _arguments(instruction, symbols[name], defs),
                             )
                         )
             sites[name] = tuple(found)

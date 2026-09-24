@@ -9,6 +9,7 @@ security knowledge: the taint engine decides which external symbols matter.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -26,6 +27,7 @@ from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
 from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.dataflow import DataflowProblem, Direction, solve
 from coretrace_python.interprocedural.callgraph import (
+    Arguments,
     CallGraph,
     CallGraphAnalysis,
     ExternalSymbol,
@@ -92,6 +94,8 @@ class ExternalCall:
     keyword_dependencies: Dependencies
     location: SourceSpan
     call_site: SourceSpan | None
+    # What the arguments of the call at ``location`` denote, where it is made.
+    arguments: Arguments = dataclasses.field(default_factory=Arguments)
 
 
 @dataclass(frozen=True)
@@ -334,6 +338,7 @@ class _DependenceProblem(DataflowProblem[State]):
                 keywords.parameters,
                 call.location,
                 None,
+                self.graph.arguments_at(self.name, call.location),
             )
             return everything | Dep(externals=frozenset({target.symbol}))
         if isinstance(target, KnownFunction):
@@ -416,6 +421,7 @@ class _DependenceProblem(DataflowProblem[State]):
                 mapped(reached.keyword_dependencies).parameters,
                 reached.location,
                 call.location,
+                reached.arguments,
             )
         made = self.defs.get(call.callee)
         values = (*receiver, *call.arguments, *(made.captured if isinstance(made, MakeFunction) else ()))
@@ -432,6 +438,7 @@ class _DependenceProblem(DataflowProblem[State]):
         keywords: Dependencies,
         location: SourceSpan,
         call_site: SourceSpan | None,
+        given: Arguments,
     ) -> None:
         key = (symbol, location, call_site)
         previous = self.external.get(key)
@@ -440,7 +447,7 @@ class _DependenceProblem(DataflowProblem[State]):
                 a | b for a, b in zip(previous.argument_dependencies, arguments, strict=False)
             )
             keywords |= previous.keyword_dependencies
-        self.external[key] = ExternalCall(symbol, arguments, keywords, location, call_site)
+        self.external[key] = ExternalCall(symbol, arguments, keywords, location, call_site, given)
 
 
 def summarize(

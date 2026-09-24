@@ -271,7 +271,8 @@ affected APIs that feed reachability and correlation:
           "symbol": "python.yaml.load",
           "justification": "same path when Loader is FullLoader",
           "conditions": [
-            {"kind": "argument", "text": "Loader is FullLoader", "argument": "Loader", "values": ["python.yaml.FullLoader"]},
+            {"kind": "argument", "text": "Loader is FullLoader, the default", "argument": "Loader", "position": 1,
+             "values": ["python.yaml.FullLoader", "python.yaml.loader.FullLoader"], "default": true},
             {"kind": "semantic", "text": "the document carries a python/object/apply tag"}
           ]
         }
@@ -285,17 +286,32 @@ affected APIs that feed reachability and correlation:
 
 `affected_symbols` are the functions the fix changed; `entry_points` the public APIs
 through which a project reaches them, each with the justification that ties it to the
-fix — the commit, or the call path — and the `conditions` under which it is affected: an
-argument value the engine can check, or a `semantic` condition it cannot yet, kept on the
-finding as pending review rather than dropped. A call to either kind of symbol is
-reachable. `modules` names the top-level modules the package installs, so the analyzer
-can tell an imported package from a merely required one; it defaults to the package name.
+fix — the commit, or the call path — and the `conditions` under which it is affected. A
+call to either kind of symbol is reachable. `modules` names the top-level modules the
+package installs, so the analyzer can tell an imported package from a merely required
+one; it defaults to the package name.
+
+An `argument` condition is decided at each call. It names the argument by keyword and,
+when it may be passed positionally, by `position` (counted from 0, the receiver of a
+method excluded); `values` are what makes the call affected, written as the analyzer
+sees arguments: a symbol by its canonical name (`python.yaml.FullLoader`, and every
+spelling a project may use, such as `python.yaml.loader.FullLoader`), a constant as
+Python writes it (`True`, `None`, `'/static'`); `default` says an absent argument means
+an affected value. A call passing another known value does not reach the vulnerability;
+a call passing a variable, or unpacking `*args` or `**kwargs`, leaves the condition
+pending review. A `semantic` condition — the document's tags, the platform, the
+template's origin — cannot be decided and is always pending review, never dropped.
 
 Every dependency finding records the highest level of evidence established in its
 `level` metadata: `declared` (the requirement allows a vulnerable version), `imported`
 (a module of the package is imported somewhere), `reachable` (an entry point or affected
-symbol is called) or `exploitable` (attacker input reaches it), with `entry_point`,
-`justification`, `conditions` and `conditions_pending_review` on the last two.
+symbol is called) or `exploitable` (attacker input reaches it). The last two carry
+`entry_point`, `justification`, `conditions`, and which of them the call meets
+(`conditions_met`) or leaves to review (`conditions_pending_review`). A requirement whose
+entry points are only called with arguments that contradict a condition stays
+`imported`, and its finding lists those calls in `ruled_out`
+(`app.views:12 python.yaml.load(Loader=python.yaml.SafeLoader)`), the evidence that
+they do not reach the vulnerability.
 
 A `coretrace-policy.toml` at the root, or the file passed with `--policy`, denies
 packages, requires pins and lists accepted advisories whose findings are dropped:
