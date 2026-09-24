@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- Django's `csrf.get_token` returns a token of letters and digits whatever the request holds, and `reverse`/`reverse_lazy` build a local path that attacker data in their arguments or query cannot turn into another host: the first is no longer an injection, the second no longer an open redirect. `reverse` still carries other kinds, since it leaves `'` unquoted (#132).
+
 ## 0.6.0 (2026-09-24)
 
 ### Reports

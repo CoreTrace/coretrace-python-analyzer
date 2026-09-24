@@ -74,21 +74,9 @@
     },
     {
       "file": "hc/accounts/views.py",
-      "line": 142,
-      "rule": "open-redirect",
-      "function": "_check_2fa"
-    },
-    {
-      "file": "hc/accounts/views.py",
       "line": 170,
       "rule": "open-redirect",
       "function": "login"
-    },
-    {
-      "file": "hc/accounts/views.py",
-      "line": 214,
-      "rule": "xss",
-      "function": "signup_csrf"
     },
     {
       "file": "hc/accounts/views.py",
@@ -212,33 +200,9 @@
     },
     {
       "file": "hc/front/views.py",
-      "line": 553,
-      "rule": "open-redirect",
-      "function": "add_check"
-    },
-    {
-      "file": "hc/front/views.py",
-      "line": 574,
-      "rule": "open-redirect",
-      "function": "update_name"
-    },
-    {
-      "file": "hc/front/views.py",
-      "line": 670,
-      "rule": "open-redirect",
-      "function": "update_timeout"
-    },
-    {
-      "file": "hc/front/views.py",
       "line": 814,
       "rule": "xss",
       "function": "ping_body"
-    },
-    {
-      "file": "hc/front/views.py",
-      "line": 1115,
-      "rule": "open-redirect",
-      "function": "copy"
     },
     {
       "file": "hc/integrations/discord/tests/test_add_complete.py",
