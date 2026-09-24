@@ -119,6 +119,7 @@ class DjangoModels(ModelPlugin):
         Sink(_sym("django.http.HttpResponseRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
         Sink(_sym("django.http.HttpResponsePermanentRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
         Sanitizer(_sym("django.utils.html.escape"), TaintKind.HTML),
+        Sanitizer(_sym("django.utils.html.conditional_escape"), TaintKind.HTML),
         # The masked CSRF secret: ASCII letters and digits only, a malformed cookie is
         # replaced before it is used.
         Sanitizer(_sym("django.middleware.csrf.get_token"), TaintKind.ALL),
@@ -126,7 +127,6 @@ class DjangoModels(ModelPlugin):
         # in its arguments or query reaches no other host through a redirect.
         *(Sanitizer(_sym(f"django.urls.{name}"), TaintKind.REDIRECT) for name in ("reverse", "reverse_lazy")),
         *(Sanitizer(_sym(f"django.urls.base.{name}"), TaintKind.REDIRECT) for name in ("reverse", "reverse_lazy")),
-        Sanitizer(_sym("django.utils.html.conditional_escape"), TaintKind.HTML),
         *(AuthorizationGuard(_sym(decorator), label) for decorator, label in _AUTHORIZATION_DECORATORS),
         # ``urlpatterns = [path('login/', views.log_in)]``: the referenced view is an
         # entry point wherever it is defined; routers register viewsets.
