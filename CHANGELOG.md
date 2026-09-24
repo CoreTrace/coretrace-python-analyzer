@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- A `Validator` model may name a function of the project by its project symbol (`python.hc.accounts.views._allow_redirect`), and the refutation recognises it in its own module too, where a call to it has no imported symbol. A project can thus declare its own validation helpers, and a flow they guard is refuted (#134).
+
 ## 0.7.0 (2026-09-25)
 
 ### Precision
