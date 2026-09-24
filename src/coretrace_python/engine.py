@@ -201,6 +201,8 @@ class ProjectAnalysis:
     coverage: Coverage = field(default_factory=Coverage)
     # Findings silenced by an inline ``# coretrace: ignore`` comment.
     suppressed: tuple[Finding, ...] = ()
+    # Findings about an advisory the policy accepts, still evidence of what is reached.
+    accepted: tuple[Finding, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -474,6 +476,7 @@ def analyze_project(
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings = list(apply_refinement(plugin, findings, plugin.refine(context, tuple(findings))))
+    accepted = tuple(f for f in findings if policy.accepts(f))
     kept, suppressed = partition(apply_policy(policy, findings), _text_of(sources))
     return ProjectAnalysis(
         graph,
@@ -485,6 +488,7 @@ def analyze_project(
         advisories,
         Coverage(tuple(sorted(coverage, key=lambda c: c.path))),
         suppressed,
+        accepted,
     )
 
 

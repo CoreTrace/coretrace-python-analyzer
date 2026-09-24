@@ -1,7 +1,8 @@
 """Dependency resolution (architecture §26).
 
 Requirements declared in ``requirements.txt``, ``pyproject.toml`` (PEP 621 and Poetry)
-and pinned in ``poetry.lock`` or ``uv.lock`` become a ``DependencyGraph``. Versions are
+and pinned in ``poetry.lock`` or ``uv.lock`` become a ``DependencyGraph``; a lock file
+also tells which other packages require each package. Versions are
 compared with a small PEP 440 subset (``==``, ``!=``, ``<``, ``<=``, ``>``, ``>=``,
 ``~=`` and Poetry's ``^``), enough to decide whether a requirement may allow a version an
 advisory marks as vulnerable. Nothing is downloaded.
@@ -11,9 +12,9 @@ from __future__ import annotations
 
 import re
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from pathlib import PurePath
+from pathlib import PurePath, PurePosixPath
 from types import MappingProxyType
 from typing import Any, ClassVar
 
@@ -219,9 +220,15 @@ class Advisory:
 
 
 class DependencyGraph:
-    def __init__(self, requirements: Mapping[str, Requirement] | None = None, errors: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        requirements: Mapping[str, Requirement] | None = None,
+        errors: tuple[str, ...] = (),
+        dependents: Mapping[str, frozenset[str]] | None = None,
+    ) -> None:
         self._requirements = MappingProxyType(dict(sorted((requirements or {}).items())))
         self.errors = errors
+        self._dependents = MappingProxyType(dict(dependents or {}))
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -233,6 +240,12 @@ class DependencyGraph:
 
     def requirement(self, name: str) -> Requirement | None:
         return self._requirements.get(normalize(name))
+
+    def required_by(self, name: str) -> frozenset[str] | None:
+        """The other packages a lock file shows requiring ``name`` — an empty set when
+        only the project does — or None when no lock file mentions it."""
+
+        return self._dependents.get(normalize(name))
 
     def merge(self, other: DependencyGraph) -> DependencyGraph:
         merged = dict(self._requirements)
@@ -248,7 +261,10 @@ class DependencyGraph:
                 requirement.pinned or current.pinned,
                 current.optional and requirement.optional,
             )
-        return DependencyGraph(merged, self.errors + other.errors)
+        dependents = dict(self._dependents)
+        for name, found in other._dependents.items():
+            dependents[name] = dependents.get(name, frozenset()) | found
+        return DependencyGraph(merged, self.errors + other.errors, dependents)
 
 
 def parse_dependencies(source: SourceFile) -> DependencyGraph:
@@ -260,7 +276,7 @@ def parse_dependencies(source: SourceFile) -> DependencyGraph:
     if name == "pyproject.toml":
         return _parse_toml(source, _pyproject_requirements)
     if name in ("poetry.lock", "uv.lock"):
-        return _parse_toml(source, _lock_requirements)
+        return _parse_toml(source, _lock_requirements, _lock_dependents)
     return DependencyGraph()
 
 
@@ -276,7 +292,7 @@ def _parse_requirements_txt(source: SourceFile) -> DependencyGraph:
     return DependencyGraph(found)
 
 
-def _parse_toml(source: SourceFile, extract: Any) -> DependencyGraph:
+def _parse_toml(source: SourceFile, extract: Any, dependents: Any = None) -> DependencyGraph:
     try:
         data = tomllib.loads(source.text)
     except tomllib.TOMLDecodeError as error:
@@ -284,7 +300,7 @@ def _parse_toml(source: SourceFile, extract: Any) -> DependencyGraph:
     found: dict[str, Requirement] = {}
     for requirement in extract(data, source):
         found[requirement.name] = requirement
-    return DependencyGraph(found)
+    return DependencyGraph(found, dependents=None if dependents is None else dependents(data))
 
 
 def _line_of(source: SourceFile, key: str, default: int = 1) -> int:
@@ -333,6 +349,52 @@ def _lock_requirements(data: Mapping[str, Any], source: SourceFile) -> list[Requ
             Requirement(normalize(name), "", SourceSpan(source.source_id, line, 1), Version.parse(version))
         )
     return found
+
+
+def _lock_dependents(data: Mapping[str, Any]) -> dict[str, frozenset[str]]:
+    """For every package a lock file lists or requires, the other locked packages that
+    require it, optional extras and development groups included. The project's own
+    packages — uv's editable or virtual sources inside the project — are not others."""
+
+    dependents: dict[str, set[str]] = {}
+    for package in data.get("package", []) or []:
+        name = package.get("name")
+        if not isinstance(name, str):
+            continue
+        dependents.setdefault(normalize(name), set())
+        own = _is_project_package(package)
+        for dependency in _locked_dependencies(package):
+            found = dependents.setdefault(dependency, set())
+            if not own:
+                found.add(normalize(name))
+    return {name: frozenset(found) for name, found in dependents.items()}
+
+
+def _locked_dependencies(package: Mapping[str, Any]) -> Iterator[str]:
+    declared = package.get("dependencies") or []
+    if isinstance(declared, Mapping):  # poetry.lock: ``name = specifier``, optional ones too
+        yield from (normalize(str(name)) for name in declared)
+        return
+    groups = (
+        declared,
+        *(package.get("optional-dependencies") or {}).values(),
+        *(package.get("dev-dependencies") or {}).values(),
+    )
+    for group in groups:
+        for entry in group or []:
+            if isinstance(entry, Mapping) and isinstance(entry.get("name"), str):
+                yield normalize(entry["name"])
+
+
+def _is_project_package(package: Mapping[str, Any]) -> bool:
+    source = package.get("source")
+    if not isinstance(source, Mapping):
+        return False
+    path = source.get("editable", source.get("virtual"))
+    if not isinstance(path, str):
+        return False
+    location = PurePosixPath(path)
+    return not location.is_absolute() and ".." not in location.parts
 
 
 class DependencyAnalysis(Analysis[DependencyGraph]):

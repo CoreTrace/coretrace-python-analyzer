@@ -22,6 +22,7 @@ from coretrace_python.dependency.graph import (
 )
 from coretrace_python.dependency.policy import POLICY_FILE, Policy, apply_policy, load_policy
 from coretrace_python.dependency.sbom import render_sbom
+from coretrace_python.dependency.vex import render_vex
 
 __all__ = [
     "ADVISORY_FILE",
@@ -45,4 +46,5 @@ __all__ = [
     "parse_dependencies",
     "read_osv",
     "render_sbom",
+    "render_vex",
 ]
