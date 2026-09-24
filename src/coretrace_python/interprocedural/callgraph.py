@@ -67,6 +67,17 @@ class CallSite:
     keywords: int
 
 
+@dataclass(frozen=True)
+class ModuleFunction:
+    """One function of a module as a project plugin sees it: the name the call graph
+    gives it (``Class.method``, ``outer.inner``, ``<module>``), where it is, and the label
+    of the entry point it is (``http`` for a route, ``argv`` for a command), if any."""
+
+    name: str
+    span: SourceSpan
+    entry_point: str | None = None
+
+
 class CallGraph:
     def __init__(
         self,

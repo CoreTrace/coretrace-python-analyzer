@@ -278,7 +278,7 @@ def test_mutations_round_trip_through_the_cache_codec() -> None:
 
     summary = summary_of("def fill(items):\n    items.append(input())\n", "fill")
 
-    restored = decode(json.loads(json.dumps(encode(CachedModule(("fill",), {"fill": summary}, (), ())))))
+    restored = decode(json.loads(json.dumps(encode(CachedModule((), {"fill": summary}, (), ())))))
 
     assert restored.summaries["fill"] == summary
 

@@ -356,3 +356,102 @@ def test_a_refinement_may_only_reclassify(tmp_path: Path, tamper: str) -> None:
 
     with pytest.raises(RefinementError, match="tampering"):
         engine.analyze_project(root, [PLUGINS], plugins=[Tampering()])
+
+
+# --------------------------------------------------------------------------- functions and entry points
+
+
+WEB = (
+    "from flask import Flask\n"
+    "\n"
+    "app = Flask(__name__)\n"
+    "\n"
+    "@app.route('/')\n"
+    "def index():\n"
+    "    return helper()\n"
+    "\n"
+    "def helper():\n"
+    "    return 'x'\n"
+    "\n"
+    "class Admin:\n"
+    "    def get(self):\n"
+    "        return None\n"
+)
+
+
+def functions_seen(root: Path, **options: object) -> tuple[dict[str, dict[str, object]], object]:
+    """What a project plugin sees of each module's functions, by module then name, and the
+    analysis of the run."""
+
+    from coretrace_python.plugins import ProjectContext, ProjectPlugin
+
+    seen: dict[str, dict[str, object]] = {}
+
+    class Recorder(ProjectPlugin):
+        name = "recorder"
+
+        def analyze_project(self, ctx: ProjectContext) -> tuple[Finding, ...]:
+            for module in ctx.modules:
+                seen[module] = {f.name: f for f in ctx.functions(module)}
+            return ()
+
+    analysis = engine.analyze_project(root, [PLUGINS], plugins=[Recorder()], **options)  # type: ignore[arg-type]
+    return seen, analysis
+
+
+def test_project_plugins_see_every_function_with_its_span_and_entry_point(tmp_path: Path) -> None:
+    root = project(tmp_path, {"app/__init__.py": "", "app/web.py": WEB})
+
+    web = functions_seen(root)[0]["app.web"]
+
+    assert list(web) == ["<module>", "index", "helper", "Admin.get"]
+    assert {name: f.entry_point for name, f in web.items()} == {  # type: ignore[attr-defined]
+        "<module>": None,
+        "index": "http",
+        "helper": None,
+        "Admin.get": None,
+    }
+    assert [(f.span.start_line, f.span.end_line) for f in web.values()] == [(1, 14), (6, 7), (9, 10), (13, 14)]  # type: ignore[attr-defined]
+
+
+def test_a_view_registered_in_another_module_is_an_entry_point(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "shop/__init__.py": "",
+            "shop/views.py": "def index(request):\n    return 'x'\n\ndef internal():\n    return 'y'\n",
+            "shop/urls.py": "from django.urls import path\n\nfrom shop import views\n\nurlpatterns = [path('', views.index)]\n",
+        },
+    )
+
+    views = functions_seen(root)[0]["shop.views"]
+
+    assert views["index"].entry_point == "http"  # type: ignore[attr-defined]
+    assert views["internal"].entry_point is None  # type: ignore[attr-defined]
+
+
+def test_the_routes_of_an_app_made_by_a_factory_of_another_module_are_entry_points(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "app/__init__.py": "",
+            "app/factory.py": "from flask import Flask\n\ndef create_app():\n    return Flask(__name__)\n",
+            "app/web.py": "from app.factory import create_app\n\napp = create_app()\n\n@app.route('/')\ndef index():\n    return 'x'\n",
+        },
+    )
+
+    assert functions_seen(root)[0]["app.web"]["index"].entry_point == "http"  # type: ignore[attr-defined]
+
+
+def test_modules_served_from_the_cache_keep_their_functions_and_entry_points(tmp_path: Path) -> None:
+    from coretrace_python.cache import ProjectCache
+
+    root = project(tmp_path / "src", {"app/__init__.py": "", "app/web.py": WEB})
+    cache = ProjectCache(tmp_path / "cache")
+
+    first, _ = functions_seen(root, cache=cache)
+    second, analysis = functions_seen(root, cache=cache)
+
+    assert "app.web" in analysis.reused  # type: ignore[attr-defined]
+    assert second == first
+    assert second["app.web"]["index"].entry_point == "http"  # type: ignore[attr-defined]

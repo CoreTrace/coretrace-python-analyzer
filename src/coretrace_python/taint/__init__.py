@@ -1,6 +1,7 @@
 """Security models and the global multi-kind taint engine (architecture §16, §17)."""
 
 from coretrace_python.taint.engine import (
+    EntryPointAnalysis,
     Taint,
     TaintAnalysis,
     TaintFacts,
@@ -30,6 +31,7 @@ from coretrace_python.taint.routes import RegisteredRoutes, Routes, registered_r
 __all__ = [
     "AuthorizationGuard",
     "EntryPoint",
+    "EntryPointAnalysis",
     "Model",
     "ModelError",
     "ModelTable",

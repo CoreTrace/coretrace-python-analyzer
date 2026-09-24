@@ -222,9 +222,12 @@ rule. Findings carry a redacted preview only.
 
 Runs once per project after every module is analysed, with a `ProjectContext`: the
 module graph, the dependency graph, every advisory the plugins and advisory files
-contributed, the policy, the project root, and each module's imports and call graph. The
-shipped `vulnerable-dependency`, `reachable-vulnerability` and `dependency-policy` plugins
-are of this kind.
+contributed, the policy, the project root, and each module's imports, call graph and
+functions. `ctx.functions(module)` gives every function as the call graph names it
+(`Admin.get`, `outer.inner`, `<module>`), with its span, so a finding can be placed in
+one, and the label of the entry point it is (`http` for a route, `argv` for a command)
+when the models make it one. The shipped `vulnerable-dependency`,
+`reachable-vulnerability` and `dependency-policy` plugins are of this kind.
 
 ```python
 from collections.abc import Sequence
@@ -238,7 +241,7 @@ class RequirementsPresent(ProjectPlugin):
     name: ClassVar[str] = "requirements-present"
 
     def analyze_project(self, ctx: ProjectContext) -> Sequence[Finding]:
-        return ()  # inspect ctx.dependencies, ctx.modules(), ctx.call_graph(module)
+        return ()  # inspect ctx.dependencies, ctx.modules, ctx.call_graph(module), ctx.functions(module)
 ```
 
 ### Anything else: `Plugin`

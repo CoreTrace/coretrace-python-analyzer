@@ -22,7 +22,7 @@ from coretrace_python.abstract import (
     HeapLocation,
     mutated_by,
 )
-from coretrace_python.analysis import AnalysisContext, AnyAnalysis, FunctionAnalysis
+from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis, FunctionAnalysis
 from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.dataflow import DataflowProblem, Direction, solve
 from coretrace_python.hir import nodes
@@ -32,6 +32,7 @@ from coretrace_python.interprocedural import (
     ExternalSymbol,
     FunctionSummary,
     KnownFunction,
+    ModuleFunction,
     ProjectSummaries,
     SummaryAnalysis,
     SummaryIndex,
@@ -684,6 +685,41 @@ def entry_point_of(
     return None
 
 
+def function_entry_point(
+    function: nodes.Function,
+    module: nodes.Module,
+    models: ModelTable,
+    scopes: ScopeTable,
+    symbols: SymbolTable,
+    instances: Instances | None = None,
+    routes: Routes | None = None,
+) -> EntryPoint | None:
+    """The entry point ``function`` is: one of its decorators or, for a method, one of its
+    class's bases matching an entry-point model, or a registration elsewhere (``routes``)."""
+
+    owner = _owner(module, function)
+    enclosing_function = _enclosing(module, function)
+    if enclosing_function is not None:
+        # ``app = Flask(__name__)`` inside ``create_app``: routes defined there resolve.
+        instances = {**(instances or {}), **local_instances(enclosing_function, scopes, symbols)}
+    entry = entry_point_of(function, models, scopes, symbols, owner, instances)
+    if entry is None and routes:
+        qualified = function.name if owner is None else f"{owner.name}.{function.name}"
+        entry = routes.get(project_symbol(module.name, qualified))
+        if entry is None and owner is not None:
+            entry = routes.get(project_symbol(module.name, owner.name))
+    return entry
+
+
+def _owner(module: nodes.Module, function: nodes.Function) -> nodes.Class | None:
+    """The top-level class ``function`` is a method of, if any."""
+
+    return next(
+        (s for s in module.body if isinstance(s, nodes.Class) and any(f is function for f in s.body)),
+        None,
+    )
+
+
 def parameter_sources(
     function: nodes.Function,
     module: nodes.Module,
@@ -697,21 +733,9 @@ def parameter_sources(
     entry point (``self`` excepted for a method), including one registered elsewhere
     (``routes``), and every parameter annotated with a typed-parameter symbol."""
 
-    owner = next(
-        (s for s in module.body if isinstance(s, nodes.Class) and any(f is function for f in s.body)),
-        None,
-    )
+    owner = _owner(module, function)
     sources: dict[int, Source] = {}
-    enclosing_function = _enclosing(module, function)
-    if enclosing_function is not None:
-        # ``app = Flask(__name__)`` inside ``create_app``: routes defined there resolve.
-        instances = {**(instances or {}), **local_instances(enclosing_function, scopes, symbols)}
-    entry = entry_point_of(function, models, scopes, symbols, owner, instances)
-    if entry is None and routes:
-        qualified = function.name if owner is None else f"{owner.name}.{function.name}"
-        entry = routes.get(project_symbol(module.name, qualified))
-        if entry is None and owner is not None:
-            entry = routes.get(project_symbol(module.name, owner.name))
+    entry = function_entry_point(function, module, models, scopes, symbols, instances, routes)
     if entry is not None:
         first = 1 if owner is not None else 0
         for index in range(first, len(function.parameters)):
@@ -815,6 +839,38 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             seeds,
             ctx.module.name,
         )
+
+
+class EntryPointAnalysis(Analysis[tuple[ModuleFunction, ...]]):
+    """The module's functions as the call graph names them, each with its span and the
+    label of the entry point it is, decided as the taint engine decides which parameters
+    are attacker-controlled. What a project plugin sees of a module, cached with it."""
+
+    name: ClassVar[str] = "taint.entry_points"
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
+        {
+            CallGraphAnalysis,
+            SecurityModelAnalysis,
+            ScopeAnalysis,
+            SymbolAnalysis,
+            SummaryAnalysis,
+            ProjectSummaries,
+            RegisteredRoutes,
+        }
+    )
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> tuple[ModuleFunction, ...]:
+        graph = ctx.get(CallGraphAnalysis)
+        models = ctx.get(SecurityModelAnalysis)
+        scopes, symbols = ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)
+        instances = factory_instances(ctx.module, scopes, symbols, ctx.get(SummaryAnalysis), ctx.get(ProjectSummaries))
+        routes = ctx.get(RegisteredRoutes)
+        functions: list[ModuleFunction] = []
+        for name, function in graph.definitions.items():
+            entry = function_entry_point(function, ctx.module, models, scopes, symbols, instances, routes)
+            functions.append(ModuleFunction(name, function.span, entry.label if entry is not None else None))
+        return tuple(functions)
 
 
 def self_seeds(

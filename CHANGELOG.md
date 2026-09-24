@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- `ProjectContext.functions(module)` gives project plugins every function of a module as its call graph names it, with its span and the label of the entry point it is (`http` for a route, `argv` for a command), decided by the taint engine's own rule; modules served from the cache keep them, and the cache format is bumped (#116).
+
 ## 0.4.0 (2026-09-24)
 
 ### Analysis
