@@ -87,11 +87,13 @@ EMPTY = Dep()
 
 @dataclass(frozen=True)
 class ExternalCall:
-    """An external symbol reached from this function; dependencies are parameter indices."""
+    """An external symbol reached from this function; dependencies are parameter indices.
+    Keyword arguments keep their name, so a sink reading ``url=`` only can be decided;
+    ``*args`` and ``**kwargs`` have none."""
 
     symbol: SymbolId
     argument_dependencies: tuple[Dependencies, ...]
-    keyword_dependencies: Dependencies
+    keyword_dependencies: tuple[tuple[str | None, Dependencies], ...]
     location: SourceSpan
     call_site: SourceSpan | None
     # What the arguments of the call at ``location`` denote, where it is made.
@@ -313,9 +315,13 @@ class _DependenceProblem(DataflowProblem[State]):
 
     def call(self, call: Call, state: dict[Key, Dep]) -> Dep:
         arguments = tuple(self.deep(a, state) for a in call.arguments)
+        named = (
+            *((name, self.deep(value, state)) for name, value in call.keywords),
+            *((None, self.deep(value, state)) for value in call.starred),
+        )
         keywords = EMPTY
-        for value in (*call.starred, *(v for _, v in call.keywords)):
-            keywords |= self.deep(value, state)
+        for _, deps in named:
+            keywords |= deps
         everything = keywords
         for deps in arguments:
             everything |= deps
@@ -335,7 +341,7 @@ class _DependenceProblem(DataflowProblem[State]):
             self.record(
                 target.symbol,
                 tuple(a.parameters for a in arguments),
-                keywords.parameters,
+                tuple((name, deps.parameters) for name, deps in named),
                 call.location,
                 None,
                 self.graph.arguments_at(self.name, call.location),
@@ -418,7 +424,7 @@ class _DependenceProblem(DataflowProblem[State]):
             self.record(
                 reached.symbol,
                 tuple(mapped(d).parameters for d in reached.argument_dependencies),
-                mapped(reached.keyword_dependencies).parameters,
+                tuple((name, mapped(d).parameters) for name, d in reached.keyword_dependencies),
                 reached.location,
                 call.location,
                 reached.arguments,
@@ -435,7 +441,7 @@ class _DependenceProblem(DataflowProblem[State]):
         self,
         symbol: SymbolId,
         arguments: tuple[Dependencies, ...],
-        keywords: Dependencies,
+        keywords: tuple[tuple[str | None, Dependencies], ...],
         location: SourceSpan,
         call_site: SourceSpan | None,
         given: Arguments,
@@ -446,7 +452,11 @@ class _DependenceProblem(DataflowProblem[State]):
             arguments = tuple(
                 a | b for a, b in zip(previous.argument_dependencies, arguments, strict=False)
             )
-            keywords |= previous.keyword_dependencies
+            # The same call records the same keywords, in the same order.
+            keywords = tuple(
+                (name, deps | old)
+                for (name, deps), (_, old) in zip(keywords, previous.keyword_dependencies, strict=False)
+            )
         self.external[key] = ExternalCall(symbol, arguments, keywords, location, call_site, given)
 
 

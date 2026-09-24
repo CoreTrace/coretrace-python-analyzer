@@ -5,6 +5,7 @@
 ### Precision
 
 - Django's `csrf.get_token` returns a token of letters and digits whatever the request holds, and `reverse`/`reverse_lazy` build a local path that attacker data in their arguments or query cannot turn into another host: the first is no longer an injection, the second no longer an open redirect. `reverse` still carries other kinds, since it leaves `'` unquoted (#132).
+- The SSRF sinks of Requests and httpx read the destination only: the URL (the first argument, the second after the method for `request` and `stream`, or `url=`) or the prepared request `send` takes. Attacker data in the body, the JSON, the headers or the query parameters is no longer a server-side request forgery. `Sink` gains `keywords` next to `positions`, and function summaries keep the name of each keyword argument, so a project function forwarding `url=` still reaches the sink; the cache format is bumped (#128).
 
 ## 0.6.0 (2026-09-24)
 

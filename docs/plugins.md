@@ -141,7 +141,7 @@ class BottleModels(ModelPlugin):
 | Model | Declares |
 |---|---|
 | `Source(symbol, label, kinds=ALL)` | A call or attribute whose value is attacker-controlled; `label` names it in messages (`http`, `stdin`, `argv`, `http-response`). `kinds` restricts what it can inject. |
-| `Sink(symbol, kinds, positions=())` | A call dangerous for `kinds`; `positions` limits a kind to given argument indexes, as SQL sinks read the statement only. |
+| `Sink(symbol, kinds, positions=(), keywords=())` | A call dangerous for `kinds`. `positions` limits a kind to the given argument indexes, and `keywords` to the given keyword names; a restricted kind reaches only the arguments listed there. SQL sinks read the statement only, and the SSRF sinks of HTTP clients read the URL, by position or as `url=`. A starred argument or `**kwargs` reaches no restricted kind. |
 | `Sanitizer(symbol, kinds)` | A call whose result is safe for `kinds`. |
 | `EntryPoint(symbol, label, kinds=ALL)` | A decorator or a class base whose functions receive their parameters as `label` input, such as `flask.Flask.route`. |
 | `TypedParameter(symbol, label, kinds=ALL)` | A class whose annotated parameters carry `label` input, such as Django's `HttpRequest`. |
@@ -153,7 +153,7 @@ class BottleModels(ModelPlugin):
 | `AuthorizationGuard(symbol, label)` | A decorator or a condition restricting who reaches the code, such as `login_required`; a flow behind it is a hotspot. |
 
 Two plugins may describe the same symbol. An identical model is registered once; two
-`Sink` models merge their kinds and positions, so a plugin can add `SQL` to a sink
+`Sink` models merge their kinds, positions and keywords, so a plugin can add `SQL` to a sink
 another plugin declared for `COMMAND`; any other difference is a conflict that stops
 the analysis with a `ModelError` naming both plugins.
 
