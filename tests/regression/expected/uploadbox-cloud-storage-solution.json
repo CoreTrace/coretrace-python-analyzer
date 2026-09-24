@@ -16,31 +16,36 @@
       "file": "app.py",
       "line": 139,
       "rule": "path-traversal",
-      "function": "upload_file"
+      "function": "upload_file",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
       "line": 150,
       "rule": "path-traversal",
-      "function": "download_file"
+      "function": "download_file",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
       "line": 161,
       "rule": "path-traversal",
-      "function": "delete_file"
+      "function": "delete_file",
+      "verdict": "hotspot"
     },
     {
       "file": "db.py",
       "line": 24,
       "rule": "plaintext-credential-storage",
-      "function": "register_user"
+      "function": "register_user",
+      "verdict": "vulnerability"
     },
     {
       "file": "db.py",
       "line": 31,
       "rule": "plaintext-credential-storage",
-      "function": "login_user"
+      "function": "login_user",
+      "verdict": "vulnerability"
     },
     {
       "file": "requirements.txt",

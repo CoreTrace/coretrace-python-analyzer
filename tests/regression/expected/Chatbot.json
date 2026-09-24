@@ -16,7 +16,8 @@
       "file": "setup.py",
       "line": 48,
       "rule": "command-injection",
-      "function": "install_ollama"
+      "function": "install_ollama",
+      "verdict": "vulnerability"
     }
   ]
 }

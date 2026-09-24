@@ -10,7 +10,8 @@
       "file": "authentication/views.py",
       "line": 57,
       "rule": "sql-injection",
-      "function": "log_in"
+      "function": "log_in",
+      "verdict": "vulnerability"
     },
     {
       "file": "djangogoat/settings.py",

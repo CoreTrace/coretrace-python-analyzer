@@ -40,7 +40,8 @@
       "file": "backend/app/api/routes/login.py",
       "line": 121,
       "rule": "xss",
-      "function": "recover_password_html_content"
+      "function": "recover_password_html_content",
+      "verdict": "hotspot"
     },
     {
       "file": "backend/tests/api/routes/test_login.py",

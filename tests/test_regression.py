@@ -2,8 +2,9 @@
 
 Every repository listed in ``tests/regression/repositories.toml`` is checked out at its
 pinned commit, analysed with the bundled plugins and compared with the snapshot recorded
-in ``tests/regression/expected/<name>.json``: the findings (file, line, rule, function)
-and the coverage. A change in either is a regression, or an intended change to record
+in ``tests/regression/expected/<name>.json``: the findings (file, line, rule, function,
+and the verdict of a taint finding) and the coverage. A change in either is a
+regression, or an intended change to record
 with ``CORETRACE_REGRESSION_UPDATE=1``. Checkouts are kept under
 ``CORETRACE_REGRESSION_ROOT`` (default ``.regression/`` at the repository root).
 
@@ -83,10 +84,12 @@ def snapshot(path: Path) -> dict[str, object]:
                 "line": f.span.start_line,
                 "rule": f.rule_id,
                 "function": f.function,
+                # A verdict decides the confidence: a change of it is a change to review.
+                **({"verdict": f.metadata["verdict"]} if "verdict" in f.metadata else {}),
             }
             for f in analysis.findings
         ),
-        key=lambda f: (f["file"], f["line"], f["rule"], f["function"] or ""),
+        key=lambda f: (f["file"], f["line"], f["rule"], f["function"] or "", f.get("verdict", "")),
     )
     return {
         "coverage": {

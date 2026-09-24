@@ -8,10 +8,13 @@ and ``not`` combine as expected, a ``Validator`` model names a callable whose tr
 one of its arguments, a numeric value (``abstract.ranges``) cannot inject, and anything
 else that mentions the value is a guard that does not prove it. A proof counts for an
 origin when every dependence path from that origin to the sink argument goes through a
-proven value. A flow is refuted when every tainted origin is proven safe or the sink is
-unreachable, a hotspot when it sits behind an ``AuthorizationGuard`` (a decorator or a
-dominating condition) or when an unproven guard mentions it, and a vulnerability
-otherwise.
+proven value. A guard mentions an origin only when it examines what the sink receives:
+reading another attribute or item of an object the flow reads (``request.method`` next
+to ``request.POST``) examines nothing of it, while the same attribute, or a method called
+on the object (``form.is_valid()``), does. A flow is refuted when every tainted origin is
+proven safe or the sink is unreachable, a hotspot when it sits behind an
+``AuthorizationGuard`` (a decorator or a dominating condition) or when an unproven guard
+mentions it, and a vulnerability otherwise.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from coretrace_python.ir.model import (
     Constant,
     FunctionIR,
     GetAttr,
+    GetItem,
     Instruction,
     UnaryOp,
     Value,
@@ -267,6 +271,66 @@ class _Judge:
                         return tested, "equals a constant", definition.operator == "eq"
         return None
 
+    def examined(
+        self, condition: Value, mentioned: set[Value], argument: Value, chain: frozenset[Value]
+    ) -> set[Value]:
+        """What the guard examines of the values it mentions: everything its condition is
+        computed from, except an object it only reads another attribute or item of than
+        the flow reads (``request`` in ``request.method`` when the sink receives
+        ``request.POST['cmd']``). A method called on the object (``form.is_valid()``), the
+        same attribute or item, or any part of an object the flow takes whole (passes to
+        the sink or to a call), examines it."""
+
+        reads = {self.access(value) for value in chain} - {None}
+        whole = {argument} | {
+            operand
+            for value in chain
+            if (definition := self.defs.get(value)) is not None
+            for operand in definition.operands()
+            if not (isinstance(definition, GetAttr | GetItem) and definition.object == operand)
+        }
+        found: set[Value] = set()
+        called: set[Value] = set()
+        pending = [condition]
+        while pending:
+            value = pending.pop()
+            if value in found:
+                continue
+            found.add(value)
+            definition = self.defs.get(value)
+            if definition is None:
+                continue
+            if isinstance(definition, Call):
+                called.add(definition.callee)
+            access = None if value in called else self.access(value)
+            for operand in definition.operands():
+                if access is not None and access[0] == operand and operand not in whole and self.aside(access, reads):
+                    continue
+                pending.append(operand)
+        return found & mentioned
+
+    @staticmethod
+    def aside(access: tuple[Value, str, object], reads: set[tuple[Value, str, object] | None]) -> bool:
+        """Whether reading ``access`` reads beside what the flow reads of the same object;
+        an item under a key unknown on either side may be the same one."""
+
+        owner, kind, name = access
+        if kind == "item" and (name is None or (owner, "item", None) in reads):
+            return False
+        return access not in reads
+
+    def access(self, value: Value) -> tuple[Value, str, object] | None:
+        """``(object, "attribute" or "item", name or constant key)`` for a read of an
+        attribute or an item; ``None`` for any other value, and as the key when unknown."""
+
+        definition = self.defs.get(value)
+        if isinstance(definition, GetAttr):
+            return definition.object, "attribute", definition.attribute
+        if isinstance(definition, GetItem):
+            key = self.defs.get(definition.key)
+            return definition.object, "item", key.value if isinstance(key, Constant) else None
+        return None
+
     def is_constant_collection(self, value: Value) -> bool:
         definition = self.defs.get(value)
         if isinstance(definition, Constant):
@@ -326,8 +390,9 @@ class _Judge:
             for value, reason in found.items():
                 if value in chain:
                     proven.setdefault(value, reason)
+            examined = self.examined(guard.condition, mentioned, flow.argument, chain)
             for origin in origins:
-                if origin not in mentions and mentioned & (
+                if origin not in mentions and examined & (
                     {origin} | {w for w in chain if origin in self.closure(w)}
                 ):
                     mentions[origin] = guard.line

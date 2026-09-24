@@ -16,13 +16,15 @@
       "file": "docs/contributors/fetch.py",
       "line": 266,
       "rule": "command-injection",
-      "function": "<module>"
+      "function": "<module>",
+      "verdict": "vulnerability"
     },
     {
       "file": "httpie/client.py",
       "line": 114,
       "rule": "ssrf",
-      "function": "collect_messages"
+      "function": "collect_messages",
+      "verdict": "vulnerability"
     },
     {
       "file": "httpie/internal/update_warnings.py",

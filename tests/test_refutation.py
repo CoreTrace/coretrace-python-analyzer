@@ -164,6 +164,31 @@ def test_non_validating_guards_make_a_hotspot() -> None:
     assert "guard" in truthy.evidence
 
 
+def test_a_guard_on_another_attribute_of_the_tainted_object_is_no_guard() -> None:
+    # ``request.method == 'POST'`` says nothing of what ``request.POST[...]`` holds.
+    method = only(verdicts("def run():\n    req = input()\n    if req.method == 'POST':\n        os.system(req.data)\n"))
+    user = only(verdicts("def run():\n    req = input()\n    if req.user.is_authenticated:\n        os.system(req.data)\n"))
+    key = only(verdicts("def run():\n    req = input()\n    if req['mode'] == 'x':\n        os.system(req['cmd'])\n"))
+
+    assert method.status is user.status is key.status is Status.VULNERABILITY
+
+
+def test_a_guard_on_what_the_sink_receives_stays_a_guard() -> None:
+    # Reading the same attribute again, or calling a method on the value, examines it.
+    reread = only(verdicts("def run():\n    req = input()\n    if req.data:\n        os.system(req.data)\n"))
+    key = only(verdicts("def run():\n    req = input()\n    if req['cmd']:\n        os.system(req['cmd'])\n"))
+    form = only(
+        verdicts("def run():\n    form = input()\n    if form.is_valid():\n        os.system(form.cleaned_data)\n")
+    )
+    transformed = only(
+        verdicts("def run():\n    q = input()\n    if not allowed(q.lower()):\n        return\n    os.system(q)\n")
+    )
+    # Passed whole, the object may reach the sink by any attribute, the method included.
+    whole = only(verdicts("def run():\n    req = input()\n    if req.method == 'POST':\n        os.system(req)\n"))
+
+    assert reread.status is key.status is form.status is transformed.status is whole.status is Status.HOTSPOT
+
+
 def test_guards_on_unrelated_values_are_ignored() -> None:
     verdict = only(
         verdicts("def run(flag):\n    cmd = input()\n    if flag.isdigit():\n        os.system(cmd)\n")

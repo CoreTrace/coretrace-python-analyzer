@@ -10,13 +10,15 @@
       "file": "app/admin.py",
       "line": 45,
       "rule": "insecure-deserialization",
-      "function": "insecure_deserialize"
+      "function": "insecure_deserialize",
+      "verdict": "vulnerability"
     },
     {
       "file": "app/command.py",
       "line": 12,
       "rule": "command-injection",
-      "function": "execute"
+      "function": "execute",
+      "verdict": "vulnerability"
     },
     {
       "file": "app/config.py",
@@ -34,25 +36,29 @@
       "file": "app/redirect.py",
       "line": 11,
       "rule": "open-redirect",
-      "function": "redirect"
+      "function": "redirect",
+      "verdict": "vulnerability"
     },
     {
       "file": "app/ssrf.py",
       "line": 12,
       "rule": "ssrf",
-      "function": "proxy"
+      "function": "proxy",
+      "verdict": "vulnerability"
     },
     {
       "file": "app/upload.py",
       "line": 36,
       "rule": "path-traversal",
-      "function": "upload"
+      "function": "upload",
+      "verdict": "hotspot"
     },
     {
       "file": "app/users.py",
       "line": 36,
       "rule": "sql-injection",
-      "function": "search_users"
+      "function": "search_users",
+      "verdict": "hotspot"
     }
   ]
 }

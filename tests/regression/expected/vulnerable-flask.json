@@ -22,31 +22,36 @@
       "file": "app.py",
       "line": 44,
       "rule": "command-injection",
-      "function": "command_injection"
+      "function": "command_injection",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
       "line": 50,
       "rule": "sql-injection",
-      "function": "sql_injection"
+      "function": "sql_injection",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
       "line": 55,
       "rule": "path-traversal",
-      "function": "path_traversal"
+      "function": "path_traversal",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
       "line": 60,
       "rule": "ssrf",
-      "function": "server_side_request_forgery"
+      "function": "server_side_request_forgery",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
       "line": 66,
       "rule": "xss",
-      "function": "cross_site_scripting"
+      "function": "cross_site_scripting",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
