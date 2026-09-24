@@ -235,7 +235,7 @@ the directory of the checked file; a path outside it is printed as it is.
 ```json
 {
   "schema_version": 1,
-  "tool": {"name": "coretrace-python-analyzer", "version": "0.6.0"},
+  "tool": {"name": "coretrace-python-analyzer", "version": "0.7.0"},
   "root": "/home/me/project",
   "findings": [
     {
