@@ -25,10 +25,15 @@ from coretrace_python.analysis.provider import R
 from coretrace_python.dependency import Advisory, DependencyGraph, Policy
 from coretrace_python.findings import Finding
 from coretrace_python.hir import nodes
-from coretrace_python.interprocedural import CallGraph, CallGraphAnalysis, ModuleGraph
+from coretrace_python.interprocedural import (
+    CallGraph,
+    CallGraphAnalysis,
+    ModuleFunction,
+    ModuleGraph,
+)
 from coretrace_python.ir.lowering import analyzable_functions
 from coretrace_python.semantic.imports import ImportAnalysis, ImportTable
-from coretrace_python.taint import Model
+from coretrace_python.taint import EntryPointAnalysis, Model
 
 PLUGIN_API_VERSION = 1
 
@@ -57,8 +62,8 @@ class ModelPlugin(Plugin):
 class ProjectContext:
     """What a project-scoped plugin sees: the module graph, the dependency graph, the
     advisories every plugin and advisory file contributed, the dependency policy, and
-    each module's imports and call graph. The engine passes the call graphs of modules
-    it served from its cache."""
+    each module's imports, call graph and functions. The engine passes the call graphs
+    and functions of modules it served from its cache."""
 
     def __init__(
         self,
@@ -69,6 +74,7 @@ class ProjectContext:
         call_graphs: Mapping[str, CallGraph] | None = None,
         policy: Policy | None = None,
         root: Path | None = None,
+        functions: Mapping[str, tuple[ModuleFunction, ...]] | None = None,
     ) -> None:
         self.root = root
         self.graph = graph
@@ -77,6 +83,7 @@ class ProjectContext:
         self.policy = policy or Policy()
         self._managers = managers
         self._call_graphs = dict(call_graphs or {})
+        self._functions = dict(functions or {})
 
     @property
     def modules(self) -> tuple[str, ...]:
@@ -88,6 +95,13 @@ class ProjectContext:
     def call_graph(self, module: str) -> CallGraph:
         cached = self._call_graphs.get(module)
         return cached if cached is not None else self._managers[module].get(CallGraphAnalysis)
+
+    def functions(self, module: str) -> tuple[ModuleFunction, ...]:
+        """The module's functions as its call graph names them, each with its span, so a
+        finding can be placed in one, and the label of the entry point it is, if any."""
+
+        cached = self._functions.get(module)
+        return cached if cached is not None else self._managers[module].get(EntryPointAnalysis)
 
 
 class ProjectPlugin(Plugin):

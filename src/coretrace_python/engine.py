@@ -71,6 +71,7 @@ from coretrace_python.interprocedural import (
     CallGraphAnalysis,
     CallSite,
     FunctionSummary,
+    ModuleFunction,
     ModuleGraph,
     ProjectSummaries,
     SummaryAnalysis,
@@ -106,6 +107,7 @@ from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId
 from coretrace_python.source import SourceFile, SourceId, SourceManager, SourceSpan, decode_text
 from coretrace_python.taint import (
     EntryPoint,
+    EntryPointAnalysis,
     ModelTable,
     RegisteredRoutes,
     Routes,
@@ -139,6 +141,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     ProjectSummaries,
     SecurityModelAnalysis,
     TaintAnalysis,
+    EntryPointAnalysis,
     RefutationAnalysis,
     DependencyAnalysis,
     RegisteredRoutes,
@@ -147,7 +150,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
 
 # Named so the set stays right whichever analyses a build registers.
 _PROJECT_DEPENDANT_NAMES = frozenset(
-    {"interprocedural.project", "interprocedural.summaries", "taint.flows", "findings.refutation"}
+    {"interprocedural.project", "interprocedural.summaries", "taint.flows", "taint.entry_points", "findings.refutation"}
 )
 _PROJECT_DEPENDANTS: frozenset[AnyAnalysis] = frozenset(
     a for a in ALL_ANALYSES if a.name in _PROJECT_DEPENDANT_NAMES
@@ -451,6 +454,7 @@ def analyze_project(
 
     index = _seed(results, graph, frozenset())
     call_graphs: dict[str, CallGraph] = {}
+    functions: dict[str, tuple[ModuleFunction, ...]] = {}
     for name in sorted(analysable):
         entry = results[name]
         findings.extend(entry.findings)
@@ -458,11 +462,12 @@ def analyze_project(
         coverage.append(
             FileCoverage(str(files[name].source_id), "analysed", len(entry.functions), len(entry.functions) - unsupported)
         )
-        sites: dict[str, list[CallSite]] = {function: [] for function in entry.functions}
+        functions[name] = entry.functions
+        sites: dict[str, list[CallSite]] = {function.name: [] for function in entry.functions}
         for site in entry.sites:
             sites.setdefault(site.caller, []).append(site)
         call_graphs[name] = CallGraph({}, {f: tuple(s) for f, s in sites.items()}, frozenset())
-    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs, policy, root)
+    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs, policy, root, functions)
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
@@ -662,7 +667,7 @@ def _analyse_module(
                 )
             )
     return CachedModule(
-        graph.functions,
+        manager.get(EntryPointAnalysis),
         _summaries_of(manager),
         tuple(site for function in graph.functions for site in graph.sites(function)),
         (*findings, *correlated),

@@ -27,6 +27,7 @@ from coretrace_python.interprocedural import (
     ExternalSymbol,
     FunctionSummary,
     KnownFunction,
+    ModuleFunction,
     ModuleGraph,
     Mutation,
     NonlocalWrite,
@@ -37,14 +38,14 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 5
+CACHE_FORMAT = 6
 
 
 @dataclass(frozen=True)
 class CachedModule:
     """Everything a later run needs from one module without lowering it again."""
 
-    functions: tuple[str, ...]
+    functions: tuple[ModuleFunction, ...]
     summaries: Mapping[str, FunctionSummary]
     sites: tuple[CallSite, ...]
     findings: tuple[Finding, ...]
@@ -128,7 +129,7 @@ class ProjectCache:
 def encode(module: CachedModule) -> dict[str, Any]:
     return {
         "format": CACHE_FORMAT,
-        "functions": list(module.functions),
+        "functions": [[f.name, _encode_span(f.span), f.entry_point] for f in module.functions],
         "summaries": {name: _encode_summary(s) for name, s in module.summaries.items()},
         "sites": [_encode_site(site) for site in module.sites],
         "findings": [_encode_finding(finding) for finding in module.findings],
@@ -139,7 +140,7 @@ def decode(data: Mapping[str, Any]) -> CachedModule:
     if data["format"] != CACHE_FORMAT:
         raise ValueError(f"unsupported cache format {data['format']!r}")
     return CachedModule(
-        tuple(_string(name) for name in data["functions"]),
+        tuple(_decode_function(function) for function in data["functions"]),
         {_string(name): _decode_summary(s) for name, s in data["summaries"].items()},
         tuple(_decode_site(site) for site in data["sites"]),
         tuple(_decode_finding(finding) for finding in data["findings"]),
@@ -185,6 +186,11 @@ def _decode_span(data: Any) -> SourceSpan:
         None if end_line is None else _integer(end_line),
         None if end_column is None else _integer(end_column),
     )
+
+
+def _decode_function(data: Any) -> ModuleFunction:
+    name, span, entry_point = data
+    return ModuleFunction(_string(name), _decode_span(span), None if entry_point is None else _string(entry_point))
 
 
 def _encode_finding(finding: Finding) -> dict[str, Any]:

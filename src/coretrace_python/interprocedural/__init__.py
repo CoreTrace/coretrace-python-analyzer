@@ -6,6 +6,7 @@ from coretrace_python.interprocedural.callgraph import (
     CallSite,
     ExternalSymbol,
     KnownFunction,
+    ModuleFunction,
     Target,
     UnknownTarget,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "ExternalSymbol",
     "FunctionSummary",
     "KnownFunction",
+    "ModuleFunction",
     "ModuleGraph",
     "Mutation",
     "NonlocalWrite",
