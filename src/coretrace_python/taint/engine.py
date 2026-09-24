@@ -10,7 +10,7 @@ argument reaching a sink whose kinds it still carries is reported as a ``TaintFl
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import ClassVar
 
@@ -401,8 +401,12 @@ class _TaintProblem(DataflowProblem[State]):
         if sink is not None:
             for position, argument in enumerate(call.arguments):
                 self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, position, given)
-            for argument in (*call.starred, *(value for _, value in call.keywords)):
+            for argument in call.starred:
                 self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, None, given)
+            for name, argument in call.keywords:
+                self.report(
+                    flows, sink, self.rendered(argument, state), argument, call, None, None, None, given, keyword=name
+                )
         sanitizer = self.models.sanitizer(symbol)
         if sanitizer is not None:
             return everything.without(sanitizer.kinds)
@@ -424,7 +428,7 @@ class _TaintProblem(DataflowProblem[State]):
         if safe is None or given is None or not given[0] or given[1] not in safe.values:
             return sink
         kinds = sink.kinds & ~safe.kinds
-        return Sink(sink.symbol, kinds, sink.positions) if kinds else None
+        return replace(sink, kinds=kinds) if kinds else None
 
     def rendered(self, argument: Value, state: Mapping[Key, Taint]) -> Taint:
         """The taint an argument brings to a sink. A container literal is serialised by
@@ -497,11 +501,16 @@ class _TaintProblem(DataflowProblem[State]):
             sink = self.guarded(self.models.sink(reached.symbol), reached.arguments)
             if sink is None:
                 continue
-            positions: list[int | None] = [*range(len(reached.argument_dependencies)), None]
-            for position, deps in zip(positions, (*reached.argument_dependencies, reached.keyword_dependencies), strict=True):
+            for position, deps in enumerate(reached.argument_dependencies):
                 taint, witness = mapped(deps)
                 if witness is not None:
                     self.report(flows, sink, taint, witness, call, through, reached.location, position, reached.arguments)
+            for name, deps in reached.keyword_dependencies:
+                taint, witness = mapped(deps)
+                if witness is not None:
+                    self.report(
+                        flows, sink, taint, witness, call, through, reached.location, None, reached.arguments, keyword=name
+                    )
         for mutation in summary.mutations:
             if mutation.parameter < len(values):
                 stored = mapped(mutation.dependencies)[0]
@@ -528,8 +537,9 @@ class _TaintProblem(DataflowProblem[State]):
         sink_location: SourceSpan | None,
         position: int | None = None,
         arguments: Arguments | None = None,
+        keyword: str | None = None,
     ) -> None:
-        reaching = taint.kinds & sink.kinds_at(position)
+        reaching = taint.kinds & sink.kinds_at(position, keyword)
         if not reaching:
             return
         for source in sorted(taint.sources, key=lambda s: str(s.symbol)):

@@ -41,7 +41,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 8
+CACHE_FORMAT = 9
 
 
 @dataclass(frozen=True)
@@ -233,7 +233,7 @@ def _encode_call(call: ExternalCall) -> dict[str, Any]:
     return {
         "symbol": str(call.symbol),
         "arguments": [sorted(deps) for deps in call.argument_dependencies],
-        "keywords": sorted(call.keyword_dependencies),
+        "keywords": [[name, sorted(deps)] for name, deps in call.keyword_dependencies],
         "location": _encode_span(call.location),
         "call_site": None if call.call_site is None else _encode_span(call.call_site),
         "given": _encode_arguments(call.arguments),
@@ -245,7 +245,7 @@ def _decode_call(data: Mapping[str, Any]) -> ExternalCall:
     return ExternalCall(
         SymbolId(_string(data["symbol"])),
         tuple(_indices(deps) for deps in data["arguments"]),
-        _indices(data["keywords"]),
+        tuple((None if name is None else _string(name), _indices(deps)) for name, deps in data["keywords"]),
         _decode_span(data["location"]),
         None if site is None else _decode_span(site),
         _decode_arguments(data["given"]),

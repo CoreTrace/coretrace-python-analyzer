@@ -86,7 +86,16 @@ def test_findings_and_summaries_round_trip_through_json() -> None:
         "f",
         2,
         frozenset({0}),
-        (ExternalCall(SymbolId("python.os.system"), (frozenset({0}), frozenset()), frozenset({1}), span, None, arguments),),
+        (
+            ExternalCall(
+                SymbolId("python.os.system"),
+                (frozenset({0}), frozenset()),
+                (("url", frozenset({1})), (None, frozenset({0, 1}))),
+                span,
+                None,
+                arguments,
+            ),
+        ),
         False,
         frozenset({SymbolId("python.builtins.input")}),
     )
