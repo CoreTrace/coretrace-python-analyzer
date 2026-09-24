@@ -168,11 +168,16 @@ class Condition:
 @dataclass(frozen=True)
 class AdvisoryEntryPoint:
     """A public API through which a project reaches an affected symbol, justified by the
-    fixing commit or by a call path, with the conditions under which it is affected."""
+    fixing commit or by a call path, with the conditions under which it is affected.
+
+    An entry point is reached by a call, or — when ``read`` is set, for an attribute whose
+    getter runs the affected code, such as a lazily parsed request body — by any read of
+    it or of an attribute of it."""
 
     symbol: SymbolId
     justification: str
     conditions: tuple[Condition, ...] = ()
+    read: bool = False
 
 
 DIRECT = "affected symbol, changed by the fix"

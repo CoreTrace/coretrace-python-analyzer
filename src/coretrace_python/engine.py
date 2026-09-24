@@ -76,6 +76,7 @@ from coretrace_python.interprocedural import (
     ProjectSummaries,
     SummaryAnalysis,
     SummaryIndex,
+    SymbolRead,
     build_module_graph,
     discover_sources,
     project_symbol,
@@ -466,7 +467,15 @@ def analyze_project(
         sites: dict[str, list[CallSite]] = {function.name: [] for function in entry.functions}
         for site in entry.sites:
             sites.setdefault(site.caller, []).append(site)
-        call_graphs[name] = CallGraph({}, {f: tuple(s) for f, s in sites.items()}, frozenset())
+        reads: dict[str, list[SymbolRead]] = {}
+        for read in entry.reads:
+            reads.setdefault(read.function, []).append(read)
+        call_graphs[name] = CallGraph(
+            {},
+            {f: tuple(s) for f, s in sites.items()},
+            frozenset(),
+            reads={f: tuple(r) for f, r in reads.items()},
+        )
     context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs, policy, root, functions)
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
@@ -651,7 +660,8 @@ def _configuration_key(
 def _analyse_module(
     manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Affected
 ) -> CachedModule:
-    """One module's findings, summaries and call sites: what the cache keeps (§11)."""
+    """One module's findings, summaries, call sites and symbol reads: what the cache
+    keeps (§11)."""
 
     findings, supported = _check_module(manager, plugins)
     graph = manager.get(CallGraphAnalysis)
@@ -671,6 +681,7 @@ def _analyse_module(
         _summaries_of(manager),
         tuple(site for function in graph.functions for site in graph.sites(function)),
         (*findings, *correlated),
+        tuple(read for function in graph.functions for read in graph.reads(function)),
     )
 
 

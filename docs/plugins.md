@@ -227,8 +227,11 @@ contributed, the policy, the project root, and each module's imports, call graph
 functions. `ctx.functions(module)` gives every function as the call graph names it
 (`Admin.get`, `outer.inner`, `<module>`), with its span, so a finding can be placed in
 one, and the label of the entry point it is (`http` for a route, `argv` for a command)
-when the models make it one. The shipped `vulnerable-dependency`,
-`reachable-vulnerability` and `dependency-policy` plugins are of this kind.
+when the models make it one. `ctx.call_graph(module)` gives each function's call sites
+(`sites(function)`) and the symbols it reads, called or not (`reads(function)`: reading
+`request.form['name']` reads `python.flask.request.form`), each where it first reads it.
+The shipped `vulnerable-dependency`, `reachable-vulnerability` and `dependency-policy`
+plugins are of this kind.
 
 ```python
 from collections.abc import Sequence

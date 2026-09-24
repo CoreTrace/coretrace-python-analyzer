@@ -3,7 +3,8 @@
 Every call site of every analysable function resolves, through the SSA form, to a
 ``KnownFunction`` defined at module level, an ``ExternalSymbol`` reached through imports
 or builtins, or ``UnknownTarget`` (parameters, attributes, methods) until type inference
-and framework models narrow it down.
+and framework models narrow it down. The graph also keeps the symbols each function
+reads, called or not: reading ``request.form`` runs its getter.
 """
 
 from __future__ import annotations
@@ -94,6 +95,16 @@ class CallSite:
 
 
 @dataclass(frozen=True)
+class SymbolRead:
+    """Where ``function`` first reads ``symbol``: an imported name or an attribute of a
+    value denoting a symbol (``request.form`` in ``request.form['name']``)."""
+
+    function: str
+    location: SourceSpan
+    symbol: SymbolId
+
+
+@dataclass(frozen=True)
 class ModuleFunction:
     """One function of a module as a project plugin sees it: the name the call graph
     gives it (``Class.method``, ``outer.inner``, ``<module>``), where it is, and the label
@@ -111,8 +122,10 @@ class CallGraph:
         sites: Mapping[str, tuple[CallSite, ...]],
         unsupported: frozenset[str],
         symbols: Mapping[str, Mapping[Value, SymbolId]] | None = None,
+        reads: Mapping[str, tuple[SymbolRead, ...]] | None = None,
     ) -> None:
         self._symbols = {name: MappingProxyType(dict(found)) for name, found in (symbols or {}).items()}
+        self._reads = MappingProxyType(dict(reads or {}))
         self.definitions: Mapping[str, nodes.Function] = MappingProxyType(dict(definitions))
         # A graph rebuilt from cached call sites has sites but no definitions.
         self.functions = tuple(dict.fromkeys((*definitions, *sites)))
@@ -137,6 +150,11 @@ class CallGraph:
 
     def sites(self, caller: str) -> tuple[CallSite, ...]:
         return self._sites.get(caller, ())
+
+    def reads(self, function: str) -> tuple[SymbolRead, ...]:
+        """The symbols ``function`` reads, each where it first reads it."""
+
+        return self._reads.get(function, ())
 
     def target_at(self, caller: str, location: SourceSpan) -> Target:
         site = self._at.get((caller, location))
@@ -217,6 +235,22 @@ def _arguments(call: Call, symbols: Mapping[Value, SymbolId], defs: Mapping[Valu
         tuple((name, denoted(value)) for name, value in call.keywords if name is not None),
         bool(call.starred) or any(name is None for name, _ in call.keywords),
     )
+
+
+def _reads(name: str, function: FunctionIR, symbols: Mapping[Value, SymbolId]) -> tuple[SymbolRead, ...]:
+    first: dict[SymbolId, SymbolRead] = {}
+    for block in function.blocks:
+        for instruction in block.instructions:
+            if isinstance(instruction, Symbol | GetAttr) and instruction.result in symbols:
+                read = SymbolRead(name, instruction.location, symbols[instruction.result])
+                known = first.get(read.symbol)
+                if known is None or _position(read.location) < _position(known.location):
+                    first[read.symbol] = read
+    return tuple(sorted(first.values(), key=lambda read: (_position(read.location), str(read.symbol))))
+
+
+def _position(span: SourceSpan) -> tuple[int, int]:
+    return span.start_line, span.start_column
 
 
 def resolve_targets(
@@ -371,6 +405,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                         break
         sites: dict[str, tuple[CallSite, ...]] = {}
         symbols: dict[str, Mapping[Value, SymbolId]] = {}
+        reads: dict[str, tuple[SymbolRead, ...]] = {}
         unsupported: set[str] = set()
         for name, function in definitions.items():
             try:
@@ -407,4 +442,5 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                             )
                         )
             sites[name] = tuple(found)
-        return CallGraph(definitions, sites, frozenset(unsupported), symbols)
+            reads[name] = _reads(name, ssa, symbols[name])
+        return CallGraph(definitions, sites, frozenset(unsupported), symbols, reads)

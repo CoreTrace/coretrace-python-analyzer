@@ -75,6 +75,7 @@ def test_findings_and_summaries_round_trip_through_json() -> None:
         ExternalSymbol,
         FunctionSummary,
         ModuleFunction,
+        SymbolRead,
     )
     from coretrace_python.semantic.symbols import SymbolId
 
@@ -92,13 +93,15 @@ def test_findings_and_summaries_round_trip_through_json() -> None:
 
     functions = (ModuleFunction("f", span, "http"), ModuleFunction("g", span))
     site = CallSite("f", span, ExternalSymbol(SymbolId("python.yaml.load")), arguments)
-    text = json.dumps(encode(CachedModule(functions, {"f": summary}, (site,), (finding,))))
+    read = SymbolRead("f", span, SymbolId("python.flask.request.form"))
+    text = json.dumps(encode(CachedModule(functions, {"f": summary}, (site,), (finding,), (read,))))
     restored = decode(json.loads(text))
 
     assert restored.findings == (finding,)
     assert restored.summaries["f"] == summary
     assert restored.functions == functions
     assert restored.sites == (site,)
+    assert restored.reads == (read,)
 
 
 # --------------------------------------------------------------------------- keys
