@@ -78,7 +78,7 @@ def test_plugin_guide_documents_the_manifest_base_classes_and_models() -> None:
     for base in ("Plugin", "ModelPlugin", "ProjectPlugin", "SymbolCallDetector", "TaintDetector", "SecretDetector"):
         assert base in plugins.__all__ and f"`{base}`" in text
     for model in ("Source", "Sink", "Sanitizer", "EntryPoint", "TypedParameter", "NamedParameter",
-                  "RouteRegistrar", "SuffixSink", "Validator", "AuthorizationGuard"):
+                  "RouteRegistrar", "SuffixSink", "SafeArgument", "Validator", "AuthorizationGuard"):
         assert hasattr(taint, model) and re.search(rf"`{model}\b", text), model
     assert all(kind.name in text for kind in taint.TaintKind if kind.name not in {"NONE", "ALL"})
     assert "--plugins" in text and "plugin.toml" in text

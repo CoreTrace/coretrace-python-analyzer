@@ -150,6 +150,21 @@ class SuffixSink:
 
 
 @dataclass(frozen=True)
+class SafeArgument:
+    """A call to the sink ``symbol`` whose ``argument`` (by keyword, or at ``position``)
+    denotes one of ``values`` is not a sink for ``kinds``: ``yaml.load`` with
+    ``Loader=SafeLoader``. Values are written as call sites record them: a symbol by its
+    canonical name, a constant as Python writes it. Only a value given explicitly makes
+    the call safe; an absent argument, a variable or unpacked arguments leave the sink."""
+
+    symbol: SymbolId
+    argument: str
+    values: tuple[str, ...]
+    position: int | None = None
+    kinds: TaintKind = TaintKind.ALL
+
+
+@dataclass(frozen=True)
 class Validator:
     """A callable whose truth proves its ``argument`` safe (refutation evidence, §24)."""
 
@@ -178,6 +193,7 @@ Model = (
     | NamedParameter
     | RouteRegistrar
     | SuffixSink
+    | SafeArgument
 )
 
 
@@ -193,6 +209,7 @@ class ModelTable:
     named_parameters: tuple[NamedParameter, ...] = ()
     route_registrars: tuple[RouteRegistrar, ...] = ()
     suffix_sinks: tuple[SuffixSink, ...] = ()
+    safe_arguments: tuple[SafeArgument, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -207,6 +224,7 @@ class ModelTable:
             Validator: {m.symbol: m for m in self.validators},
             AuthorizationGuard: {m.symbol: m for m in self.authorizations},
             RouteRegistrar: {m.symbol: m for m in self.route_registrars},
+            SafeArgument: {m.symbol: m for m in self.safe_arguments},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
 
@@ -272,11 +290,16 @@ class ModelTable:
             self.named_parameters,
             self.route_registrars,
             self.suffix_sinks,
+            self.safe_arguments,
         )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
         found = self._by_symbol[Sanitizer].get(symbol)
         return found if isinstance(found, Sanitizer) else None
+
+    def safe_argument(self, symbol: SymbolId) -> SafeArgument | None:
+        found = self._by_symbol[SafeArgument].get(symbol)
+        return found if isinstance(found, SafeArgument) else None
 
 
 class SecurityModelRegistry:
@@ -323,6 +346,7 @@ class SecurityModelRegistry:
             named_parameters=tuple(m for m in models if isinstance(m, NamedParameter)),
             route_registrars=tuple(m for m in models if isinstance(m, RouteRegistrar)),
             suffix_sinks=tuple(m for m in models if isinstance(m, SuffixSink)),
+            safe_arguments=tuple(m for m in models if isinstance(m, SafeArgument)),
         )
 
 

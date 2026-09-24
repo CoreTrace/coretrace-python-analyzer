@@ -6,7 +6,15 @@ from typing import ClassVar
 
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import Model, Sanitizer, Sink, Source, TaintKind, Validator
+from coretrace_python.taint import (
+    Model,
+    SafeArgument,
+    Sanitizer,
+    Sink,
+    Source,
+    TaintKind,
+    Validator,
+)
 
 _ENVIRONMENT_KINDS = TaintKind.ALL & ~(TaintKind.COMMAND | TaintKind.PATH)
 _PROCESS_OUTPUT_KINDS = TaintKind.ALL & ~TaintKind.PATH
@@ -66,6 +74,23 @@ class PythonStdlibModels(ModelPlugin):
         Sink(_sym("dill.loads"), TaintKind.DESERIALIZATION),
         Sink(_sym("jsonpickle.decode"), TaintKind.DESERIALIZATION),
         Sink(_sym("yaml.load"), TaintKind.DESERIALIZATION),
+        # SafeLoader and BaseLoader build plain data only, in Python and in C.
+        SafeArgument(
+            _sym("yaml.load"),
+            "Loader",
+            (
+                "python.yaml.SafeLoader",
+                "python.yaml.loader.SafeLoader",
+                "python.yaml.BaseLoader",
+                "python.yaml.loader.BaseLoader",
+                "python.yaml.CSafeLoader",
+                "python.yaml.cyaml.CSafeLoader",
+                "python.yaml.CBaseLoader",
+                "python.yaml.cyaml.CBaseLoader",
+            ),
+            position=1,
+            kinds=TaintKind.DESERIALIZATION,
+        ),
         Sink(_sym("yaml.unsafe_load"), TaintKind.DESERIALIZATION),
         Sink(_sym("yaml.full_load"), TaintKind.DESERIALIZATION),
         Sanitizer(_sym("os.path.basename"), TaintKind.PATH),

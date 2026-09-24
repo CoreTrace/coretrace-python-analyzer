@@ -396,9 +396,9 @@ class _TaintProblem(DataflowProblem[State]):
     ) -> Taint:
         """Sinks, sanitizers and sources of a call to an external symbol."""
 
-        sink = self.models.sink(symbol)
+        given = self.graph.arguments_at(self.name, call.location)
+        sink = self.guarded(self.models.sink(symbol), given)
         if sink is not None:
-            given = self.graph.arguments_at(self.name, call.location)
             for position, argument in enumerate(call.arguments):
                 self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, position, given)
             for argument in (*call.starred, *(value for _, value in call.keywords)):
@@ -412,6 +412,19 @@ class _TaintProblem(DataflowProblem[State]):
         if source is not None:
             return everything.join(Taint(source.kinds, frozenset({source})))
         return everything
+
+    def guarded(self, sink: Sink | None, arguments: Arguments) -> Sink | None:
+        """The sink as this call makes it: an argument declared safe (``yaml.load`` with
+        ``Loader=SafeLoader``) takes off the kinds it covers, and no kind left, no sink."""
+
+        if sink is None:
+            return None
+        safe = self.models.safe_argument(sink.symbol)
+        given = arguments.given(safe.argument, safe.position) if safe is not None else None
+        if safe is None or given is None or not given[0] or given[1] not in safe.values:
+            return sink
+        kinds = sink.kinds & ~safe.kinds
+        return Sink(sink.symbol, kinds, sink.positions) if kinds else None
 
     def rendered(self, argument: Value, state: Mapping[Key, Taint]) -> Taint:
         """The taint an argument brings to a sink. A container literal is serialised by
@@ -481,7 +494,7 @@ class _TaintProblem(DataflowProblem[State]):
             return taint, witness
 
         for reached in summary.external_calls:
-            sink = self.models.sink(reached.symbol)
+            sink = self.guarded(self.models.sink(reached.symbol), reached.arguments)
             if sink is None:
                 continue
             positions: list[int | None] = [*range(len(reached.argument_dependencies)), None]
