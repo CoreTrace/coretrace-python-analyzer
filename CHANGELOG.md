@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Detection
+
+- `yaml.load_all`, `yaml.full_load_all` and `yaml.unsafe_load_all` are deserialization sinks like their single-document versions; `yaml.load_all` with a safe loader is not, and `yaml.safe_load_all` stays safe (#123).
+
 ### Precision
 
 - A sink call can be made safe by one of its arguments: a `SafeArgument` model names the argument and the values that take kinds off the sink, only when the call gives one explicitly. `yaml.load` with `SafeLoader`, `BaseLoader` or their C versions, under every spelling, is no longer an insecure deserialization; an absent loader, another loader, a variable or unpacked arguments still are (#121).

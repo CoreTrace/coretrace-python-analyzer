@@ -112,3 +112,19 @@ def test_yaml_load_with_a_safe_loader_is_not_an_insecure_deserialization(loader:
 @pytest.mark.parametrize("loader", [None, "yaml.Loader", "Loader=yaml.FullLoader", "Loader=yaml.UnsafeLoader"])
 def test_yaml_load_with_any_other_loader_still_is(loader: str | None) -> None:
     assert len(deserialization(loader)) == 1
+
+
+def several_documents(call: str) -> list[Finding]:
+    source = f"import yaml\nfrom flask import request\n\ndef read():\n    return list({call})\n"
+    findings = engine.check(SourceManager().add_source("app.py", source), [PLUGINS])
+    return [f for f in findings if f.rule_id == "insecure-deserialization"]
+
+
+@pytest.mark.parametrize("function", ["load_all", "full_load_all", "unsafe_load_all"])
+def test_the_loaders_of_several_documents_are_deserialization_sinks_too(function: str) -> None:
+    assert len(several_documents(f"yaml.{function}(request.data)")) == 1
+
+
+@pytest.mark.parametrize("call", ["yaml.load_all(request.data, Loader=yaml.SafeLoader)", "yaml.safe_load_all(request.data)"])
+def test_the_safe_ways_to_load_several_documents_are_not(call: str) -> None:
+    assert several_documents(call) == []

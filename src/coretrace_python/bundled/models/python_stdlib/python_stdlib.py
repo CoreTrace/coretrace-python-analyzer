@@ -17,6 +17,17 @@ from coretrace_python.taint import (
 )
 
 _ENVIRONMENT_KINDS = TaintKind.ALL & ~(TaintKind.COMMAND | TaintKind.PATH)
+# SafeLoader and BaseLoader build plain data only, in Python and in C, under every spelling.
+_SAFE_YAML_LOADERS = (
+    "python.yaml.SafeLoader",
+    "python.yaml.loader.SafeLoader",
+    "python.yaml.BaseLoader",
+    "python.yaml.loader.BaseLoader",
+    "python.yaml.CSafeLoader",
+    "python.yaml.cyaml.CSafeLoader",
+    "python.yaml.CBaseLoader",
+    "python.yaml.cyaml.CBaseLoader",
+)
 _PROCESS_OUTPUT_KINDS = TaintKind.ALL & ~TaintKind.PATH
 
 
@@ -74,23 +85,11 @@ class PythonStdlibModels(ModelPlugin):
         Sink(_sym("dill.loads"), TaintKind.DESERIALIZATION),
         Sink(_sym("jsonpickle.decode"), TaintKind.DESERIALIZATION),
         Sink(_sym("yaml.load"), TaintKind.DESERIALIZATION),
-        # SafeLoader and BaseLoader build plain data only, in Python and in C.
-        SafeArgument(
-            _sym("yaml.load"),
-            "Loader",
-            (
-                "python.yaml.SafeLoader",
-                "python.yaml.loader.SafeLoader",
-                "python.yaml.BaseLoader",
-                "python.yaml.loader.BaseLoader",
-                "python.yaml.CSafeLoader",
-                "python.yaml.cyaml.CSafeLoader",
-                "python.yaml.CBaseLoader",
-                "python.yaml.cyaml.CBaseLoader",
-            ),
-            position=1,
-            kinds=TaintKind.DESERIALIZATION,
-        ),
+        Sink(_sym("yaml.load_all"), TaintKind.DESERIALIZATION),
+        Sink(_sym("yaml.full_load_all"), TaintKind.DESERIALIZATION),
+        Sink(_sym("yaml.unsafe_load_all"), TaintKind.DESERIALIZATION),
+        SafeArgument(_sym("yaml.load"), "Loader", _SAFE_YAML_LOADERS, position=1, kinds=TaintKind.DESERIALIZATION),
+        SafeArgument(_sym("yaml.load_all"), "Loader", _SAFE_YAML_LOADERS, position=1, kinds=TaintKind.DESERIALIZATION),
         Sink(_sym("yaml.unsafe_load"), TaintKind.DESERIALIZATION),
         Sink(_sym("yaml.full_load"), TaintKind.DESERIALIZATION),
         Sanitizer(_sym("os.path.basename"), TaintKind.PATH),
