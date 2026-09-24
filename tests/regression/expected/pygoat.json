@@ -164,24 +164,6 @@
     },
     {
       "file": "introduction/views.py",
-      "line": 290,
-      "rule": "xss",
-      "function": "auth_lab_signup"
-    },
-    {
-      "file": "introduction/views.py",
-      "line": 304,
-      "rule": "xss",
-      "function": "auth_lab_login"
-    },
-    {
-      "file": "introduction/views.py",
-      "line": 318,
-      "rule": "xss",
-      "function": "auth_lab_login"
-    },
-    {
-      "file": "introduction/views.py",
       "line": 430,
       "rule": "command-injection",
       "function": "cmd_lab"

@@ -79,6 +79,7 @@ from coretrace_python.taint.models import (
     TaintKind,
 )
 from coretrace_python.taint.routes import RegisteredRoutes, Routes
+from coretrace_python.taint.templates import EscapedTemplates
 
 
 @dataclass(frozen=True)
@@ -152,9 +153,12 @@ class _TaintProblem(DataflowProblem[State]):
         heap: HeapFacts | None = None,
         seeds: Mapping[HeapLocation, Taint] | None = None,
         module: str = "",
+        escaped: frozenset[str] = frozenset(),
     ) -> None:
         self.name = name
         self.module = module
+        # As call sites record a constant argument: the way Python writes it.
+        self.escaped = frozenset(repr(name) for name in escaped)
         self.function = function
         self.models = models
         self.graph = graph
@@ -410,12 +414,22 @@ class _TaintProblem(DataflowProblem[State]):
         sanitizer = self.models.sanitizer(symbol)
         if sanitizer is not None:
             return everything.without(sanitizer.kinds)
+        if self.renders_escaped(symbol, given):
+            return everything.without(TaintKind.HTML)
         # A method on a tainted object returns tainted data (``request.args.get``).
         everything = everything.join(state.get(call.callee, Taint.none()))
         source = self.models.source_covering(symbol)
         if source is not None:
             return everything.join(Taint(source.kinds, frozenset({source})))
         return everything
+
+    def renders_escaped(self, symbol: SymbolId, given: Arguments) -> bool:
+        """Whether the call renders, by a name written in the call, a template the
+        project shows escaping everything it renders."""
+
+        render = self.models.template_render(symbol)
+        named = given.given(render.keyword, render.position) if render is not None else None
+        return named is not None and named[0] and named[1] in self.escaped
 
     def guarded(self, sink: Sink | None, arguments: Arguments) -> Sink | None:
         """The sink as this call makes it: an argument declared safe (``yaml.load`` with
@@ -802,8 +816,9 @@ def propagate_taint(
     heap: HeapFacts | None = None,
     seeds: Mapping[HeapLocation, Taint] | None = None,
     module: str = "",
+    escaped: frozenset[str] = frozenset(),
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds, module)
+    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds, module, escaped)
     solution = solve(problem, cfg)
     taints: dict[Key, Taint] = {}
     flows: list[TaintFlow] = []
@@ -831,6 +846,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             ProjectSummaries,
             HeapAnalysis,
             RegisteredRoutes,
+            EscapedTemplates,
         }
     )
 
@@ -867,6 +883,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             heap,
             seeds,
             ctx.module.name,
+            ctx.get(EscapedTemplates),
         )
 
 

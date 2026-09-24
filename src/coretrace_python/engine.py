@@ -109,6 +109,7 @@ from coretrace_python.source import SourceFile, SourceId, SourceManager, SourceS
 from coretrace_python.taint import (
     EntryPoint,
     EntryPointAnalysis,
+    EscapedTemplates,
     ModelTable,
     RegisteredRoutes,
     Routes,
@@ -116,6 +117,7 @@ from coretrace_python.taint import (
     SecurityModelRegistry,
     TaintAnalysis,
     TaintKind,
+    escaped_templates,
     registered_routes,
 )
 
@@ -146,6 +148,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     RefutationAnalysis,
     DependencyAnalysis,
     RegisteredRoutes,
+    EscapedTemplates,
 )
 
 
@@ -178,7 +181,14 @@ class ResultsEvicted(TransformationPass):
 
     name: ClassVar[str] = "project.results-evicted"
     preserves: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {*SEMANTIC_ANALYSES, SecurityModelAnalysis, ProjectSummaries, DependencyAnalysis, RegisteredRoutes}
+        {
+            *SEMANTIC_ANALYSES,
+            SecurityModelAnalysis,
+            ProjectSummaries,
+            DependencyAnalysis,
+            RegisteredRoutes,
+            EscapedTemplates,
+        }
     )
 
     @classmethod
@@ -397,10 +407,12 @@ def analyze_project(
     for name in sorted(analysable):
         for symbol, registered in _routes_of(analysable[name]).items():
             routes.setdefault(symbol, registered)
+    escaped = escaped_templates(root)
     for manager in analysable.values():
         manager.provide(RegisteredRoutes, routes)
+        manager.provide(EscapedTemplates, escaped)
 
-    configuration = _configuration_key(registry, plugins, models, advisories, dependencies, routes)
+    configuration = _configuration_key(registry, plugins, models, advisories, dependencies, routes, escaped)
     keys = module_keys(
         graph,
         {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
@@ -441,6 +453,7 @@ def analyze_project(
                             encode_index(_seed(results, graph, component)),
                             advisory_paths,
                             _encode_routes(routes),
+                            tuple(sorted(escaped)),
                         ),
                     )
                     for component in pending
@@ -588,6 +601,7 @@ class _Batch:
     seed: Mapping[str, Any]
     advisory_paths: tuple[Path, ...] = ()
     routes: tuple[tuple[str, str, str, int], ...] = ()
+    escaped: tuple[str, ...] = ()
 
 
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
@@ -612,6 +626,7 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(DependencyAnalysis, dependencies)
         manager.provide(RegisteredRoutes, routes)
+        manager.provide(EscapedTemplates, frozenset(batch.escaped))
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
     results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected)
     return {name: encode(entry) for name, entry in results.items()}
@@ -639,6 +654,7 @@ def _configuration_key(
     advisories: tuple[Advisory, ...],
     dependencies: DependencyGraph,
     routes: Routes | None = None,
+    escaped: frozenset[str] = frozenset(),
 ) -> str:
     """Everything a module's results depend on besides the project sources (§11)."""
 
@@ -658,6 +674,7 @@ def _configuration_key(
         repr(dependencies.requirements),
         repr(dependencies.errors),
         repr(_encode_routes(routes or {})),
+        repr(sorted(escaped)),
     )
 
 

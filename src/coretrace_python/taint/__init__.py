@@ -24,15 +24,18 @@ from coretrace_python.taint.models import (
     Source,
     SuffixSink,
     TaintKind,
+    TemplateRender,
     TypedParameter,
     Validator,
 )
 from coretrace_python.taint.routes import RegisteredRoutes, Routes, registered_routes
+from coretrace_python.taint.templates import EscapedTemplates, escaped_templates
 
 __all__ = [
     "AuthorizationGuard",
     "EntryPoint",
     "EntryPointAnalysis",
+    "EscapedTemplates",
     "Model",
     "ModelError",
     "ModelTable",
@@ -52,8 +55,10 @@ __all__ = [
     "TaintFacts",
     "TaintFlow",
     "TaintKind",
+    "TemplateRender",
     "TypedParameter",
     "Validator",
+    "escaped_templates",
     "propagate_taint",
     "registered_routes",
 ]

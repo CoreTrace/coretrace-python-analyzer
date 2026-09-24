@@ -23,6 +23,7 @@ from coretrace_python.taint import (
     Source,
     SuffixSink,
     TaintKind,
+    TemplateRender,
     TypedParameter,
 )
 
@@ -119,6 +120,7 @@ class DjangoModels(ModelPlugin):
         Sink(_sym("django.http.HttpResponseRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
         Sink(_sym("django.http.HttpResponsePermanentRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
         Sanitizer(_sym("django.utils.html.escape"), TaintKind.HTML),
+        TemplateRender(_sym("django.template.loader.render_to_string")),
         Sanitizer(_sym("django.utils.html.conditional_escape"), TaintKind.HTML),
         *(AuthorizationGuard(_sym(decorator), label) for decorator, label in _AUTHORIZATION_DECORATORS),
         # ``urlpatterns = [path('login/', views.log_in)]``: the referenced view is an

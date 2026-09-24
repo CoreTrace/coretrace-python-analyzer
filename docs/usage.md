@@ -109,7 +109,7 @@ a sanitizer for that kind of sink.
 | `sql-injection` | A database statement (`cursor.execute`, SQLAlchemy `text`, Django `raw`, …). Parameters of a parameterised query are not statements. |
 | `path-traversal` | A file system path (`open`, `send_file`, `os.remove`, …). |
 | `ssrf` | The URL of an HTTP client request (Requests, httpx, `urllib`), by position or as `url=`; the body, headers and query parameters are not the destination. |
-| `xss` | An HTTP response body built without escaping. |
+| `xss` | An HTTP response body built without escaping. A Django template rendered by `render_to_string` escapes, where the analyzer can establish it (below). |
 | `insecure-deserialization` | `pickle`, `marshal`, `dill`, `jsonpickle`, `shelve`, and the YAML loaders (`yaml.load`, `load_all`, `full_load`, `unsafe_load` and their several-document versions); `yaml.load` and `load_all` given a safe loader (`SafeLoader`, `BaseLoader`) are not. |
 | `open-redirect` | An HTTP redirect target. |
 | `plaintext-credential-storage` | A parameter named like a password stored in a database without hashing. Medium confidence, since a name is a hint. |
@@ -121,6 +121,29 @@ numeric value proven by `int()`, `len()` or bounded arithmetic, a validator such
 `re.fullmatch`) refutes it and nothing is reported. A guard that only mentions the value,
 or an authorization decorator such as `login_required`, makes it a hotspot reported at
 medium confidence. The verdict and its evidence are in the finding's metadata.
+
+Django's `render_to_string(name, context)` returns HTML in which autoescaping escaped
+every variable, so data reaching a response through it is no `xss`, if the template really
+escapes. On a directory check, the analyzer reads the project's templates to decide it.
+
+It establishes escaping only when all of the following hold:
+
+- It finds every template of that name under a `templates` directory, by the path Django
+  uses (`app/page.html`), and everything those templates extend or include.
+- None of them marks output safe: `|safe`, `|safeseq` or `{% autoescape off %}`.
+- None of them uses a tag or filter beyond Django's own, or loads a library beyond its
+  built-ins (`static`, `i18n`, `l10n`, `tz`, `cache`, `humanize`).
+- None of them places a variable where HTML escaping does not protect it: a `<script>`
+  or `<style>` block, an event handler (`onclick="…"`), a `style` attribute, a URL
+  attribute not fixed by a relative or `http(s)://host/` prefix, an unquoted attribute,
+  or an attribute name.
+- No Python file of the project sets `autoescape` to `False`.
+
+The analyzer never assumes escaping where it cannot read the template. That covers a
+template named by an expression, a template found through a `DIRS` entry not named
+`templates`, one shipped by an installed package, one rendered through `get_template`,
+and Flask's Jinja2 templates. The flow is then reported as before. A single-file check
+reads no template.
 
 ### Dangerous API usage
 
