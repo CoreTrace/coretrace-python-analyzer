@@ -35,7 +35,7 @@
       "line": 57,
       "rule": "sql-injection",
       "function": "students",
-      "verdict": "hotspot"
+      "verdict": "vulnerability"
     }
   ]
 }

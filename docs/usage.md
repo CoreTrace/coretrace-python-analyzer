@@ -118,9 +118,19 @@ a sanitizer for that kind of sink.
 Each flow is judged before it is reported. A dominating guard that proves the value
 safe (`isdigit()`, membership in a constant collection, equality with a constant, a
 numeric value proven by `int()`, `len()` or bounded arithmetic, a validator such as
-`re.fullmatch`) refutes it and nothing is reported. A guard that only mentions the value,
-or an authorization decorator such as `login_required`, makes it a hotspot reported at
-medium confidence. The verdict and its evidence are in the finding's metadata.
+`re.fullmatch`) refutes it and nothing is reported. A hotspot is reported at medium
+confidence. Two things make a flow a hotspot:
+
+- A guard that examines the data without proving it safe. That covers a test of the value
+  itself (`if cmd:`, `len(cmd) < 10`), of the same attribute, or of a method called on
+  it (`form.is_valid()`).
+- An authorization decorator such as `login_required`.
+
+A guard that reads another attribute of the object the data comes from is no guard of
+that data. `if request.method == 'POST':` before `os.system(request.POST['cmd'])` leaves
+a vulnerability. When the flow passes the object whole, to the sink or to a function,
+a guard on any of its attributes still counts. The verdict and its evidence are in the
+finding's metadata.
 
 Django's `render_to_string(name, context)` returns HTML in which autoescaping escaped
 every variable, so data reaching a response through it is no `xss`, if the template really

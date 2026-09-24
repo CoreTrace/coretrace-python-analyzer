@@ -11,7 +11,7 @@
       "line": 57,
       "rule": "sql-injection",
       "function": "log_in",
-      "verdict": "hotspot"
+      "verdict": "vulnerability"
     },
     {
       "file": "djangogoat/settings.py",
