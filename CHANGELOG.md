@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- `render_to_string` escapes what it renders where the analyzer can establish it: on a directory check, it reads the project's Django templates, and a template escapes when neither it nor what it extends or includes marks output safe, uses a tag, filter or library beyond Django's own, or prints a variable where HTML escaping does not protect it, and no settings turn autoescaping off. Data reaching a response through such a template is no longer `xss`; any other template keeps the flow reported. `TemplateRender` declares such rendering calls, and the escaped templates are part of the cache key (#130).
+
 ## 0.6.0 (2026-09-24)
 
 ### Reports

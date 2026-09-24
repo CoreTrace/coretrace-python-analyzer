@@ -174,6 +174,17 @@ class Validator:
 
 
 @dataclass(frozen=True)
+class TemplateRender:
+    """A call rendering the template it names (argument ``position``, or ``keyword``)
+    with autoescaping on, such as ``render_to_string``: what it returns carries no
+    ``HTML`` when the project shows that template escaping everything it renders."""
+
+    symbol: SymbolId
+    position: int = 0
+    keyword: str = "template_name"
+
+
+@dataclass(frozen=True)
 class AuthorizationGuard:
     """A decorator, or a condition, that restricts who reaches the code behind it; a
     flow behind one is a hotspot rather than a vulnerability (§24)."""
@@ -194,6 +205,7 @@ Model = (
     | RouteRegistrar
     | SuffixSink
     | SafeArgument
+    | TemplateRender
 )
 
 
@@ -210,6 +222,7 @@ class ModelTable:
     route_registrars: tuple[RouteRegistrar, ...] = ()
     suffix_sinks: tuple[SuffixSink, ...] = ()
     safe_arguments: tuple[SafeArgument, ...] = ()
+    template_renders: tuple[TemplateRender, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -225,6 +238,7 @@ class ModelTable:
             AuthorizationGuard: {m.symbol: m for m in self.authorizations},
             RouteRegistrar: {m.symbol: m for m in self.route_registrars},
             SafeArgument: {m.symbol: m for m in self.safe_arguments},
+            TemplateRender: {m.symbol: m for m in self.template_renders},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
 
@@ -291,6 +305,7 @@ class ModelTable:
             self.route_registrars,
             self.suffix_sinks,
             self.safe_arguments,
+            self.template_renders,
         )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
@@ -300,6 +315,10 @@ class ModelTable:
     def safe_argument(self, symbol: SymbolId) -> SafeArgument | None:
         found = self._by_symbol[SafeArgument].get(symbol)
         return found if isinstance(found, SafeArgument) else None
+
+    def template_render(self, symbol: SymbolId) -> TemplateRender | None:
+        found = self._by_symbol[TemplateRender].get(symbol)
+        return found if isinstance(found, TemplateRender) else None
 
 
 class SecurityModelRegistry:
@@ -347,6 +366,7 @@ class SecurityModelRegistry:
             route_registrars=tuple(m for m in models if isinstance(m, RouteRegistrar)),
             suffix_sinks=tuple(m for m in models if isinstance(m, SuffixSink)),
             safe_arguments=tuple(m for m in models if isinstance(m, SafeArgument)),
+            template_renders=tuple(m for m in models if isinstance(m, TemplateRender)),
         )
 
 
