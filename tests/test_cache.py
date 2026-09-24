@@ -94,10 +94,13 @@ def test_findings_and_summaries_round_trip_through_json() -> None:
                 span,
                 None,
                 arguments,
+                (((0, 4),), ()),
+                ((), ((1, 12),)),
             ),
         ),
         False,
         frozenset({SymbolId("python.builtins.input")}),
+        return_cleared=((0, 4),),
     )
 
     functions = (ModuleFunction("f", span, "http"), ModuleFunction("g", span))
