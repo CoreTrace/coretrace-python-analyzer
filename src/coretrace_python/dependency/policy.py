@@ -29,6 +29,11 @@ class Policy:
     def denies(self, package: str) -> bool:
         return normalize(package) in {normalize(name) for name in self.deny}
 
+    def accepts(self, finding: Finding) -> bool:
+        """Whether ``finding`` is about an advisory the project accepts."""
+
+        return finding.metadata.get("advisory") in self.ignore
+
 
 def load_policy(path: Path) -> Policy:
     try:
@@ -61,5 +66,4 @@ def _boolean(value: Any, key: str) -> bool:
 def apply_policy(policy: Policy, findings: Iterable[Finding]) -> tuple[Finding, ...]:
     """The findings minus those about an advisory the policy accepts."""
 
-    ignored = set(policy.ignore)
-    return tuple(f for f in findings if f.metadata.get("advisory") not in ignored)
+    return tuple(f for f in findings if not policy.accepts(f))

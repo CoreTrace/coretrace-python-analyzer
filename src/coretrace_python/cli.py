@@ -3,13 +3,20 @@ from __future__ import annotations
 import argparse
 import sys
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 from coretrace_python import __version__, engine
 from coretrace_python.analysis import AnalysisError
 from coretrace_python.cache import ProjectCache
 from coretrace_python.cfg import CFGError
-from coretrace_python.dependency import dump_advisories, import_osv, read_osv, render_sbom
+from coretrace_python.dependency import (
+    dump_advisories,
+    import_osv,
+    read_osv,
+    render_sbom,
+    render_vex,
+)
 from coretrace_python.findings import Severity
 from coretrace_python.findings.baseline import Baseline, BaselineError
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -107,6 +114,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --check on a directory, write a CycloneDX bill of materials to PATH",
     )
     parser.add_argument(
+        "--vex",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="with --check on a directory, write to PATH an OpenVEX document saying whether "
+        "each advisory affecting a requirement affects the project",
+    )
+    parser.add_argument(
         "--advisories",
         action="append",
         type=Path,
@@ -182,6 +197,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.sbom is not None and not (args.check and args.path.is_dir()):
         print("error: --sbom only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
+    if args.vex is not None and not (args.check and args.path.is_dir()):
+        print("error: --vex only applies to --check on a directory", file=sys.stderr)
+        return EXIT_ERROR
     if args.advisories and not (args.check and args.path.is_dir()):
         print("error: --advisories only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
@@ -225,6 +243,20 @@ def main(argv: list[str] | None = None) -> int:
                 if args.sbom is not None:
                     args.sbom.write_text(
                         render_sbom(analysis.dependencies, analysis.advisories, engine.TOOL_NAME, __version__),
+                        encoding="utf-8",
+                    )
+                if args.vex is not None:
+                    args.vex.write_text(
+                        render_vex(
+                            analysis.dependencies,
+                            analysis.advisories,
+                            (*analysis.findings, *analysis.suppressed, *analysis.accepted),
+                            analysis.coverage,
+                            args.path,
+                            engine.TOOL_NAME,
+                            __version__,
+                            datetime.now(UTC),
+                        ),
                         encoding="utf-8",
                     )
             else:

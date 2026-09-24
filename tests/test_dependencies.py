@@ -147,6 +147,86 @@ def test_graphs_merge_and_locks_pin_declared_requirements() -> None:
     assert merged.names == ("pyyaml",)
 
 
+UV_LOCK = """version = 1
+
+[[package]]
+name = "app"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [{ name = "flask" }, { name = "pyyaml" }]
+
+[package.dev-dependencies]
+dev = [{ name = "pytest" }]
+
+[[package]]
+name = "flask"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [{ name = "Werkzeug" }, { name = "jinja2", marker = "python_version >= '3.8'" }]
+
+[package.optional-dependencies]
+dotenv = [{ name = "python-dotenv" }]
+
+[[package]]
+name = "werkzeug"
+version = "3.0.1"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "pyyaml"
+version = "6.0.1"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "pytest"
+version = "8.0.0"
+source = { registry = "https://pypi.org/simple" }
+"""
+
+
+def test_lockfiles_tell_which_other_packages_require_a_package() -> None:
+    uv = parse_dependencies(source("uv.lock", UV_LOCK))
+    poetry = parse_dependencies(
+        source(
+            "poetry.lock",
+            '[[package]]\nname = "flask"\nversion = "3.0.0"\n\n[package.dependencies]\nWerkzeug = ">=3.0.0"\n'
+            'python-dotenv = {version = "*", optional = true}\n\n[[package]]\nname = "werkzeug"\nversion = "3.0.1"\n'
+            '\n[[package]]\nname = "pyyaml"\nversion = "6.0.1"\n',
+        )
+    )
+
+    for graph in (uv, poetry):
+        assert graph.required_by("werkzeug") == frozenset({"flask"})
+        assert graph.required_by("python-dotenv") == frozenset({"flask"})
+        assert graph.required_by("pyyaml") == frozenset()
+        assert graph.required_by("requests") is None
+    # The project's own packages are not other packages: only its code uses pyyaml.
+    assert uv.required_by("jinja2") == frozenset({"flask"})
+    assert uv.required_by("pytest") == frozenset()
+    assert parse_dependencies(source("requirements.txt", "pyyaml==6.0.1\n")).required_by("pyyaml") is None
+
+
+def test_a_package_outside_the_project_is_another_package_even_editable() -> None:
+    lock = UV_LOCK.replace('[[package]]\nname = "pytest"', '[[package]]\nname = "shared"\nversion = "1.0"\n'
+                           'source = { editable = "../shared" }\ndependencies = [{ name = "pyyaml" }]\n\n'
+                           '[[package]]\nname = "pytest"')
+
+    assert parse_dependencies(source("uv.lock", lock)).required_by("pyyaml") == frozenset({"shared"})
+
+
+def test_merged_graphs_keep_what_every_lock_file_says() -> None:
+    declared = parse_dependencies(source("requirements.txt", "werkzeug==3.0.1\n"))
+    uv = parse_dependencies(source("uv.lock", UV_LOCK))
+    poetry = parse_dependencies(
+        source("poetry.lock", '[[package]]\nname = "django-extra"\nversion = "1.0"\n\n[package.dependencies]\nwerkzeug = "*"\n')
+    )
+
+    merged = declared.merge(uv).merge(poetry)
+
+    assert merged.required_by("werkzeug") == frozenset({"flask", "django-extra"})
+    assert declared.merge(uv).required_by("werkzeug") == uv.merge(declared).required_by("werkzeug") == frozenset({"flask"})
+
+
 # --------------------------------------------------------------------------- versions
 
 

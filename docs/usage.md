@@ -50,6 +50,7 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 | `--cache DIR` | Keep per-module results under `DIR` and reuse them for unchanged modules. |
 | `--jobs N` | Analyse independent modules in `N` processes. |
 | `--sbom PATH` | Write a CycloneDX bill of materials of the dependencies to `PATH`. |
+| `--vex PATH` | Write an OpenVEX document to `PATH`: whether each advisory affecting a requirement affects the project. |
 | `--advisories FILE` | Read a local advisory file in addition to `advisories.json` at the root. Repeatable. |
 | `--policy FILE` | Apply this dependency policy instead of `coretrace-policy.toml` at the root. |
 | `--import-advisories SRC OUT` | Convert an OSV dump into the local advisory file `OUT`, then exit. |
@@ -59,7 +60,7 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 | `--ssa` | With `--emit-ir`, print the static single assignment form. |
 | `--help` | Show the options and exit. |
 
-`--cache`, `--jobs`, `--sbom`, `--advisories` and `--policy` apply to a directory check.
+`--cache`, `--jobs`, `--sbom`, `--vex`, `--advisories` and `--policy` apply to a directory check.
 
 ## What is analysed
 
@@ -339,6 +340,24 @@ with its package URL, and the advisories affecting them as vulnerabilities.
 ```bash
 coretrace-python-analyzer --check src/ --sbom sbom.json --policy security/policy.toml
 ```
+
+`--vex PATH` writes an OpenVEX 0.2.0 document with one statement per advisory affecting
+a requirement. In each statement, the required package is a subcomponent of the project,
+identified as `pkg:generic/<directory>`. The status follows from the evidence of the
+check, including findings the policy accepts or a comment suppresses:
+
+| Status | When |
+|---|---|
+| `affected` | The project's code reaches the vulnerable code. The notes give each place and its level, `reachable` or `exploitable`. |
+| `not_affected` | Justified as `vulnerable_code_not_in_execute_path`, only when all of these hold: the advisory names entry points, no code of the project reaches them, every file and function was analysed, and a lock file (`uv.lock` or `poetry.lock`) shows that no other package requires the vulnerable one. The impact statement names the entry points and any calls ruled out by their arguments. |
+| `under_investigation` | Anything else. The notes say which condition failed. |
+
+`not_affected` needs the lock-file check because the analyzer reads the project's code,
+not the code of installed packages. A framework calling the vulnerable function on the
+project's behalf would go unseen. Without a lock file, a package is never
+`not_affected`. The document's `@id` derives from its statements, so two runs with the
+same result share it; its `author` is `Unknown Author`, as OpenVEX tools write when they
+cannot know it.
 
 ## Large projects
 

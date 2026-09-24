@@ -18,6 +18,11 @@
 
 - A sink call can be made safe by one of its arguments: a `SafeArgument` model names the argument and the values that take kinds off the sink, only when the call gives one explicitly. `yaml.load` with `SafeLoader`, `BaseLoader` or their C versions, under every spelling, is no longer an insecure deserialization; an absent loader, another loader, a variable or unpacked arguments still are (#121).
 
+### Reports
+
+- `--vex PATH` writes an OpenVEX document with one statement per advisory affecting a requirement. A statement is `affected` when the project's code reaches the vulnerability, including findings the policy accepts or a comment suppresses. It is `not_affected` (`vulnerable_code_not_in_execute_path`) only for an advisory with entry points that nothing reaches, in a complete analysis, and when the lock file shows no other package requiring the vulnerable one. Anything else is `under_investigation`, with the reason (#97).
+- A lock file records which packages require which. `DependencyGraph.required_by(name)` gives the other packages requiring a package; the project's own packages are not counted. `ProjectAnalysis.accepted` keeps the findings of advisories the policy accepts (#97).
+
 ## 0.5.0 (2026-09-24)
 
 ### Dependencies
