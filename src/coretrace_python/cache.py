@@ -25,6 +25,7 @@ from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.interprocedural import (
     Arguments,
     CallSite,
+    Cleared,
     ExternalCall,
     ExternalSymbol,
     FunctionSummary,
@@ -41,7 +42,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 9
+CACHE_FORMAT = 10
 
 
 @dataclass(frozen=True)
@@ -237,6 +238,8 @@ def _encode_call(call: ExternalCall) -> dict[str, Any]:
         "location": _encode_span(call.location),
         "call_site": None if call.call_site is None else _encode_span(call.call_site),
         "given": _encode_arguments(call.arguments),
+        "argument_cleared": [_encode_cleared(c) for c in call.argument_cleared],
+        "keyword_cleared": [_encode_cleared(c) for c in call.keyword_cleared],
     }
 
 
@@ -249,7 +252,17 @@ def _decode_call(data: Mapping[str, Any]) -> ExternalCall:
         _decode_span(data["location"]),
         None if site is None else _decode_span(site),
         _decode_arguments(data["given"]),
+        tuple(_decode_cleared(c) for c in data["argument_cleared"]),
+        tuple(_decode_cleared(c) for c in data["keyword_cleared"]),
     )
+
+
+def _encode_cleared(cleared: Cleared) -> list[list[int]]:
+    return [[parameter, bits] for parameter, bits in cleared]
+
+
+def _decode_cleared(data: Any) -> Cleared:
+    return tuple((_integer(parameter), _integer(bits)) for parameter, bits in data)
 
 
 def _encode_summary(summary: FunctionSummary) -> dict[str, Any]:
@@ -275,6 +288,7 @@ def _encode_summary(summary: FunctionSummary) -> dict[str, Any]:
             for w in summary.nonlocal_writes
         ],
         "static": summary.static,
+        "return_cleared": _encode_cleared(summary.return_cleared),
     }
 
 
@@ -303,6 +317,7 @@ def _decode_summary(data: Mapping[str, Any]) -> FunctionSummary:
             for w in data["nonlocal_writes"]
         ),
         bool(data["static"]),
+        _decode_cleared(data["return_cleared"]),
     )
 
 
