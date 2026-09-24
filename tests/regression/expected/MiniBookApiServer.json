@@ -10,13 +10,15 @@
       "file": "app.py",
       "line": 69,
       "rule": "path-traversal",
-      "function": "get_img"
+      "function": "get_img",
+      "verdict": "vulnerability"
     },
     {
       "file": "app.py",
       "line": 100,
       "rule": "exploitable-vulnerability",
-      "function": "new_book"
+      "function": "new_book",
+      "verdict": "hotspot"
     },
     {
       "file": "config-example.json",

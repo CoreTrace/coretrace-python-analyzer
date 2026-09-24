@@ -22,7 +22,8 @@
       "file": "main.py",
       "line": 79,
       "rule": "exploitable-vulnerability",
-      "function": "edit"
+      "function": "edit",
+      "verdict": "hotspot"
     },
     {
       "file": "main.py",

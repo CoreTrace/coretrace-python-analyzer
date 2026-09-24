@@ -28,7 +28,8 @@
       "file": "luigi/contrib/lsf.py",
       "line": 263,
       "rule": "command-injection",
-      "function": "_run_job"
+      "function": "_run_job",
+      "verdict": "vulnerability"
     },
     {
       "file": "luigi/contrib/mrrunner.py",
@@ -160,7 +161,8 @@
       "file": "luigi/contrib/sge.py",
       "line": 296,
       "rule": "command-injection",
-      "function": "_run_job"
+      "function": "_run_job",
+      "verdict": "vulnerability"
     },
     {
       "file": "luigi/safe_extractor.py",

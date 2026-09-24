@@ -10,13 +10,15 @@
       "file": "challenge/views.py",
       "line": 50,
       "rule": "command-injection",
-      "function": "post"
+      "function": "post",
+      "verdict": "vulnerability"
     },
     {
       "file": "challenge/views.py",
       "line": 81,
       "rule": "command-injection",
-      "function": "delete"
+      "function": "delete",
+      "verdict": "vulnerability"
     },
     {
       "file": "dockerized_labs/broken_auth_lab/app.py",
@@ -64,7 +66,8 @@
       "file": "introduction/apis.py",
       "line": 38,
       "rule": "path-traversal",
-      "function": "ssrf_code_checker"
+      "function": "ssrf_code_checker",
+      "verdict": "vulnerability"
     },
     {
       "file": "introduction/apis.py",
@@ -112,7 +115,8 @@
       "file": "introduction/mitre.py",
       "line": 242,
       "rule": "command-injection",
-      "function": "mitre_lab_17_api"
+      "function": "mitre_lab_17_api",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/playground/A6/soln.py",
@@ -142,13 +146,15 @@
       "file": "introduction/views.py",
       "line": 162,
       "rule": "sql-injection",
-      "function": "sql_lab"
+      "function": "sql_lab",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
       "line": 214,
       "rule": "insecure-deserialization",
-      "function": "insec_des_lab"
+      "function": "insec_des_lab",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
@@ -166,7 +172,8 @@
       "file": "introduction/views.py",
       "line": 430,
       "rule": "command-injection",
-      "function": "cmd_lab"
+      "function": "cmd_lab",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
@@ -190,13 +197,15 @@
       "file": "introduction/views.py",
       "line": 560,
       "rule": "exploitable-vulnerability",
-      "function": "a9_lab"
+      "function": "a9_lab",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
       "line": 560,
       "rule": "insecure-deserialization",
-      "function": "a9_lab"
+      "function": "a9_lab",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
@@ -208,7 +217,8 @@
       "file": "introduction/views.py",
       "line": 584,
       "rule": "exploitable-vulnerability",
-      "function": "a9_lab2"
+      "function": "a9_lab2",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
@@ -244,13 +254,15 @@
       "file": "introduction/views.py",
       "line": 878,
       "rule": "sql-injection",
-      "function": "injection_sql_lab"
+      "function": "injection_sql_lab",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
       "line": 927,
       "rule": "path-traversal",
-      "function": "ssrf_lab"
+      "function": "ssrf_lab",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",
@@ -262,7 +274,8 @@
       "file": "introduction/views.py",
       "line": 963,
       "rule": "ssrf",
-      "function": "ssrf_lab2"
+      "function": "ssrf_lab2",
+      "verdict": "hotspot"
     },
     {
       "file": "introduction/views.py",

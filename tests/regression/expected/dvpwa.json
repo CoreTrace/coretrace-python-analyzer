@@ -34,7 +34,8 @@
       "file": "sqli/views.py",
       "line": 57,
       "rule": "sql-injection",
-      "function": "students"
+      "function": "students",
+      "verdict": "hotspot"
     }
   ]
 }

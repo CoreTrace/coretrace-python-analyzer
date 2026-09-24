@@ -10,13 +10,15 @@
       "file": "app/routers/auth.py",
       "line": 37,
       "rule": "sql-injection",
-      "function": "login"
+      "function": "login",
+      "verdict": "vulnerability"
     },
     {
       "file": "app/routers/files.py",
       "line": 27,
       "rule": "path-traversal",
-      "function": "download"
+      "function": "download",
+      "verdict": "hotspot"
     },
     {
       "file": "exploit_scripts/brute_force_login.py",
@@ -118,7 +120,8 @@
       "file": "exploit_scripts/stored_xss_profile.py",
       "line": 24,
       "rule": "ssrf",
-      "function": "<module>"
+      "function": "<module>",
+      "verdict": "vulnerability"
     },
     {
       "file": "exploit_scripts/stored_xss_profile.py",
@@ -130,7 +133,8 @@
       "file": "exploit_scripts/stored_xss_profile.py",
       "line": 28,
       "rule": "ssrf",
-      "function": "<module>"
+      "function": "<module>",
+      "verdict": "vulnerability"
     }
   ]
 }
