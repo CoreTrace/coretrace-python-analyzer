@@ -148,6 +148,7 @@ class BottleModels(ModelPlugin):
 | `NamedParameter(pattern, label, kinds)` | A regular expression on parameter names; matching parameters carry `kinds`, as `password` carries `CREDENTIAL`. |
 | `RouteRegistrar(symbol, argument, label, kinds=ALL, keyword=None)` | A call registering a view at argument `argument` (or `keyword`), such as Django's `path`; the view receives `label` input. |
 | `SuffixSink(suffix, kinds, positions=())` | A sink matched by the end of the symbol, for methods of any class such as `objects.raw`. |
+| `SafeArgument(symbol, argument, values, position=None, kinds=ALL)` | A call to the sink `symbol` whose `argument` (by keyword, or at `position`) denotes one of `values` is not a sink for `kinds`, such as `yaml.load` with `Loader=yaml.SafeLoader`. Values are written as the analyzer records arguments: a symbol by its canonical name, a constant as Python writes it (`True`). Only a value given explicitly makes the call safe. |
 | `Validator(symbol, kinds=ALL, argument=0)` | A callable whose truth proves its argument safe, such as `re.fullmatch`; a flow guarded by it is refuted. |
 | `AuthorizationGuard(symbol, label)` | A decorator or a condition restricting who reaches the code, such as `login_required`; a flow behind it is a hotspot. |
 

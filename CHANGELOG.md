@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- A sink call can be made safe by one of its arguments: a `SafeArgument` model names the argument and the values that take kinds off the sink, only when the call gives one explicitly. `yaml.load` with `SafeLoader`, `BaseLoader` or their C versions, under every spelling, is no longer an insecure deserialization; an absent loader, another loader, a variable or unpacked arguments still are (#121).
+
 ## 0.5.0 (2026-09-24)
 
 ### Dependencies

@@ -72,6 +72,18 @@ class Arguments:
     keywords: tuple[tuple[str, str | None], ...] = ()
     unpacked: bool = False
 
+    def given(self, keyword: str | None, position: int | None = None) -> tuple[bool, str | None] | None:
+        """Whether the call gives an argument, by ``keyword`` or at ``position``, and what it
+        denotes: ``(True, value)`` when given, ``(False, None)`` when surely absent, None
+        when the call cannot tell because it unpacks arguments."""
+
+        for name, value in self.keywords:
+            if name == keyword:
+                return True, value
+        if position is not None and position < len(self.positional):
+            return True, self.positional[position]
+        return None if self.unpacked else (False, None)
+
 
 @dataclass(frozen=True)
 class CallSite:

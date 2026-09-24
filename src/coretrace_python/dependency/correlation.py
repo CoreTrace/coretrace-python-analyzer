@@ -69,7 +69,7 @@ def check_conditions(entry: AdvisoryEntryPoint | None, arguments: Arguments | No
     met: list[Condition] = []
     pending: list[Condition] = []
     for condition in entry.conditions:
-        given = _given(condition, arguments) if condition.checkable and arguments is not None else None
+        given = arguments.given(condition.argument, condition.position) if condition.checkable and arguments is not None else None
         if given is None:
             pending.append(condition)
             continue
@@ -82,18 +82,6 @@ def check_conditions(entry: AdvisoryEntryPoint | None, arguments: Arguments | No
             return ConditionCheck(tuple(met), tuple(pending), condition, value)
         met.append(condition)
     return ConditionCheck(tuple(met), tuple(pending))
-
-
-def _given(condition: Condition, arguments: Arguments) -> tuple[bool, str | None] | None:
-    """Whether the call gives the condition's argument, and what it denotes: ``(True,
-    value)`` when given, ``(False, None)`` when surely absent, None when it cannot tell."""
-
-    for name, value in arguments.keywords:
-        if name == condition.argument:
-            return True, value
-    if condition.position is not None and condition.position < len(arguments.positional):
-        return True, arguments.positional[condition.position]
-    return None if arguments.unpacked else (False, None)
 
 
 def ruled_out(module: str, site: CallSite, check: ConditionCheck) -> str:
