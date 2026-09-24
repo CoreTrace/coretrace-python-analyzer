@@ -281,7 +281,7 @@ def test_sample_advisories_are_shipped() -> None:
     assert loaded["sample-advisories"].manifest.provides == ("advisories.sample",)
     advisories = loaded["sample-advisories"].plugin.advisories
     assert any(a.package == "pyyaml" and "CVE" in a.id for a in advisories)
-    assert loaded["vulnerable-dependency"].manifest.requires == ("dependency.graph",)
+    assert loaded["vulnerable-dependency"].manifest.requires == ("dependency.graph", "interprocedural.callgraph")
     assert loaded["reachable-vulnerability"].manifest.requires == ("dependency.graph", "interprocedural.callgraph")
 
 
