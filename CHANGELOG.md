@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- The SSRF sinks of Requests and httpx read the destination only: the URL (the first argument, the second after the method for `request` and `stream`, or `url=`) or the prepared request `send` takes. Attacker data in the body, the JSON, the headers or the query parameters is no longer a server-side request forgery. `Sink` gains `keywords` next to `positions`, and function summaries keep the name of each keyword argument, so a project function forwarding `url=` still reaches the sink; the cache format is bumped (#128).
+
 ## 0.6.0 (2026-09-24)
 
 ### Reports

@@ -1,5 +1,8 @@
-"""Requests and httpx models: every request function is a SSRF sink, and what it returns
-is an ``http-response`` source, so data fetched from a remote server is untrusted."""
+"""Requests and httpx models: every request function is a SSRF sink for the argument that
+chooses the destination, and what it returns is an ``http-response`` source, so data
+fetched from a remote server is untrusted. The destination is the URL — first, or second
+after the method, or ``url=`` — or the prepared request a ``send`` takes; the body, the
+headers and the query parameters do not choose the host."""
 
 from __future__ import annotations
 
@@ -20,15 +23,18 @@ _CALLERS = (
     "httpx.AsyncClient",
 )
 
-_REQUEST_FUNCTIONS = (
-    *(f"{caller}.{method}" for caller in _CALLERS for method in _METHODS),
-    "requests.Session.send",
-    "httpx.stream",
-    "httpx.Client.stream",
-    "httpx.AsyncClient.stream",
-    "httpx.Client.send",
-    "httpx.AsyncClient.send",
-)
+# Where each function takes its destination, by position (the receiver of a method
+# excluded) and by keyword, as its signature declares it.
+_DESTINATIONS = {
+    **{f"{caller}.{method}": (0, "url") for caller in _CALLERS for method in _METHODS if method != "request"},
+    **{f"{caller}.request": (1, "url") for caller in _CALLERS},
+    "httpx.stream": (1, "url"),
+    "httpx.Client.stream": (1, "url"),
+    "httpx.AsyncClient.stream": (1, "url"),
+    "requests.Session.send": (0, "request"),
+    "httpx.Client.send": (0, "request"),
+    "httpx.AsyncClient.send": (0, "request"),
+}
 
 
 def _sym(path: str) -> SymbolId:
@@ -38,6 +44,9 @@ def _sym(path: str) -> SymbolId:
 class HttpClientModels(ModelPlugin):
     name: ClassVar[str] = "http-client-models"
     models: ClassVar[tuple[Model, ...]] = (
-        *(Sink(_sym(function), TaintKind.SSRF) for function in _REQUEST_FUNCTIONS),
-        *(Source(_sym(function), "http-response") for function in _REQUEST_FUNCTIONS),
+        *(
+            Sink(_sym(function), TaintKind.SSRF, ((TaintKind.SSRF, (position,)),), ((TaintKind.SSRF, (keyword,)),))
+            for function, (position, keyword) in _DESTINATIONS.items()
+        ),
+        *(Source(_sym(function), "http-response") for function in _DESTINATIONS),
     )
