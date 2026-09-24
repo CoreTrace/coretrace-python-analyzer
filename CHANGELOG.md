@@ -1,27 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-09-24)
+
+### Reports
+
+- `--vex PATH` writes an OpenVEX document with one statement per advisory affecting a requirement. A statement is `affected` when the project's code reaches the vulnerability, including findings the policy accepts or a comment suppresses. It is `not_affected` (`vulnerable_code_not_in_execute_path`) only for an advisory with entry points that nothing reaches, in a complete analysis, and when the lock file shows no other package requiring the vulnerable one. Anything else is `under_investigation`, with the reason (#97).
+
+### Dependencies
+
+- An advisory entry point marked `read` is an attribute whose getter runs the affected code, such as `request.form`: reading it is reachable, called or not — a subscript, an iteration or a method called on it reads it — with one finding per function, where it is first read (#111).
+- A lock file records which packages require which. `DependencyGraph.required_by(name)` gives the other packages requiring a package; the project's own packages are not counted. `ProjectAnalysis.accepted` keeps the findings of advisories the policy accepts (#97).
 
 ### Detection
 
 - `yaml.load_all`, `yaml.full_load_all` and `yaml.unsafe_load_all` are deserialization sinks like their single-document versions; `yaml.load_all` with a safe loader is not, and `yaml.safe_load_all` stays safe (#123).
 
-### Dependencies
-
-- An advisory entry point marked `read` is an attribute whose getter runs the affected code, such as `request.form`: reading it is reachable, called or not — a subscript, an iteration or a method called on it reads it — with one finding per function, where it is first read (#111).
-
-### Plugins
-
-- The call graph records the symbols each function reads, called or not, where it first reads each: `CallGraph.reads(function)` gives them as `SymbolRead` records, modules served from the cache keep them, and the cache format is bumped (#111).
-
 ### Precision
 
 - A sink call can be made safe by one of its arguments: a `SafeArgument` model names the argument and the values that take kinds off the sink, only when the call gives one explicitly. `yaml.load` with `SafeLoader`, `BaseLoader` or their C versions, under every spelling, is no longer an insecure deserialization; an absent loader, another loader, a variable or unpacked arguments still are (#121).
 
-### Reports
+### Plugins
 
-- `--vex PATH` writes an OpenVEX document with one statement per advisory affecting a requirement. A statement is `affected` when the project's code reaches the vulnerability, including findings the policy accepts or a comment suppresses. It is `not_affected` (`vulnerable_code_not_in_execute_path`) only for an advisory with entry points that nothing reaches, in a complete analysis, and when the lock file shows no other package requiring the vulnerable one. Anything else is `under_investigation`, with the reason (#97).
-- A lock file records which packages require which. `DependencyGraph.required_by(name)` gives the other packages requiring a package; the project's own packages are not counted. `ProjectAnalysis.accepted` keeps the findings of advisories the policy accepts (#97).
+- The call graph records the symbols each function reads, called or not, where it first reads each: `CallGraph.reads(function)` gives them as `SymbolRead` records, modules served from the cache keep them, and the cache format is bumped (#111).
 
 ## 0.5.0 (2026-09-24)
 
