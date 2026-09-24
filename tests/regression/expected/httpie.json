@@ -25,12 +25,6 @@
       "function": "collect_messages"
     },
     {
-      "file": "httpie/client.py",
-      "line": 114,
-      "rule": "ssrf",
-      "function": "collect_messages"
-    },
-    {
       "file": "httpie/internal/update_warnings.py",
       "line": 44,
       "rule": "insecure-tls",

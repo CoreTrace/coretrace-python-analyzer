@@ -208,12 +208,15 @@ def test_return_values_record_the_external_results_they_depend_on() -> None:
     assert table.summary("const").return_externals == frozenset()
 
 
-def test_keyword_arguments_are_conservatively_merged() -> None:
-    table = summaries("import subprocess\n\ndef run(cmd, flag):\n    subprocess.run(cmd, check=flag)\n")
+def test_keyword_arguments_keep_their_names() -> None:
+    table = summaries(
+        "import subprocess\n\ndef run(cmd, flag, options):\n    subprocess.run(cmd, check=flag, **options)\n"
+    )
     (call,) = table.summary("run").external_calls
 
     assert call.argument_dependencies == (frozenset({0}),)
-    assert call.keyword_dependencies == frozenset({1})
+    # A sink may read one keyword only (``url=``); ``**options`` has no name.
+    assert call.keyword_dependencies == (("check", frozenset({1})), (None, frozenset({2})))
 
 
 def test_recursive_summaries_reach_a_fixpoint() -> None:

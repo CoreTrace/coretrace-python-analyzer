@@ -55,28 +55,42 @@ class Source:
 
 @dataclass(frozen=True)
 class Sink:
-    """A callable whose arguments must not carry the given taint kinds. ``positions``
-    restricts some kinds to argument positions: a SQL statement is the first argument
-    of ``execute``, its parameter tuple is not a statement."""
+    """A callable whose arguments must not carry the given taint kinds. ``positions`` and
+    ``keywords`` restrict some kinds to the arguments they list: a SQL statement is the
+    first argument of ``execute``, its parameter tuple is not a statement; the target of
+    ``requests.get`` is its first argument or ``url=``, its body is no destination."""
 
     symbol: SymbolId
     kinds: TaintKind
     positions: tuple[tuple[TaintKind, tuple[int, ...]], ...] = ()
+    keywords: tuple[tuple[TaintKind, tuple[str, ...]], ...] = ()
 
-    def kinds_at(self, position: int | None) -> TaintKind:
-        """The kinds that must not reach the argument at ``position`` (``None`` for a
-        keyword or starred argument)."""
+    def kinds_at(self, position: int | None, keyword: str | None = None) -> TaintKind:
+        """The kinds that must not reach the argument at ``position`` or passed as
+        ``keyword``; both are ``None`` for a starred argument or ``**kwargs``, which
+        reach no restricted kind. A restricted kind reaches any argument one of its
+        restrictions lists."""
 
-        kinds = self.kinds
-        for restricted, allowed in self.positions:
-            if position is None or position not in allowed:
-                kinds &= ~restricted
-        return kinds
+        restricted = allowed = TaintKind(0)
+        for kinds, positions in self.positions:
+            restricted |= kinds
+            if position in positions:
+                allowed |= kinds
+        for kinds, names in self.keywords:
+            restricted |= kinds
+            if keyword in names:
+                allowed |= kinds
+        return self.kinds & ~(restricted & ~allowed)
 
     def merged(self, other: Sink) -> Sink:
-        """This sink with ``other``'s kinds and positions added."""
+        """This sink with ``other``'s kinds, positions and keywords added."""
 
-        return Sink(self.symbol, self.kinds | other.kinds, self.positions + other.positions)
+        return Sink(
+            self.symbol,
+            self.kinds | other.kinds,
+            self.positions + other.positions,
+            self.keywords + other.keywords,
+        )
 
 
 @dataclass(frozen=True)

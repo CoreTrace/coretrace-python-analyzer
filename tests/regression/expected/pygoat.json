@@ -86,12 +86,6 @@
     },
     {
       "file": "introduction/apis.py",
-      "line": 83,
-      "rule": "ssrf",
-      "function": "log_function_checker"
-    },
-    {
-      "file": "introduction/apis.py",
       "line": 84,
       "rule": "missing-timeout",
       "function": "log_function_checker"

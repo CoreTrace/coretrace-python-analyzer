@@ -108,7 +108,7 @@ a sanitizer for that kind of sink.
 | `command-injection` | Shell or process execution (`os.system`, `subprocess` with a string, …). |
 | `sql-injection` | A database statement (`cursor.execute`, SQLAlchemy `text`, Django `raw`, …). Parameters of a parameterised query are not statements. |
 | `path-traversal` | A file system path (`open`, `send_file`, `os.remove`, …). |
-| `ssrf` | The URL of an HTTP client request (Requests, httpx, `urllib`). |
+| `ssrf` | The URL of an HTTP client request (Requests, httpx, `urllib`), by position or as `url=`; the body, headers and query parameters are not the destination. |
 | `xss` | An HTTP response body built without escaping. A Django template rendered by `render_to_string` escapes, where the analyzer can establish it (below). |
 | `insecure-deserialization` | `pickle`, `marshal`, `dill`, `jsonpickle`, `shelve`, and the YAML loaders (`yaml.load`, `load_all`, `full_load`, `unsafe_load` and their several-document versions); `yaml.load` and `load_all` given a safe loader (`SafeLoader`, `BaseLoader`) are not. |
 | `open-redirect` | An HTTP redirect target. |
