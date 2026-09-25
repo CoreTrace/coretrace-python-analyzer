@@ -109,7 +109,7 @@ from coretrace_python.reporters import Report
 from coretrace_python.semantic import SEMANTIC_ANALYSES
 from coretrace_python.semantic.imports import ImportAnalysis, ImportResolutionError, ImportTable
 from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeError
-from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId
+from coretrace_python.semantic.symbols import MembersAnalysis, SymbolAnalysis, SymbolId
 from coretrace_python.source import SourceFile, SourceId, SourceManager, SourceSpan, decode_text
 from coretrace_python.taint import (
     EntryPoint,
@@ -257,6 +257,7 @@ def build_manager(
     manager = _register_all(module)
     table = (models or SecurityModelRegistry()).freeze()
     manager.provide(SecurityModelAnalysis, table)
+    manager.provide(MembersAnalysis, table.members_by_class())
     manager.provide(ClearingAnalysis, table.clearing())
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
@@ -311,6 +312,7 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalys
     registry = load_plugins(plugin_roots, manager)
     table = plugin_models(loaded.plugin for loaded in registry)
     manager.provide(SecurityModelAnalysis, table)
+    manager.provide(MembersAnalysis, table.members_by_class())
     manager.provide(ClearingAnalysis, table.clearing())
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
@@ -402,8 +404,10 @@ def analyze_project(
     advisories, origins = _merge_advisories(_contributions(registry, plugins, root, file_advisories))
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins, root).extended(*advisory_sinks(affected))
+    members = models.members_by_class()
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
+        manager.provide(MembersAnalysis, members)
         manager.provide(DependencyAnalysis, dependencies)
 
     imports: dict[str, ImportTable] = {}
@@ -698,8 +702,10 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     models = plugin_models(all_plugins, batch.root).extended(*advisory_sinks(affected))
     routes = _decode_routes(batch.routes)
     escaped = frozenset(batch.escaped)
+    members = models.members_by_class()
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
+        manager.provide(MembersAnalysis, members)
         manager.provide(DependencyAnalysis, dependencies)
         manager.provide(RegisteredRoutes, routes)
         manager.provide(EscapedTemplates, escaped)

@@ -2,8 +2,8 @@
 
 from coretrace_python.semantic.imports import ImportAnalysis
 from coretrace_python.semantic.scopes import ScopeAnalysis
-from coretrace_python.semantic.symbols import SymbolAnalysis
+from coretrace_python.semantic.symbols import MembersAnalysis, SymbolAnalysis
 
-SEMANTIC_ANALYSES = (ScopeAnalysis, ImportAnalysis, SymbolAnalysis)
+SEMANTIC_ANALYSES = (ScopeAnalysis, ImportAnalysis, MembersAnalysis, SymbolAnalysis)
 
-__all__ = ["SEMANTIC_ANALYSES", "ImportAnalysis", "ScopeAnalysis", "SymbolAnalysis"]
+__all__ = ["SEMANTIC_ANALYSES", "ImportAnalysis", "MembersAnalysis", "ScopeAnalysis", "SymbolAnalysis"]

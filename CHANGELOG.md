@@ -6,6 +6,10 @@
 
 - A module-level name bound to an attribute, an item or a call of another module-level name resolves in functions, as the same value does in a function body. `cursor = conn.cursor()` after `conn = sqlite3.connect(...)`, `db = client.shop` and `run = os.system` used to leave the calls made through them unknown, so a query built from request data and executed through a module-level cursor was not reported. Names resolve in statement order. The regression corpus is unchanged (#155).
 
+### Plugins
+
+- A `Members(symbol, dynamic=None, defined=(), typed=())` model says what the attributes and items of a class's instances give, for libraries whose objects give others by names the project chooses. A pymongo client gives the database it is dotted or indexed with, a database gives a collection. The names used to end up in the symbol (`MongoClient.shop.users.find`), or an item vanished into its container's symbol (`MongoClient.find`), so no model could list them. With the model, every path to a collection denotes the collection class, the one a parameter annotated `Collection` denotes: `client.shop.users`, `client["shop"]["users"]`, `client.get_database("shop").get_collection("users")`, a module-level `db = client.shop`, an attribute inherited from the client class. A sink on `Collection.find` covers them all. Symbol resolution now depends on these models, which the engine provides to every module and worker (#157).
+
 ## 0.11.0 (2026-09-25)
 
 ### Detection

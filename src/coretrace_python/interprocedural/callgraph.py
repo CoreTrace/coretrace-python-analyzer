@@ -176,12 +176,12 @@ class CallGraph:
 
 
 def derive_symbols(
-    function: FunctionIR, initial: Mapping[Value, SymbolId] | None = None
+    function: FunctionIR, table: SymbolTable, initial: Mapping[Value, SymbolId] | None = None
 ) -> dict[Value, SymbolId]:
-    """Symbols of values: ``Symbol`` results, attributes and items of symbol values,
-    results of calling a symbol (``sqlite3.connect(p)`` denotes ``python.sqlite3.connect``)
-    and the values a ``with`` on such a result binds. Known functions derive nothing;
-    parameters only through ``initial``, their annotated classes."""
+    """Symbols of values: ``Symbol`` results, attributes and items of symbol values, as
+    ``table`` types them, results of calling a symbol (``sqlite3.connect(p)`` denotes
+    ``python.sqlite3.connect``) and the values a ``with`` on such a result binds. Known
+    functions derive nothing; parameters only through ``initial``, their annotated classes."""
 
     symbols: dict[Value, SymbolId] = dict(initial or {})
     changed = True
@@ -195,11 +195,9 @@ def derive_symbols(
                 if isinstance(instruction, Symbol):
                     symbol = instruction.symbol_id
                 elif isinstance(instruction, GetAttr) and instruction.object in symbols:
-                    symbol = symbols[instruction.object].attribute(instruction.attribute)
+                    symbol = table.attribute(symbols[instruction.object], instruction.attribute)
                 elif isinstance(instruction, GetItem) and instruction.object in symbols:
-                    # An item of a symbol-denoted container (``request.files['f']``)
-                    # carries the container's symbol, so its methods resolve.
-                    symbol = symbols[instruction.object]
+                    symbol = table.item(symbols[instruction.object])
                 elif isinstance(instruction, Call | WithEnter):
                     origin = (
                         instruction.callee if isinstance(instruction, Call) else instruction.context
@@ -263,6 +261,8 @@ def resolve_targets(
     owner: str | None = None,
     typed: Mapping[Value, str] | None = None,
     bases: Mapping[str, SymbolId] | None = None,
+    *,
+    table: SymbolTable,
 ) -> tuple[dict[Value, Target], dict[Value, SymbolId]]:
     """Map every callee value of ``function`` to its target, and every symbol value.
     ``nested`` names the functions defined inside this one (``outer.inner``);
@@ -271,7 +271,8 @@ def resolve_targets(
     call to ``App.__init__``, ``app.run()`` and ``self.run()`` calls to ``App.run``.
     ``bases`` maps a module class to the symbol of its base: an attribute the class does
     not define is inherited, so ``self.get_argument`` in a ``RequestHandler`` subclass
-    denotes ``tornado.web.RequestHandler.get_argument``."""
+    denotes ``tornado.web.RequestHandler.get_argument``. ``table`` says what the
+    attributes and items of a class a ``Members`` model describes give."""
 
     module = scopes.module_scope
     classes = classes or {}
@@ -294,8 +295,8 @@ def resolve_targets(
                 class_name = instance_of[instruction.object]
                 base = (bases or {}).get(class_name)
                 if base is not None and instruction.attribute not in classes.get(class_name, ()):
-                    inherited[instruction.result] = base.attribute(instruction.attribute)
-    symbols = derive_symbols(function, inherited)
+                    inherited[instruction.result] = table.attribute(base, instruction.attribute)
+    symbols = derive_symbols(function, table, inherited)
     targets: dict[Value, Target] = {
         value: ExternalSymbol(symbol) for value, symbol in symbols.items()
     }
@@ -427,6 +428,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 owner,
                 _typed_with_module_classes(function, ssa, classes),
                 bases,
+                table=table,
             )
             defs = {i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None}
             found: list[CallSite] = []
