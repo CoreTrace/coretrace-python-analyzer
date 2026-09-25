@@ -4,6 +4,7 @@
 
 ### Precision
 
+- A `Validator` proves its argument safe only for the kinds it declares. A validator declared for `REDIRECT` used to refute a command injection through the same value; the flow is now a hotspot, and it is refuted only when the validator covers every kind reaching the sink (#143).
 - A sanitizer called inside a project function protects the flows through that function, for every caller. That covers a helper that escapes before answering, a view redirecting to `reverse(...)`, and a helper rendering a template the analyzer shows escaping. Function summaries keep, for each parameter, the taint kinds cleared on every path from it to an external call or to the return value. A path that skips the sanitizer, or a kind it does not clear, still reaches the sink. The cache format is bumped (#134).
 
 ### Plugins
