@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Detection
+
+- A module-level name bound to an attribute, an item or a call of another module-level name resolves in functions, as the same value does in a function body. `cursor = conn.cursor()` after `conn = sqlite3.connect(...)`, `db = client.shop` and `run = os.system` used to leave the calls made through them unknown, so a query built from request data and executed through a module-level cursor was not reported. Names resolve in statement order. The regression corpus is unchanged (#155).
+
 ## 0.11.0 (2026-09-25)
 
 ### Detection

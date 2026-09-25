@@ -18,7 +18,8 @@ BUILTIN_NAMES = frozenset(name for name in dir(builtins) if not name.startswith(
 
 class SymbolTable:
     """Resolve names to canonical symbols through scopes, imports, builtins and the
-    module-level instances created by calling a symbol (``app = Flask(__name__)``)."""
+    module-level names bound to a value denoting a symbol (``app = Flask(__name__)``,
+    ``cursor = conn.cursor()``)."""
 
     def __init__(
         self,
@@ -64,15 +65,28 @@ def analyze_symbols(
     instances: dict[str, SymbolId] = {}
     module_scope = scopes.module_scope.id
     for statement in module.body:
-        if (
-            isinstance(statement, nodes.Assign)
-            and isinstance(statement.target, nodes.Name)
-            and isinstance(statement.value, nodes.Call)
-        ):
-            symbol = table.resolve_expression(module_scope, statement.value.callee)
+        if isinstance(statement, nodes.Assign) and isinstance(statement.target, nodes.Name):
+            symbol = _denoted(table, module_scope, statement.value)
             if symbol is not None:
                 instances[statement.target.identifier] = symbol
-    return SymbolTable(scopes, imports, instances)
+                # Later bindings resolve through this one, in statement order.
+                table = SymbolTable(scopes, imports, instances)
+    return table
+
+
+def _denoted(table: SymbolTable, scope_id: ScopeId, node: nodes.Expression) -> SymbolId | None:
+    """What a value denotes, as a function body derives it (``derive_symbols``): a
+    resolved name or an attribute of one, the result of calling one, or an item of one,
+    which carries its container's symbol (``os.environ['HOME']``)."""
+
+    if isinstance(node, nodes.Subscript):
+        return _denoted(table, scope_id, node.value)
+    if isinstance(node, nodes.Attribute):
+        parent = _denoted(table, scope_id, node.value)
+        return parent.attribute(node.name) if parent is not None else None
+    if isinstance(node, nodes.Call):
+        return _denoted(table, scope_id, node.callee)
+    return table.resolve_expression(scope_id, node)
 
 
 class SymbolAnalysis(Analysis[SymbolTable]):
