@@ -27,6 +27,7 @@ from coretrace_python.reporters import FORMATS, render
 from coretrace_python.semantic.imports import ImportResolutionError
 from coretrace_python.semantic.scopes import ScopeError
 from coretrace_python.source import SourceManager
+from coretrace_python.taint import ModelError
 
 EXIT_CLEAN = 0
 EXIT_FINDINGS = 1
@@ -45,6 +46,7 @@ _ANALYSIS_ERRORS = (
     AnalysisError,
     ManifestError,
     IncompatiblePluginError,
+    ModelError,
 )
 
 
