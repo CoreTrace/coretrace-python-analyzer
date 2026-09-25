@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Precision
+
+- A sanitizer called inside a project function protects the flows through that function, for every caller. That covers a helper that escapes before answering, a view redirecting to `reverse(...)`, and a helper rendering a template the analyzer shows escaping. Function summaries keep, for each parameter, the taint kinds cleared on every path from it to an external call or to the return value. A path that skips the sanitizer, or a kind it does not clear, still reaches the sink. The cache format is bumped (#134).
+
 ### Plugins
 
 - A `Validator` model may name a function of the project by its project symbol (`python.hc.accounts.views._allow_redirect`), and the refutation recognises it in its own module too, where a call to it has no imported symbol. A project can thus declare its own validation helpers, and a flow they guard is refuted (#134).

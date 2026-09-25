@@ -70,6 +70,7 @@ from coretrace_python.interprocedural import (
     CallGraph,
     CallGraphAnalysis,
     CallSite,
+    ClearingAnalysis,
     FunctionSummary,
     ModuleFunction,
     ModuleGraph,
@@ -149,6 +150,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     DependencyAnalysis,
     RegisteredRoutes,
     EscapedTemplates,
+    ClearingAnalysis,
 )
 
 
@@ -188,6 +190,7 @@ class ResultsEvicted(TransformationPass):
             DependencyAnalysis,
             RegisteredRoutes,
             EscapedTemplates,
+            ClearingAnalysis,
         }
     )
 
@@ -246,7 +249,9 @@ def build_manager(
     """A manager with every engine analysis registered and the engine inputs provided."""
 
     manager = _register_all(module)
-    manager.provide(SecurityModelAnalysis, (models or SecurityModelRegistry()).freeze())
+    table = (models or SecurityModelRegistry()).freeze()
+    manager.provide(SecurityModelAnalysis, table)
+    manager.provide(ClearingAnalysis, table.clearing())
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
     return manager
@@ -294,7 +299,9 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalys
 
     manager = _register_all(build_hir(source))
     registry = load_plugins(plugin_roots, manager)
-    manager.provide(SecurityModelAnalysis, plugin_models(loaded.plugin for loaded in registry))
+    table = plugin_models(loaded.plugin for loaded in registry)
+    manager.provide(SecurityModelAnalysis, table)
+    manager.provide(ClearingAnalysis, table.clearing())
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
     findings, supported = _check_module(manager, tuple(loaded.plugin for loaded in registry))
@@ -408,9 +415,11 @@ def analyze_project(
         for symbol, registered in _routes_of(analysable[name]).items():
             routes.setdefault(symbol, registered)
     escaped = escaped_templates(root)
+    clearing = models.clearing(escaped)
     for manager in analysable.values():
         manager.provide(RegisteredRoutes, routes)
         manager.provide(EscapedTemplates, escaped)
+        manager.provide(ClearingAnalysis, clearing)
 
     configuration = _configuration_key(registry, plugins, models, advisories, dependencies, routes, escaped)
     keys = module_keys(
@@ -622,11 +631,13 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
     routes = _decode_routes(batch.routes)
+    escaped = frozenset(batch.escaped)
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(DependencyAnalysis, dependencies)
         manager.provide(RegisteredRoutes, routes)
-        manager.provide(EscapedTemplates, frozenset(batch.escaped))
+        manager.provide(EscapedTemplates, escaped)
+        manager.provide(ClearingAnalysis, models.clearing(escaped))
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
     results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected)
     return {name: encode(entry) for name, entry in results.items()}

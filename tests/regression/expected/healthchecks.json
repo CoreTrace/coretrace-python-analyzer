@@ -76,44 +76,9 @@
     },
     {
       "file": "hc/accounts/views.py",
-      "line": 170,
-      "rule": "open-redirect",
-      "function": "login",
-      "verdict": "hotspot"
-    },
-    {
-      "file": "hc/accounts/views.py",
-      "line": 281,
-      "rule": "open-redirect",
-      "function": "check_token",
-      "verdict": "hotspot"
-    },
-    {
-      "file": "hc/accounts/views.py",
-      "line": 281,
-      "rule": "open-redirect",
-      "function": "check_token",
-      "verdict": "hotspot"
-    },
-    {
-      "file": "hc/accounts/views.py",
       "line": 314,
       "rule": "hardcoded-credential",
       "function": "profile"
-    },
-    {
-      "file": "hc/accounts/views.py",
-      "line": 637,
-      "rule": "open-redirect",
-      "function": "change_email_verify",
-      "verdict": "vulnerability"
-    },
-    {
-      "file": "hc/accounts/views.py",
-      "line": 637,
-      "rule": "open-redirect",
-      "function": "change_email_verify",
-      "verdict": "vulnerability"
     },
     {
       "file": "hc/api/models.py",
@@ -169,20 +134,6 @@
       "rule": "xss",
       "function": "ping_body",
       "verdict": "hotspot"
-    },
-    {
-      "file": "hc/api/views.py",
-      "line": 778,
-      "rule": "xss",
-      "function": "badge",
-      "verdict": "hotspot"
-    },
-    {
-      "file": "hc/api/views.py",
-      "line": 811,
-      "rule": "xss",
-      "function": "check_badge",
-      "verdict": "vulnerability"
     },
     {
       "file": "hc/front/tests/test_webhook_validator.py",
@@ -346,13 +297,6 @@
       "line": 146,
       "rule": "hardcoded-credential",
       "function": "test_it_obeys_rate_limit"
-    },
-    {
-      "file": "hc/integrations/po/views.py",
-      "line": 59,
-      "rule": "open-redirect",
-      "function": "add",
-      "verdict": "hotspot"
     },
     {
       "file": "hc/integrations/pushbullet/tests/test_add_complete.py",

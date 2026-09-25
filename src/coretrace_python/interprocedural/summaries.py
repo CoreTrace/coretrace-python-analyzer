@@ -4,16 +4,19 @@ A summary says which parameters a function's return value depends on and which e
 symbols its parameters reach, directly or through calls to other known functions. It is
 computed as a dependence data-flow problem over the SSA form and iterated to a fixpoint
 over the call graph, so recursion converges to the least solution. Summaries carry no
-security knowledge: the taint engine decides which external symbols matter.
+security knowledge of their own: the taint engine decides which external symbols
+matter. They only keep, per parameter, the bits a ``Clearing`` the engine provides says
+the calls on the way cleared, on every path, so a caller's data reaches a sink or comes
+back without the kinds a sanitizer inside the function removed.
 """
 
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import ClassVar
+from typing import ClassVar, TypeVar
 
 from coretrace_python.abstract import (
     ATTRIBUTES,
@@ -69,20 +72,88 @@ from coretrace_python.source import SourceSpan
 
 Dependencies = frozenset[int]
 NONE: Dependencies = frozenset()
+_T = TypeVar("_T")
+# Per parameter, the taint kind bits cleared on every path from it, sorted, none empty.
+Cleared = tuple[tuple[int, int], ...]
 
 
 @dataclass(frozen=True)
 class Dep:
-    """What a value depends on: parameter indices and results of external symbols."""
+    """What a value depends on: parameter indices, results of external symbols, and for
+    each parameter the bits cleared on every path from it to the value."""
 
     parameters: Dependencies = NONE
     externals: frozenset[SymbolId] = frozenset()
+    cleared: Cleared = ()
 
     def __or__(self, other: Dep) -> Dep:
-        return Dep(self.parameters | other.parameters, self.externals | other.externals)
+        parameters = self.parameters | other.parameters
+        if not self.cleared and not other.cleared:
+            return Dep(parameters, self.externals | other.externals)
+        own, theirs = dict(self.cleared), dict(other.cleared)
+        # A parameter both sides depend on keeps what both paths cleared.
+        cleared = {
+            p: (own.get(p, 0) & theirs.get(p, 0))
+            if p in self.parameters and p in other.parameters
+            else own.get(p, 0) | theirs.get(p, 0)
+            for p in parameters
+        }
+        return Dep(parameters, self.externals | other.externals, _cleared(cleared))
+
+    def clearing(self, bits: int) -> Dep:
+        """This dependence after a call clearing ``bits`` from what it returns."""
+
+        if not bits or not self.parameters:
+            return self
+        own = dict(self.cleared)
+        return Dep(self.parameters, self.externals, _cleared({p: own.get(p, 0) | bits for p in self.parameters}))
+
+
+def _cleared(bits: Mapping[int, int]) -> Cleared:
+    return tuple(sorted((p, b) for p, b in bits.items() if b))
+
+
+def cleared_by(cleared: Cleared, parameter: int) -> int:
+    """The bits ``cleared`` records for ``parameter``, none when it has no entry."""
+
+    return next((bits for p, bits in cleared if p == parameter), 0)
 
 
 EMPTY = Dep()
+
+
+@dataclass(frozen=True)
+class Clearing:
+    """What an external call clears from the data it returns, as taint kind bits the
+    summaries carry without reading them. The engine derives it from the security models:
+    a sanitizer clears its kinds; a template render clears the bits of its entry when the
+    template it names is one the project shows escaping (``escaped`` holds the names the
+    way call sites record a constant)."""
+
+    sanitizers: Mapping[SymbolId, int] = dataclasses.field(default_factory=dict)
+    renders: Mapping[SymbolId, tuple[int, str, int]] = dataclasses.field(default_factory=dict)
+    escaped: frozenset[str] = frozenset()
+
+    def clears(self, symbol: SymbolId, arguments: Arguments) -> int:
+        bits = self.sanitizers.get(symbol, 0)
+        render = self.renders.get(symbol)
+        if render is not None:
+            position, keyword, rendered = render
+            named = arguments.given(keyword, position)
+            if named is not None and named[0] and named[1] in self.escaped:
+                bits |= rendered
+        return bits
+
+
+class ClearingAnalysis(Analysis[Clearing]):
+    """What calls clear, provided by the engine from the security models; nothing on its
+    own, so a summary then keeps every kind."""
+
+    name: ClassVar[str] = "interprocedural.clearing"
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> Clearing:
+        return Clearing()
 
 
 @dataclass(frozen=True)
@@ -98,6 +169,19 @@ class ExternalCall:
     call_site: SourceSpan | None
     # What the arguments of the call at ``location`` denote, where it is made.
     arguments: Arguments = dataclasses.field(default_factory=Arguments)
+    # What was cleared on the way to each argument and keyword, in the same order.
+    argument_cleared: tuple[Cleared, ...] = ()
+    keyword_cleared: tuple[Cleared, ...] = ()
+
+    def positional(self) -> Iterable[tuple[Dependencies, Cleared]]:
+        """Each positional argument's dependencies, with what was cleared on their way."""
+
+        return _aligned(self.argument_dependencies, self.argument_cleared)
+
+    def named(self) -> Iterable[tuple[str | None, Dependencies, Cleared]]:
+        """Each keyword's name and dependencies, with what was cleared on their way."""
+
+        return ((name, deps, c) for (name, deps), c in _aligned(self.keyword_dependencies, self.keyword_cleared))
 
 
 @dataclass(frozen=True)
@@ -134,6 +218,8 @@ class FunctionSummary:
     nonlocal_writes: tuple[NonlocalWrite, ...] = ()
     # A ``@staticmethod``: ``Class.method(...)`` passes no receiver.
     static: bool = False
+    # What was cleared on the way from each parameter to the return value.
+    return_cleared: Cleared = ()
 
 
 class SummaryIndex:
@@ -191,6 +277,7 @@ class _DependenceProblem(DataflowProblem[State]):
         table: Mapping[str, FunctionSummary],
         project: Mapping[SymbolId, FunctionSummary] | None = None,
         heap: HeapFacts | None = None,
+        clearing: Clearing | None = None,
     ) -> None:
         self.name = name
         self.function = function
@@ -198,6 +285,7 @@ class _DependenceProblem(DataflowProblem[State]):
         self.table = table
         self.project = project or {}
         self.heap = heap or HeapFacts({})
+        self.clearing = clearing or Clearing()
         self.blocks = {block.id: block for block in function.blocks}
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
@@ -338,15 +426,10 @@ class _DependenceProblem(DataflowProblem[State]):
                 bound = () if project.static else self.receiver(call, project.name)
                 arguments = (*(self.deep(r, state) for r in bound), *arguments)
                 return self.known(project, arguments, keywords, everything, call, state, bound)
-            self.record(
-                target.symbol,
-                tuple(a.parameters for a in arguments),
-                tuple((name, deps.parameters) for name, deps in named),
-                call.location,
-                None,
-                self.graph.arguments_at(self.name, call.location),
-            )
-            return everything | Dep(externals=frozenset({target.symbol}))
+            given = self.graph.arguments_at(self.name, call.location)
+            self.record(target.symbol, arguments, named, call.location, None, given)
+            cleared = everything.clearing(self.clearing.clears(target.symbol, given))
+            return cleared | Dep(externals=frozenset({target.symbol}))
         if isinstance(target, KnownFunction):
             made = self.defs.get(call.callee)
             if isinstance(made, MakeFunction):
@@ -414,17 +497,18 @@ class _DependenceProblem(DataflowProblem[State]):
         if callee.unsupported:
             return everything
 
-        def mapped(indices: Dependencies) -> Dep:
+        def mapped(indices: Dependencies, cleared: Cleared = ()) -> Dep:
             result = EMPTY
             for index in indices:
-                result |= arguments[index] if index < len(arguments) else keywords
+                part = arguments[index] if index < len(arguments) else keywords
+                result |= part.clearing(cleared_by(cleared, index))
             return result
 
         for reached in callee.external_calls:
             self.record(
                 reached.symbol,
-                tuple(mapped(d).parameters for d in reached.argument_dependencies),
-                tuple((name, mapped(d).parameters) for name, d in reached.keyword_dependencies),
+                tuple(mapped(d, c) for d, c in reached.positional()),
+                tuple((name, mapped(d, c)) for name, d, c in reached.named()),
                 reached.location,
                 call.location,
                 reached.arguments,
@@ -435,13 +519,13 @@ class _DependenceProblem(DataflowProblem[State]):
             if mutation.parameter < len(values):
                 deps = mapped(mutation.dependencies) | Dep(externals=mutation.externals)
                 self.store(state, values[mutation.parameter], mutation.field, deps)
-        return mapped(callee.return_dependencies) | Dep(externals=callee.return_externals)
+        return mapped(callee.return_dependencies, callee.return_cleared) | Dep(externals=callee.return_externals)
 
     def record(
         self,
         symbol: SymbolId,
-        arguments: tuple[Dependencies, ...],
-        keywords: tuple[tuple[str | None, Dependencies], ...],
+        arguments: tuple[Dep, ...],
+        keywords: tuple[tuple[str | None, Dep], ...],
         location: SourceSpan,
         call_site: SourceSpan | None,
         given: Arguments,
@@ -450,14 +534,30 @@ class _DependenceProblem(DataflowProblem[State]):
         previous = self.external.get(key)
         if previous is not None:
             arguments = tuple(
-                a | b for a, b in zip(previous.argument_dependencies, arguments, strict=False)
+                a | Dep(b, cleared=c) for a, (b, c) in zip(arguments, previous.positional(), strict=False)
             )
             # The same call records the same keywords, in the same order.
             keywords = tuple(
-                (name, deps | old)
-                for (name, deps), (_, old) in zip(keywords, previous.keyword_dependencies, strict=False)
+                (name, deps | Dep(old, cleared=c))
+                for (name, deps), (_, old, c) in zip(keywords, previous.named(), strict=False)
             )
-        self.external[key] = ExternalCall(symbol, arguments, keywords, location, call_site, given)
+        self.external[key] = ExternalCall(
+            symbol,
+            tuple(a.parameters for a in arguments),
+            tuple((name, deps.parameters) for name, deps in keywords),
+            location,
+            call_site,
+            given,
+            tuple(a.cleared for a in arguments),
+            tuple(deps.cleared for _, deps in keywords),
+        )
+
+
+def _aligned(dependencies: tuple[_T, ...], cleared: tuple[Cleared, ...]) -> Iterable[tuple[_T, Cleared]]:
+    """Each dependency with what was cleared on its way; nothing when not recorded."""
+
+    missing = len(dependencies) - len(cleared)
+    return zip(dependencies, (*cleared, *(() for _ in range(missing))), strict=True)
 
 
 def summarize(
@@ -469,8 +569,9 @@ def summarize(
     project: Mapping[SymbolId, FunctionSummary] | None = None,
     heap: HeapFacts | None = None,
     static: bool = False,
+    clearing: Clearing | None = None,
 ) -> FunctionSummary:
-    problem = _DependenceProblem(name, function, graph, table, project, heap)
+    problem = _DependenceProblem(name, function, graph, table, project, heap, clearing)
     solution = solve(problem, cfg)
     problem.external = {}
     problem.returns = EMPTY
@@ -502,19 +603,21 @@ def summarize(
             if deps.parameters or deps.externals
         ),
         static=static,
+        return_cleared=problem.returns.cleared,
     )
 
 
 class SummaryAnalysis(Analysis[SummaryTable]):
     name: ClassVar[str] = "interprocedural.summaries"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {CallGraphAnalysis, SSAAnalysis, CFGAnalysis, ProjectSummaries, HeapAnalysis}
+        {CallGraphAnalysis, SSAAnalysis, CFGAnalysis, ProjectSummaries, HeapAnalysis, ClearingAnalysis}
     )
 
     @classmethod
     def compute(cls, ctx: AnalysisContext) -> SummaryTable:
         graph = ctx.get(CallGraphAnalysis)
         project = ctx.get(ProjectSummaries).summaries
+        clearing = ctx.get(ClearingAnalysis)
         table: dict[str, FunctionSummary] = {}
         supported: dict[str, tuple[FunctionIR, CFG, HeapFacts]] = {}
         for name, function in graph.definitions.items():
@@ -533,7 +636,7 @@ class SummaryAnalysis(Analysis[SummaryTable]):
             changed = False
             for name, (ssa, cfg, heap) in supported.items():
                 updated = summarize(
-                    name, ssa, cfg, graph, table, project, heap, _is_staticmethod(graph.definitions[name])
+                    name, ssa, cfg, graph, table, project, heap, _is_staticmethod(graph.definitions[name]), clearing
                 )
                 if updated != table[name]:
                     table[name] = updated

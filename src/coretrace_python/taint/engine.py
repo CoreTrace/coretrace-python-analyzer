@@ -30,6 +30,8 @@ from coretrace_python.interprocedural import (
     Arguments,
     CallGraph,
     CallGraphAnalysis,
+    Cleared,
+    Clearing,
     ExternalSymbol,
     FunctionSummary,
     KnownFunction,
@@ -38,6 +40,7 @@ from coretrace_python.interprocedural import (
     SummaryAnalysis,
     SummaryIndex,
     SummaryTable,
+    cleared_by,
     project_symbol,
 )
 from coretrace_python.ir.lowering import analyzable_functions, is_body_function
@@ -153,12 +156,11 @@ class _TaintProblem(DataflowProblem[State]):
         heap: HeapFacts | None = None,
         seeds: Mapping[HeapLocation, Taint] | None = None,
         module: str = "",
-        escaped: frozenset[str] = frozenset(),
+        clearing: Clearing | None = None,
     ) -> None:
         self.name = name
         self.module = module
-        # As call sites record a constant argument: the way Python writes it.
-        self.escaped = frozenset(repr(name) for name in escaped)
+        self.clearing = clearing or Clearing()
         self.function = function
         self.models = models
         self.graph = graph
@@ -411,25 +413,15 @@ class _TaintProblem(DataflowProblem[State]):
                 self.report(
                     flows, sink, self.rendered(argument, state), argument, call, None, None, None, given, keyword=name
                 )
-        sanitizer = self.models.sanitizer(symbol)
-        if sanitizer is not None:
-            return everything.without(sanitizer.kinds)
-        if self.renders_escaped(symbol, given):
-            return everything.without(TaintKind.HTML)
+        cleared = self.clearing.clears(symbol, given)
+        if cleared:
+            return everything.without(TaintKind(cleared))
         # A method on a tainted object returns tainted data (``request.args.get``).
         everything = everything.join(state.get(call.callee, Taint.none()))
         source = self.models.source_covering(symbol)
         if source is not None:
             return everything.join(Taint(source.kinds, frozenset({source})))
         return everything
-
-    def renders_escaped(self, symbol: SymbolId, given: Arguments) -> bool:
-        """Whether the call renders, by a name written in the call, a template the
-        project shows escaping everything it renders."""
-
-        render = self.models.template_render(symbol)
-        named = given.given(render.keyword, render.position) if render is not None else None
-        return named is not None and named[0] and named[1] in self.escaped
 
     def guarded(self, sink: Sink | None, arguments: Arguments) -> Sink | None:
         """The sink as this call makes it: an argument declared safe (``yaml.load`` with
@@ -501,11 +493,11 @@ class _TaintProblem(DataflowProblem[State]):
         spread = (*call.starred, *(value for _, value in call.keywords))
         values = (*receiver, *call.arguments, *captured)
 
-        def mapped(deps: frozenset[int]) -> tuple[Taint, Value | None]:
+        def mapped(deps: frozenset[int], cleared: Cleared = ()) -> tuple[Taint, Value | None]:
             taint, witness = Taint.none(), None
             for index in sorted(deps):
                 positional = index < len(arguments)
-                part = arguments[index] if positional else keywords
+                part = (arguments[index] if positional else keywords).without(TaintKind(cleared_by(cleared, index)))
                 if part and witness is None and (positional or spread):
                     witness = values[index] if positional else spread[0]
                 taint = taint.join(part)
@@ -515,12 +507,12 @@ class _TaintProblem(DataflowProblem[State]):
             sink = self.guarded(self.models.sink(reached.symbol), reached.arguments)
             if sink is None:
                 continue
-            for position, deps in enumerate(reached.argument_dependencies):
-                taint, witness = mapped(deps)
+            for position, (deps, cleared) in enumerate(reached.positional()):
+                taint, witness = mapped(deps, cleared)
                 if witness is not None:
                     self.report(flows, sink, taint, witness, call, through, reached.location, position, reached.arguments)
-            for name, deps in reached.keyword_dependencies:
-                taint, witness = mapped(deps)
+            for name, deps, cleared in reached.named():
+                taint, witness = mapped(deps, cleared)
                 if witness is not None:
                     self.report(
                         flows, sink, taint, witness, call, through, reached.location, None, reached.arguments, keyword=name
@@ -533,7 +525,7 @@ class _TaintProblem(DataflowProblem[State]):
                     if stored_source is not None:
                         stored = stored.join(Taint(stored_source.kinds, frozenset({stored_source})))
                 self.store(state, values[mutation.parameter], mutation.field, stored)
-        result = mapped(summary.return_dependencies)[0]
+        result = mapped(summary.return_dependencies, summary.return_cleared)[0]
         for symbol in sorted(summary.return_externals, key=str):
             returned_source = self.models.source(symbol)
             if returned_source is not None:
@@ -816,9 +808,9 @@ def propagate_taint(
     heap: HeapFacts | None = None,
     seeds: Mapping[HeapLocation, Taint] | None = None,
     module: str = "",
-    escaped: frozenset[str] = frozenset(),
+    clearing: Clearing | None = None,
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds, module, escaped)
+    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds, module, clearing)
     solution = solve(problem, cfg)
     taints: dict[Key, Taint] = {}
     flows: list[TaintFlow] = []
@@ -883,7 +875,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             heap,
             seeds,
             ctx.module.name,
-            ctx.get(EscapedTemplates),
+            models.clearing(ctx.get(EscapedTemplates)),
         )
 
 

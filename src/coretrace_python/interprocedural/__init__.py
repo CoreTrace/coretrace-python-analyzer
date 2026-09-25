@@ -20,6 +20,9 @@ from coretrace_python.interprocedural.modulegraph import (
     project_symbol,
 )
 from coretrace_python.interprocedural.summaries import (
+    Cleared,
+    Clearing,
+    ClearingAnalysis,
     ExternalCall,
     FunctionSummary,
     Mutation,
@@ -28,6 +31,7 @@ from coretrace_python.interprocedural.summaries import (
     SummaryAnalysis,
     SummaryIndex,
     SummaryTable,
+    cleared_by,
 )
 
 __all__ = [
@@ -35,6 +39,9 @@ __all__ = [
     "CallGraph",
     "CallGraphAnalysis",
     "CallSite",
+    "Cleared",
+    "Clearing",
+    "ClearingAnalysis",
     "ExternalCall",
     "ExternalSymbol",
     "FunctionSummary",
@@ -51,6 +58,7 @@ __all__ = [
     "Target",
     "UnknownTarget",
     "build_module_graph",
+    "cleared_by",
     "discover_files",
     "discover_sources",
     "project_symbol",
