@@ -158,6 +158,23 @@ Two plugins may describe the same symbol. An identical model is registered once;
 another plugin declared for `COMMAND`; any other difference is a conflict that stops
 the analysis with a `ModelError` naming both plugins.
 
+A plugin may also read models from the project it analyses: `project_models(self, root)`
+returns them, from a file at `root` for instance. It is called once per directory check,
+in every process analysing it, before any module. Its models join the plugin's own and
+are part of what cached results depend on. A single-file check reads no project. A
+model declared wrongly raises `ModelError`, which stops the check with its message
+(exit status 2). This is how a project declares validators of its own:
+
+```python
+class DeclaredValidators(ModelPlugin):
+    name: ClassVar[str] = "declared-validators"
+
+    def project_models(self, root: Path) -> Sequence[Model]:
+        path = root / "validators.txt"
+        lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+        return tuple(Validator(SymbolId(line)) for line in lines if line)
+```
+
 A model plugin may also carry `advisories`, a tuple of `Advisory` values
 (`coretrace_python.dependency`) with the package, the vulnerable range and the affected
 symbols, as the shipped `sample-advisories` plugin does. Requirements matching them are

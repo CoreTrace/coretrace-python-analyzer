@@ -8,6 +8,7 @@
 
 ### Plugins
 
+- `Plugin.project_models(root)` lets a plugin read models from the project under analysis, such as validators the project declares in a file. It is called once per directory check, in every process, and its models are part of the cache key. A model declared wrongly raises `ModelError`, which the command line now reports as an error (exit status 2) instead of a traceback (#140).
 - A `Validator` model may name a function of the project by its project symbol (`python.hc.accounts.views._allow_redirect`), and the refutation recognises it in its own module too, where a call to it has no imported symbol. A project can thus declare its own validation helpers, and a flow they guard is refuted (#134).
 
 ## 0.7.0 (2026-09-25)

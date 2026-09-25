@@ -51,6 +51,14 @@ class Plugin(ABC):
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         raise NotImplementedError
 
+    def project_models(self, root: Path) -> Sequence[Model]:
+        """Models read from the project under ``root``, such as validators it declares
+        in a file there. Called once per directory check, in every process analysing
+        it, before any module; a single-file check reads no project. A model declared
+        wrongly raises ``ModelError``, which stops the check with its message."""
+
+        return ()
+
 
 class ModelPlugin(Plugin):
     """A plugin that only contributes security models or advisories (§15 providers)."""

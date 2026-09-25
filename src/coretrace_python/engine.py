@@ -281,10 +281,14 @@ def load_plugins(plugin_roots: Sequence[Path], manager: AnalysisManager) -> Plug
     return registry
 
 
-def plugin_models(plugins: Iterable[Plugin]) -> ModelTable:
+def plugin_models(plugins: Iterable[Plugin], root: Path | None = None) -> ModelTable:
+    """The models of ``plugins``, with those they read from the project at ``root``."""
+
     models = SecurityModelRegistry()
     for plugin in plugins:
         models.register(*plugin.models, origin=plugin.name)
+        if root is not None:
+            models.register(*plugin.project_models(root), origin=plugin.name)
     return models.freeze()
 
 
@@ -392,7 +396,7 @@ def analyze_project(
         (a for plugin in all_plugins for a in plugin.advisories), file_advisories
     )
     affected = affected_symbols(dependencies, advisories)
-    models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
+    models = plugin_models(all_plugins, root).extended(*advisory_sinks(affected))
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(DependencyAnalysis, dependencies)
@@ -629,7 +633,7 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
         (a for plugin in all_plugins for a in plugin.advisories), file_advisories
     )
     affected = affected_symbols(dependencies, advisories)
-    models = plugin_models(all_plugins).extended(*advisory_sinks(affected))
+    models = plugin_models(all_plugins, batch.root).extended(*advisory_sinks(affected))
     routes = _decode_routes(batch.routes)
     escaped = frozenset(batch.escaped)
     for manager in managers.values():
