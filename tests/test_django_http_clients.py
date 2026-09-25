@@ -295,6 +295,7 @@ def test_detectors_stay_generic() -> None:
         "code_injection",
         "command_injection",
         "insecure_deserialization",
+        "nosql_injection",
         "open_redirect",
         "path_traversal",
         "plaintext_credentials",

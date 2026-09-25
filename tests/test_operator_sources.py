@@ -22,7 +22,7 @@ from coretrace_python import engine
 from coretrace_python.findings import Finding
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceManager
-from coretrace_python.taint import TaintKind
+from coretrace_python.taint import TEXT_KINDS, TaintKind
 
 REPO = Path(__file__).resolve().parent.parent
 PLUGINS = REPO / "src" / "coretrace_python" / "bundled"
@@ -52,10 +52,12 @@ def rules(findings: tuple[Finding, ...]) -> list[str]:
 
 
 def test_source_kinds_reflect_who_controls_them() -> None:
-    assert source_kinds("os.environ") == TaintKind.ALL & ~(TaintKind.COMMAND | TaintKind.PATH)
+    # The environment, argv and a line of input are text, which holds no query operator
+    # (#158); process output is a payload.
+    assert source_kinds("os.environ") == TEXT_KINDS & ~(TaintKind.COMMAND | TaintKind.PATH)
     assert source_kinds("subprocess.check_output") == TaintKind.ALL & ~TaintKind.PATH
-    assert source_kinds("sys.argv") == TaintKind.ALL & ~TaintKind.PATH
-    assert source_kinds("builtins.input") == TaintKind.ALL
+    assert source_kinds("sys.argv") == TEXT_KINDS & ~TaintKind.PATH
+    assert source_kinds("builtins.input") == TEXT_KINDS
 
 
 def test_environment_does_not_inject_commands_or_paths_but_still_reaches_urls_and_statements() -> None:
