@@ -110,6 +110,7 @@ variable is not treated that way yet.
 | Rule | Reached sink |
 |---|---|
 | `command-injection` | Shell or process execution (`os.system`, `subprocess` with a string, …). |
+| `code-injection` | The code `eval` or `exec` runs; the globals and locals passed with it are data. `dangerous-eval` reports every such call, this rule the ones attacker input reaches. |
 | `sql-injection` | A database statement (`cursor.execute`, SQLAlchemy `text`, Django `raw`, …). Parameters of a parameterised query are not statements. |
 | `path-traversal` | A file system path (`open`, `send_file`, `os.remove`, …). |
 | `ssrf` | The URL of an HTTP client request (Requests, httpx, `urllib`), by position or as `url=`; the body, headers and query parameters are not the destination. |

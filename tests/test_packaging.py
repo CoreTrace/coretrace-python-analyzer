@@ -64,7 +64,7 @@ def test_bundled_plugins_live_inside_the_package() -> None:
     assert bundled == Path(coretrace_python.__file__).resolve().parent / "bundled"
     assert bundled.is_dir()
     manifests = sorted(p.relative_to(bundled).as_posix() for p in bundled.rglob("plugin.toml"))
-    assert len(manifests) == 35
+    assert len(manifests) == 36
     assert "syntax/dangerous_eval/plugin.toml" in manifests
     assert not (REPO / "plugins").exists()
 
@@ -108,7 +108,7 @@ def test_the_wheel_carries_the_bundled_plugins(tmp_path: Path) -> None:
 
     assert "coretrace_python/bundled/syntax/dangerous_eval/plugin.toml" in names
     assert "coretrace_python/bundled/syntax/dangerous_eval/dangerous_eval.py" in names
-    assert sum(1 for n in names if n.endswith("/plugin.toml")) == 35
+    assert sum(1 for n in names if n.endswith("/plugin.toml")) == 36
     assert not any(n.startswith("tests/") or "tests-project" in n for n in names)
 
 

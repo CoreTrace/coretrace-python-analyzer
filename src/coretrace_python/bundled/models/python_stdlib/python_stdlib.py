@@ -57,8 +57,9 @@ class PythonStdlibModels(ModelPlugin):
         Sink(_sym("subprocess.check_call"), TaintKind.COMMAND),
         Sink(_sym("subprocess.check_output"), TaintKind.COMMAND),
         Sink(_sym("subprocess.Popen"), TaintKind.COMMAND),
-        Sink(_sym("builtins.eval"), TaintKind.CODE),
-        Sink(_sym("builtins.exec"), TaintKind.CODE),
+        # The code is the first argument; the globals and locals it runs with are data.
+        Sink(_sym("builtins.eval"), TaintKind.CODE, ((TaintKind.CODE, (0,)),)),
+        Sink(_sym("builtins.exec"), TaintKind.CODE, ((TaintKind.CODE, (0,)),)),
         Sink(_sym("builtins.open"), TaintKind.PATH),
         Sink(_sym("os.remove"), TaintKind.PATH),
         Sink(_sym("os.unlink"), TaintKind.PATH),

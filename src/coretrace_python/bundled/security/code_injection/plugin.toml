@@ -1,0 +1,9 @@
+name = "code-injection"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows", "findings.refutation"]
+provides = ["vulnerability.code-injection"]
+
+[entrypoint]
+module = "code_injection"
+class = "CodeInjectionPlugin"

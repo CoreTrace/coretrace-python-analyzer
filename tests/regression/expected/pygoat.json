@@ -108,6 +108,13 @@
     {
       "file": "introduction/mitre.py",
       "line": 218,
+      "rule": "code-injection",
+      "function": "mitre_lab_25_api",
+      "verdict": "vulnerability"
+    },
+    {
+      "file": "introduction/mitre.py",
+      "line": 218,
       "rule": "dangerous-eval",
       "function": "mitre_lab_25_api"
     },
@@ -173,6 +180,13 @@
       "line": 430,
       "rule": "command-injection",
       "function": "cmd_lab",
+      "verdict": "vulnerability"
+    },
+    {
+      "file": "introduction/views.py",
+      "line": 460,
+      "rule": "code-injection",
+      "function": "cmd_lab2",
       "verdict": "vulnerability"
     },
     {

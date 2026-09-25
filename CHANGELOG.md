@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Detection
+
+- `code-injection` reports attacker input reaching the code `eval` or `exec` runs, with the same verdicts as the other taint rules. The globals and locals passed with the code are data, not code. `dangerous-eval` still reports every call to `eval` or `exec`, whatever it runs. The regression corpus gains three findings, each reviewed as a true positive: pygoat's `mitre_lab_25_api` and `cmd_lab2` evaluate a POST field, and the `vulnerable-flask` fixture evaluates a query parameter (#152).
+
 ## 0.10.0 (2026-09-25)
 
 ### Reports

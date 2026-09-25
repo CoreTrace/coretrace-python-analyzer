@@ -292,6 +292,7 @@ def test_httpx_client_instances_and_sessions_are_ssrf_sinks() -> None:
 
 def test_detectors_stay_generic() -> None:
     assert sorted(p.name for p in (PLUGINS / "security").iterdir() if p.is_dir()) == [
+        "code_injection",
         "command_injection",
         "insecure_deserialization",
         "open_redirect",
