@@ -242,9 +242,12 @@ def main(argv: list[str] | None = None) -> int:
                 findings = analysis.findings
                 coverage = analysis.coverage
                 suppressed = analysis.suppressed
+                components = analysis.components
                 if args.sbom is not None:
                     args.sbom.write_text(
-                        render_sbom(analysis.dependencies, analysis.advisories, engine.TOOL_NAME, __version__),
+                        render_sbom(
+                            analysis.dependencies, analysis.advisories, engine.TOOL_NAME, __version__, analysis.components
+                        ),
                         encoding="utf-8",
                     )
                 if args.vex is not None:
@@ -258,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
                             engine.TOOL_NAME,
                             __version__,
                             datetime.now(UTC),
+                            analysis.components,
                         ),
                         encoding="utf-8",
                     )
@@ -265,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
                 file_analysis = engine.analyze_file(SourceManager().load_file(args.path), plugin_roots)
                 findings, coverage = file_analysis.findings, file_analysis.coverage
                 suppressed = file_analysis.suppressed
+                components = ()
             root = args.path.resolve() if args.path.is_dir() else args.path.resolve().parent
             baselined = None
             if args.baseline is not None:
@@ -273,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     Baseline.of(findings, root).save(args.baseline)
                     findings, baselined = (), findings
-            report = engine.report(findings, coverage, root, suppressed, baselined)
+            report = engine.report(findings, coverage, root, suppressed, baselined, components)
             print(render(args.format or "text", report), end="")
             threshold = Severity(args.fail_on).rank if args.fail_on is not None else 0
             failing = any(finding.severity.rank >= threshold for finding in findings)

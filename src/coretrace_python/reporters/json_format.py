@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from coretrace_python.findings import FINDING_SCHEMA_VERSION, Finding
+from coretrace_python.findings import FINDING_SCHEMA_VERSION, Component, Finding
 from coretrace_python.reporters.report import Report
 
 
@@ -28,11 +28,21 @@ def finding_record(finding: Finding, report: Report | None = None) -> dict[str, 
     }
 
 
+def component_record(component: Component) -> dict[str, str]:
+    """A plugin or advisory file the result was produced with; a file has no version."""
+
+    record = {"kind": component.kind, "name": component.name}
+    if component.version is not None:
+        record["version"] = component.version
+    record["digest"] = component.digest
+    return record
+
+
 def render_json(report: Report) -> str:
-    document: dict[str, object] = {
-        "schema_version": FINDING_SCHEMA_VERSION,
-        "tool": {"name": report.tool_name, "version": report.tool_version},
-    }
+    tool: dict[str, object] = {"name": report.tool_name, "version": report.tool_version}
+    if report.components:
+        tool["components"] = [component_record(component) for component in report.components]
+    document: dict[str, object] = {"schema_version": FINDING_SCHEMA_VERSION, "tool": tool}
     if report.root is not None:
         document["root"] = str(report.root)
     document["findings"] = [finding_record(finding, report) for finding in report.findings]

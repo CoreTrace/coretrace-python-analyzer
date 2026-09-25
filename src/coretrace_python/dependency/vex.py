@@ -23,7 +23,7 @@ from urllib.parse import quote
 
 from coretrace_python.dependency.graph import Advisory, DependencyGraph, Requirement
 from coretrace_python.dependency.sbom import purl
-from coretrace_python.findings import Finding
+from coretrace_python.findings import Component, Finding
 from coretrace_python.findings.coverage import Coverage
 
 CONTEXT = "https://openvex.dev/ns/v0.2.0"
@@ -44,6 +44,7 @@ def render_vex(
     tool_name: str,
     tool_version: str,
     timestamp: datetime,
+    components: Sequence[Component] = (),
 ) -> str:
     """The OpenVEX document of the project at ``root``. ``evidence`` is every finding of
     the check, those suppressed or accepted by the policy included. The document's
@@ -69,7 +70,12 @@ def render_vex(
                         **_status(advisory, requirement, about, dependencies, coverage, root),
                     }
                 )
-    tooling = f"{tool_name} {tool_version}"
+    tooling = "; ".join(
+        (
+            f"{tool_name} {tool_version}",
+            *(" ".join(filter(None, (c.name, c.version, f"({c.digest})"))) for c in components),
+        )
+    )
     content = {
         "@context": CONTEXT,
         "author": AUTHOR,

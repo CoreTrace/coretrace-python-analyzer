@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from coretrace_python.findings import Coverage, Finding
+from coretrace_python.findings import Component, Coverage, Finding
 
 
 def _order(finding: Finding) -> tuple[str, int, int, str]:
@@ -27,6 +27,8 @@ class Report:
     baselined: tuple[Finding, ...] = ()
     # Whether a baseline was applied, so new findings can be marked as such.
     with_baseline: bool = False
+    # The plugins and advisory files the result was produced with.
+    components: tuple[Component, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("findings", "suppressed", "baselined"):

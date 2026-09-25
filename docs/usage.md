@@ -261,10 +261,34 @@ the directory of the checked file; a path outside it is printed as it is.
 
 `root` is the directory the paths are relative to.
 
+A directory check also lists, in `tool.components`, what the result was produced with
+besides the engine and the sources: each plugin it loaded, by manifest name and version,
+and each advisory file it read, by path (relative to the root when under it). Each
+component carries the SHA-256 digest of its content, so a result can be traced to the
+exact advisory data it used and reproduced. A plugin's digest covers its directory as the
+cache fingerprints it, bytecode and hidden files left out; a file's digest covers its
+bytes. A single-file check lists no components.
+
+```json
+"tool": {
+  "name": "coretrace-python-analyzer", "version": "0.10.0",
+  "components": [
+    {"kind": "plugin", "name": "curated-advisories", "version": "2026.09.25", "digest": "sha256:…"},
+    {"kind": "advisories", "name": "advisories.json", "digest": "sha256:…"}
+  ]
+}
+```
+
+A finding about an advisory names, in its `advisory_source` metadata, where the advisory
+comes from. For a plugin this is `name@version`, and for an advisory file its path. When
+several sources define the same advisory, it names the one whose definition is used, as
+the next section describes.
+
 `--format sarif` prints a SARIF 2.1.0 log, one run with the tool, its rules and one
 result per finding. The root is declared once as the `SRCROOT` original URI base and
 every location under it is relative to that base, which is what code scanning services
-need to attach results to files:
+need to attach results to files. The components of a directory check are the tool's
+`extensions`, their kind and digest in `properties`:
 
 ```bash
 coretrace-python-analyzer --check src/ --format sarif > report.sarif
@@ -385,7 +409,9 @@ ignore = ["CVE-2020-1747"]
 ```
 
 `--sbom PATH` writes a CycloneDX 1.5 bill of materials: one component per requirement
-with its package URL, and the advisories affecting them as vulnerabilities.
+with its package URL, and the advisories affecting them as vulnerabilities. Its tools
+list the analyzer and the components of the check, each with its SHA-256 hash: a plugin
+as an `application`, an advisory file as `data`.
 
 ```bash
 coretrace-python-analyzer --check src/ --sbom sbom.json --policy security/policy.toml
@@ -407,7 +433,9 @@ not the code of installed packages. A framework calling the vulnerable function 
 project's behalf would go unseen. Without a lock file, a package is never
 `not_affected`. The document's `@id` derives from its statements, so two runs with the
 same result share it; its `author` is `Unknown Author`, as OpenVEX tools write when they
-cannot know it.
+cannot know it. Its `tooling` names the analyzer and each component with its digest
+(`coretrace-python-analyzer 0.10.0; curated-advisories 2026.09.25 (sha256:…)`), so the
+`@id` changes with the advisory data a statement was decided with.
 
 ## Large projects
 
