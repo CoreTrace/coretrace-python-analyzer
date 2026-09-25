@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- An advisory entry point may name the `attacker_arguments` through which attacker input exploits it: by keyword, and by position when the argument may be passed positionally, a variadic one taking every later position. Attacker input in another argument leaves the call reachable instead of exploitable, so an advisory for `send_from_directory` that names its `path` no longer counts `download_name=`, and one for `requests.get` that names its `url` no longer counts the body. An argument unpacked with `*` or `**` may fill any of them: like an argument condition it leaves undecided, it does not rule the call out, so a wrapper forwarding `*args, **kwargs` still reaches the entry point. An entry point naming no argument counts every argument, as before. Each taint flow now records how its value is passed to the sink (#145).
+
 ## 0.8.0 (2026-09-25)
 
 ### Precision

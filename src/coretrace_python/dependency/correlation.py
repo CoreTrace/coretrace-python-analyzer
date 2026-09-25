@@ -133,7 +133,10 @@ def correlate(
             continue
         hotspot = verdict is not None and verdict.status is Status.HOTSPOT
         for advisory in affected.get(flow.sink.symbol, ()):
-            check = check_conditions(advisory.entry_point(flow.sink.symbol), flow.sink_arguments)
+            entry = advisory.entry_point(flow.sink.symbol)
+            if entry is not None and not any(entry.exploitable_through(p, k) for p, k in flow.passed_as):
+                continue
+            check = check_conditions(entry, flow.sink_arguments)
             if check.contradicted is None:
                 findings.append(_exploitable(function, flow, advisory, verdict, hotspot, check))
     return tuple(findings)

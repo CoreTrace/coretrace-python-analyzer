@@ -9,7 +9,7 @@ argument reaching a sink whose kinds it still carries is reported as a ``TaintFl
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import ClassVar
@@ -119,6 +119,9 @@ class TaintFlow:
     sink_location: SourceSpan | None = None
     # What the arguments of the sink call denote, to decide the conditions on them.
     sink_arguments: Arguments | None = None
+    # How the tainted value is passed to the sink call: at a position, by a keyword, or
+    # (None, None) unpacked with ``*`` or ``**``; ``f(x, key=x)`` passes it twice.
+    passed_as: frozenset[tuple[int | None, str | None]] = frozenset()
 
 
 Key = Value | HeapLocation
@@ -559,6 +562,7 @@ class _TaintProblem(DataflowProblem[State]):
                     through,
                     call.location if sink_location is None else sink_location,
                     arguments,
+                    frozenset({(position, keyword)}),
                 )
             )
 
@@ -819,7 +823,18 @@ def propagate_taint(
             state, found = problem.evaluate(block, solution.incoming(block.id))
             taints.update(state)
             flows.extend(found)
-    return TaintFacts(taints, tuple(dict.fromkeys(flows)))
+    return TaintFacts(taints, _merged(flows))
+
+
+def _merged(flows: Iterable[TaintFlow]) -> tuple[TaintFlow, ...]:
+    """One flow per source, sink, kinds and tainted value, however many arguments of the
+    sink call it is passed as."""
+
+    passed: dict[TaintFlow, frozenset[tuple[int | None, str | None]]] = {}
+    for flow in flows:
+        key = replace(flow, passed_as=frozenset())
+        passed[key] = passed.get(key, frozenset()) | flow.passed_as
+    return tuple(replace(flow, passed_as=ways) for flow, ways in passed.items())
 
 
 class TaintAnalysis(FunctionAnalysis[TaintFacts]):

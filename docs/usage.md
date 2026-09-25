@@ -336,6 +336,19 @@ it is reachable, called or not — `request.form['name']`, `for key in request.f
 `request.form.get('name')` all read it. A function reading it several times is reported
 once, where it first reads it.
 
+Most vulnerabilities need attacker input in one argument: the path `send_from_directory`
+serves, not its `download_name`; the URL `requests.get` fetches, not its body. An entry
+point may name them in `attacker_arguments`, by keyword `argument` and, when it may be
+passed positionally, by `position`, counted as for argument conditions; `"variadic": true`
+extends a position to every later one, as `safe_join(directory, *pathnames)` takes
+(`{"position": 1, "variadic": true}`). A call is then exploitable only when attacker
+input reaches one of them, `"attacker_arguments": [{"argument": "url", "position": 0}]`
+for `requests.get`; attacker input in another argument leaves it reachable. An argument
+unpacked with `*args` or `**kwargs` may fill any of them: like an argument condition it
+leaves undecided, it does not rule the call out, so it counts, and a wrapper forwarding
+`*args, **kwargs` to the entry point still reaches it. An entry point without
+`attacker_arguments` is exploitable through any argument.
+
 An `argument` condition is decided at each call. It names the argument by keyword and,
 when it may be passed positionally, by `position` (counted from 0, the receiver of a
 method excluded); `values` are what makes the call affected, written as the analyzer
