@@ -140,7 +140,7 @@ class BottleModels(ModelPlugin):
 
 | Model | Declares |
 |---|---|
-| `Source(symbol, label, kinds=ALL)` | A call or attribute whose value is attacker-controlled; `label` names it in messages (`http`, `stdin`, `argv`, `http-response`). `kinds` restricts what it can inject. |
+| `Source(symbol, label, kinds=ALL)` | A call or attribute whose value is attacker-controlled; `label` names it in messages (`http`, `stdin`, `argv`, `http-response`). `kinds` restricts what it can inject. Text input, such as a form field, a header or a URL parameter, carries `TEXT_KINDS`, every kind but `NOSQL`: a string cannot hold a query operator. |
 | `Sink(symbol, kinds, positions=(), keywords=())` | A call dangerous for `kinds`. `positions` limits a kind to the given argument indexes, and `keywords` to the given keyword names; a restricted kind reaches only the arguments listed there. SQL sinks read the statement only, and the SSRF sinks of HTTP clients read the URL, by position or as `url=`. A starred argument or `**kwargs` reaches no restricted kind. |
 | `Sanitizer(symbol, kinds)` | A call whose result is safe for `kinds`, including when the call is inside a project function the data goes through. |
 | `EntryPoint(symbol, label, kinds=ALL)` | A decorator or a class base whose functions receive their parameters as `label` input, such as `flask.Flask.route`. |

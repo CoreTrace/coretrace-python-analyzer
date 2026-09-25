@@ -8,13 +8,15 @@ from typing import ClassVar
 
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import EntryPoint, Model, Sanitizer, Sink, Source, TaintKind
+from coretrace_python.taint import TEXT_KINDS, EntryPoint, Model, Sanitizer, Sink, Source, TaintKind
 
 _METHODS = ("route", "get", "post", "put", "delete", "patch")
-_REQUEST_ATTRIBUTES = (
-    "query", "forms", "params", "json", "body", "headers", "cookies", "GET", "POST", "files",
+# Text, which cannot hold a query operator; JSON, raw bodies and files may hold a structure.
+_TEXT_ATTRIBUTES = (
+    "query", "forms", "params", "headers", "cookies", "GET", "POST",
     "url", "path", "fullpath", "query_string", "get_cookie", "get_header",
 )
+_PAYLOAD_ATTRIBUTES = ("json", "body", "files")
 _FIRST_ONLY = lambda kind: ((kind, (0,)),)
 
 
@@ -25,9 +27,11 @@ def _sym(path: str) -> SymbolId:
 class BottleModels(ModelPlugin):
     name: ClassVar[str] = "bottle-models"
     models: ClassVar[tuple[Model, ...]] = (
-        *(EntryPoint(_sym(f"bottle.{method}"), "http") for method in _METHODS),
-        *(EntryPoint(_sym(f"bottle.Bottle.{method}"), "http") for method in _METHODS),
-        *(Source(_sym(f"bottle.request.{attribute}"), "http") for attribute in _REQUEST_ATTRIBUTES),
+        # A route's parameters are segments of its URL.
+        *(EntryPoint(_sym(f"bottle.{method}"), "http", TEXT_KINDS) for method in _METHODS),
+        *(EntryPoint(_sym(f"bottle.Bottle.{method}"), "http", TEXT_KINDS) for method in _METHODS),
+        *(Source(_sym(f"bottle.request.{attribute}"), "http", TEXT_KINDS) for attribute in _TEXT_ATTRIBUTES),
+        *(Source(_sym(f"bottle.request.{attribute}"), "http") for attribute in _PAYLOAD_ATTRIBUTES),
         Sink(_sym("bottle.redirect"), TaintKind.REDIRECT, _FIRST_ONLY(TaintKind.REDIRECT)),
         # ``static_file(filename, root)``: the root is the application's own.
         Sink(_sym("bottle.static_file"), TaintKind.PATH, _FIRST_ONLY(TaintKind.PATH)),

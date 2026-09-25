@@ -1,0 +1,9 @@
+name = "nosql-injection"
+version = "1.0.0"
+plugin_api = ">=1,<2"
+requires = ["taint.flows", "findings.refutation"]
+provides = ["vulnerability.nosql-injection"]
+
+[entrypoint]
+module = "nosql_injection"
+class = "NoSqlInjectionPlugin"

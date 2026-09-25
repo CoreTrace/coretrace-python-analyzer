@@ -6,11 +6,11 @@ from typing import ClassVar
 
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import EntryPoint, Model, TaintKind
+from coretrace_python.taint import TEXT_KINDS, EntryPoint, Model, TaintKind
 
-# A command-line tool is expected to open the paths it is given: argv input carries every
-# kind but PATH.
-ARGV_KINDS = TaintKind.ALL & ~TaintKind.PATH
+# A command-line tool is expected to open the paths it is given: argv input is text,
+# without PATH.
+ARGV_KINDS = TEXT_KINDS & ~TaintKind.PATH
 
 _COMMANDS = (
     "click.command",

@@ -7,6 +7,7 @@ from typing import ClassVar
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import (
+    TEXT_KINDS,
     Model,
     SafeArgument,
     Sanitizer,
@@ -16,7 +17,7 @@ from coretrace_python.taint import (
     Validator,
 )
 
-_ENVIRONMENT_KINDS = TaintKind.ALL & ~(TaintKind.COMMAND | TaintKind.PATH)
+_ENVIRONMENT_KINDS = TEXT_KINDS & ~(TaintKind.COMMAND | TaintKind.PATH)
 # SafeLoader and BaseLoader build plain data only, in Python and in C, under every spelling.
 _SAFE_YAML_LOADERS = (
     "python.yaml.SafeLoader",
@@ -38,13 +39,14 @@ def _sym(path: str) -> SymbolId:
 class PythonStdlibModels(ModelPlugin):
     name: ClassVar[str] = "python-stdlib-models"
     models: ClassVar[tuple[Model, ...]] = (
-        Source(_sym("builtins.input"), "stdin"),
+        # A line of text; the stream may be a payload ``json.load`` decodes.
+        Source(_sym("builtins.input"), "stdin", TEXT_KINDS),
         Source(_sym("sys.stdin"), "stdin"),
         # Operator-controlled inputs. A command-line tool is expected to open the paths
         # it is given; the environment is set by whoever runs the program, so a command
         # or a path built from it is not an injection; the output of a local process is
         # not a path either, but a downloaded script piped into a shell is a real flaw.
-        Source(_sym("sys.argv"), "argv", TaintKind.ALL & ~TaintKind.PATH),
+        Source(_sym("sys.argv"), "argv", TEXT_KINDS & ~TaintKind.PATH),
         Source(_sym("os.environ"), "environment", _ENVIRONMENT_KINDS),
         Source(_sym("subprocess.run.stdout"), "process-output", _PROCESS_OUTPUT_KINDS),
         Source(_sym("subprocess.check_output"), "process-output", _PROCESS_OUTPUT_KINDS),

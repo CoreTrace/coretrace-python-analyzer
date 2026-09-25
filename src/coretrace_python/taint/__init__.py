@@ -10,6 +10,7 @@ from coretrace_python.taint.engine import (
     propagate_taint,
 )
 from coretrace_python.taint.models import (
+    TEXT_KINDS,
     AuthorizationGuard,
     EntryPoint,
     Model,
@@ -33,6 +34,7 @@ from coretrace_python.taint.routes import RegisteredRoutes, Routes, registered_r
 from coretrace_python.taint.templates import EscapedTemplates, escaped_templates
 
 __all__ = [
+    "TEXT_KINDS",
     "AuthorizationGuard",
     "EntryPoint",
     "EntryPointAnalysis",

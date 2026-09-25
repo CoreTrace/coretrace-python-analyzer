@@ -70,7 +70,7 @@ from coretrace_python.ir.model import (
     Value,
 )
 from coretrace_python.ir.ssa import SSAAnalysis
-from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeTable
+from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeId, ScopeTable
 from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
 from coretrace_python.source import SourceSpan
 from coretrace_python.taint.models import (
@@ -551,7 +551,12 @@ class _TaintProblem(DataflowProblem[State]):
         reaching = taint.kinds & sink.kinds_at(position, keyword)
         if not reaching:
             return
-        for source in sorted(taint.sources, key=lambda s: str(s.symbol)):
+        # One flow per origin: the parameters of one entry point share its source, with
+        # the kinds each can carry (a scalar one no NOSQL); the flow's kinds are the taint's.
+        origins: dict[tuple[SymbolId, str], Source] = {}
+        for source in sorted(taint.sources, key=lambda s: (str(s.symbol), s.label, s.kinds.value)):
+            origins.setdefault((source.symbol, source.label), source)
+        for source in origins.values():
             flows.append(
                 TaintFlow(
                     source,
@@ -770,17 +775,22 @@ def parameter_sources(
 ) -> Mapping[int, Source]:
     """The attacker-controlled parameters of ``function``, by index: every parameter of an
     entry point (``self`` excepted for a method), including one registered elsewhere
-    (``routes``), and every parameter annotated with a typed-parameter symbol."""
+    (``routes``), and every parameter annotated with a typed-parameter symbol. An entry
+    point's parameter annotated with scalars is text: FastAPI validates it before the
+    handler runs, and a scalar cannot hold a query operator."""
 
     owner = _owner(module, function)
     sources: dict[int, Source] = {}
+    scope = scopes.scope_for(function)
+    enclosing = scope.parent if scope.parent is not None else scope.id
     entry = function_entry_point(function, module, models, scopes, symbols, instances, routes)
     if entry is not None:
         first = 1 if owner is not None else 0
         for index in range(first, len(function.parameters)):
-            sources[index] = Source(entry.symbol, entry.label, entry.kinds)
-    scope = scopes.scope_for(function)
-    enclosing = scope.parent if scope.parent is not None else scope.id
+            annotation = function.parameters[index].annotation
+            scalar = annotation is not None and _scalar(annotation, symbols, enclosing)
+            kinds = entry.kinds & ~TaintKind.NOSQL if scalar else entry.kinds
+            sources[index] = Source(entry.symbol, entry.label, kinds)
     for index, parameter in enumerate(function.parameters):
         if parameter.annotation is None:
             continue
@@ -798,6 +808,59 @@ def parameter_sources(
                 )
                 break
     return sources
+
+
+def _typing(*names: str) -> frozenset[SymbolId]:
+    return frozenset(SymbolId(f"python.{module}.{name}") for module in ("typing", "typing_extensions") for name in names)
+
+
+_SCALARS = frozenset(
+    SymbolId(f"python.{name}")
+    for name in (
+        "builtins.str",
+        "builtins.int",
+        "builtins.float",
+        "builtins.bool",
+        "builtins.bytes",
+        "uuid.UUID",
+        "datetime.date",
+        "datetime.datetime",
+        "datetime.time",
+        "datetime.timedelta",
+        "decimal.Decimal",
+    )
+)
+_CONTAINERS = frozenset(
+    SymbolId(f"python.builtins.{name}") for name in ("list", "set", "frozenset", "tuple")
+) | _typing("List", "Set", "FrozenSet", "Tuple", "Sequence")
+_UNIONS = _typing("Optional", "Union")
+_LITERAL = _typing("Literal")
+_ANNOTATED = _typing("Annotated")
+
+
+def _scalar(annotation: nodes.Expression, symbols: SymbolTable, scope: ScopeId) -> bool:
+    """Whether a value annotated with ``annotation`` holds scalars only: a scalar class,
+    a literal, a container of scalars, a union of them with ``None``, or one of them
+    ``Annotated`` with metadata. Anything unknown may hold a structure."""
+
+    if isinstance(annotation, nodes.Constant):
+        return annotation.value is None or annotation.value is Ellipsis
+    if isinstance(annotation, nodes.BinaryOp):
+        return annotation.operator == "bit_or" and all(
+            _scalar(side, symbols, scope) for side in (annotation.left, annotation.right)
+        )
+    if isinstance(annotation, nodes.Subscript):
+        origin = symbols.resolve_expression(scope, annotation.value)
+        key = annotation.key
+        arguments = key.elements if isinstance(key, nodes.Tuple) else (key,)
+        if origin in _LITERAL:
+            return True
+        if origin in _ANNOTATED:
+            return _scalar(arguments[0], symbols, scope)
+        return (origin in _UNIONS or origin in _CONTAINERS) and all(
+            _scalar(argument, symbols, scope) for argument in arguments
+        )
+    return symbols.resolve_expression(scope, annotation) in _SCALARS
 
 
 def propagate_taint(

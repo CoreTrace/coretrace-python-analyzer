@@ -42,6 +42,11 @@ class TaintKind(Flag):
     PII = auto()
 
 
+# What text input carries: a string cannot hold a query operator, only a structure can,
+# so a form field, a header or a URL parameter carries every kind but NOSQL.
+TEXT_KINDS = TaintKind.ALL & ~TaintKind.NOSQL
+
+
 class ModelError(Exception):
     """Two models of the same kind claim the same symbol."""
 

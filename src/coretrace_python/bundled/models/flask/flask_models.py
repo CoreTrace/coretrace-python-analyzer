@@ -7,6 +7,7 @@ from typing import ClassVar
 from coretrace_python.plugins import ModelPlugin
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import (
+    TEXT_KINDS,
     AuthorizationGuard,
     EntryPoint,
     Model,
@@ -17,10 +18,10 @@ from coretrace_python.taint import (
     TaintKind,
 )
 
-_REQUEST_ATTRIBUTES = (
-    "args", "form", "values", "json", "data", "cookies", "headers", "files",
-    "get_json", "get_data", "url", "full_path", "path", "query_string", "stream",
-)
+# Strings, or mappings of strings: text, which cannot hold a query operator.
+_TEXT_ATTRIBUTES = ("args", "form", "values", "cookies", "headers", "url", "full_path", "path", "query_string")
+# JSON, and the raw bodies and files a ``json.loads`` may decode into a structure.
+_PAYLOAD_ATTRIBUTES = ("json", "get_json", "data", "get_data", "stream", "files")
 
 
 _TARGET_ONLY = ((TaintKind.REDIRECT, (0,)),)
@@ -33,11 +34,13 @@ def _sym(path: str) -> SymbolId:
 class FlaskModels(ModelPlugin):
     name: ClassVar[str] = "flask-models"
     models: ClassVar[tuple[Model, ...]] = (
-        *(Source(_sym(f"flask.request.{attribute}"), "http") for attribute in _REQUEST_ATTRIBUTES),
-        EntryPoint(_sym("flask.Flask.route"), "http"),
-        EntryPoint(_sym("flask.Blueprint.route"), "http"),
-        RouteRegistrar(_sym("flask.Flask.add_url_rule"), 2, "http", keyword="view_func"),
-        RouteRegistrar(_sym("flask.Blueprint.add_url_rule"), 2, "http", keyword="view_func"),
+        *(Source(_sym(f"flask.request.{attribute}"), "http", TEXT_KINDS) for attribute in _TEXT_ATTRIBUTES),
+        *(Source(_sym(f"flask.request.{attribute}"), "http") for attribute in _PAYLOAD_ATTRIBUTES),
+        # A route's parameters are segments of its URL.
+        EntryPoint(_sym("flask.Flask.route"), "http", TEXT_KINDS),
+        EntryPoint(_sym("flask.Blueprint.route"), "http", TEXT_KINDS),
+        RouteRegistrar(_sym("flask.Flask.add_url_rule"), 2, "http", TEXT_KINDS, keyword="view_func"),
+        RouteRegistrar(_sym("flask.Blueprint.add_url_rule"), 2, "http", TEXT_KINDS, keyword="view_func"),
         Sink(_sym("flask.render_template_string"), TaintKind.HTML),
         Sink(_sym("flask.make_response"), TaintKind.HTML),
         Sink(_sym("flask.Response"), TaintKind.HTML),
