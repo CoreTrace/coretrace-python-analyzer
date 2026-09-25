@@ -56,6 +56,13 @@
     {
       "file": "app.py",
       "line": 71,
+      "rule": "code-injection",
+      "function": "code_injection",
+      "verdict": "vulnerability"
+    },
+    {
+      "file": "app.py",
+      "line": 71,
       "rule": "dangerous-eval",
       "function": "code_injection"
     },
