@@ -240,7 +240,7 @@ the directory of the checked file; a path outside it is printed as it is.
 ```json
 {
   "schema_version": 1,
-  "tool": {"name": "coretrace-python-analyzer", "version": "0.10.0"},
+  "tool": {"name": "coretrace-python-analyzer", "version": "0.11.0"},
   "root": "/home/me/project",
   "findings": [
     {
@@ -272,7 +272,7 @@ bytes. A single-file check lists no components.
 
 ```json
 "tool": {
-  "name": "coretrace-python-analyzer", "version": "0.10.0",
+  "name": "coretrace-python-analyzer", "version": "0.11.0",
   "components": [
     {"kind": "plugin", "name": "curated-advisories", "version": "2026.09.25", "digest": "sha256:…"},
     {"kind": "advisories", "name": "advisories.json", "digest": "sha256:…"}
@@ -435,7 +435,7 @@ project's behalf would go unseen. Without a lock file, a package is never
 `not_affected`. The document's `@id` derives from its statements, so two runs with the
 same result share it; its `author` is `Unknown Author`, as OpenVEX tools write when they
 cannot know it. Its `tooling` names the analyzer and each component with its digest
-(`coretrace-python-analyzer 0.10.0; curated-advisories 2026.09.25 (sha256:…)`), so the
+(`coretrace-python-analyzer 0.11.0; curated-advisories 2026.09.25 (sha256:…)`), so the
 `@id` changes with the advisory data a statement was decided with.
 
 ## Large projects
