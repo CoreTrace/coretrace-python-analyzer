@@ -167,18 +167,51 @@ class Condition:
 
 
 @dataclass(frozen=True)
+class AttackerArgument:
+    """An argument of an entry point that must carry the attacker's input: passed by
+    keyword ``argument``, or at ``position`` (from 0, a method's receiver excluded) when it
+    may be passed positionally; a ``variadic`` one, such as ``*pathnames``, also takes every
+    later position."""
+
+    argument: str | None = None
+    position: int | None = None
+    variadic: bool = False
+
+    def receives(self, position: int | None, keyword: str | None) -> bool:
+        """Whether the argument passed at ``position`` or as ``keyword`` is this one. An
+        argument unpacked with ``*`` or ``**`` has neither and may fill this one: like an
+        argument condition it leaves undecided, it does not rule the call out, so it is."""
+
+        if keyword is not None:
+            return keyword == self.argument
+        if position is None:
+            return True
+        if self.position is None:
+            return False
+        return position == self.position or (self.variadic and position > self.position)
+
+
+@dataclass(frozen=True)
 class AdvisoryEntryPoint:
     """A public API through which a project reaches an affected symbol, justified by the
     fixing commit or by a call path, with the conditions under which it is affected.
 
     An entry point is reached by a call, or — when ``read`` is set, for an attribute whose
     getter runs the affected code, such as a lazily parsed request body — by any read of
-    it or of an attribute of it."""
+    it or of an attribute of it. When it names ``attacker_arguments``, attacker input
+    exploits it only through one of them; otherwise through any argument."""
 
     symbol: SymbolId
     justification: str
     conditions: tuple[Condition, ...] = ()
     read: bool = False
+    attacker_arguments: tuple[AttackerArgument, ...] = ()
+
+    def exploitable_through(self, position: int | None, keyword: str | None) -> bool:
+        """Whether attacker input in the argument at ``position`` or ``keyword`` can
+        exploit the vulnerability."""
+
+        return not self.attacker_arguments or any(a.receives(position, keyword) for a in self.attacker_arguments)
 
 
 DIRECT = "affected symbol, changed by the fix"

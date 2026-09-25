@@ -17,7 +17,13 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from coretrace_python.dependency.graph import Advisory, AdvisoryEntryPoint, Condition, normalize
+from coretrace_python.dependency.graph import (
+    Advisory,
+    AdvisoryEntryPoint,
+    AttackerArgument,
+    Condition,
+    normalize,
+)
 from coretrace_python.findings import Severity
 from coretrace_python.semantic.symbols import SymbolId
 
@@ -155,6 +161,19 @@ def _entry_point_entry(entry_point: AdvisoryEntryPoint) -> dict[str, Any]:
     }
     if entry_point.read:
         entry["read"] = True
+    if entry_point.attacker_arguments:
+        entry["attacker_arguments"] = [_attacker_argument_entry(a) for a in entry_point.attacker_arguments]
+    return entry
+
+
+def _attacker_argument_entry(argument: AttackerArgument) -> dict[str, Any]:
+    entry: dict[str, Any] = {}
+    if argument.argument is not None:
+        entry["argument"] = argument.argument
+    if argument.position is not None:
+        entry["position"] = argument.position
+    if argument.variadic:
+        entry["variadic"] = True
     return entry
 
 
@@ -206,7 +225,23 @@ def _entry_point(entry: Mapping[str, Any]) -> AdvisoryEntryPoint:
         str(entry["justification"]),
         tuple(_condition(c) for c in entry.get("conditions") or []),
         read,
+        tuple(_attacker_argument(a) for a in entry.get("attacker_arguments") or []),
     )
+
+
+def _attacker_argument(entry: Mapping[str, Any]) -> AttackerArgument:
+    argument, position, variadic = entry.get("argument"), entry.get("position"), entry.get("variadic", False)
+    if argument is not None and not isinstance(argument, str):
+        raise TypeError(f"attacker argument name must be a string, got {argument!r}")
+    if position is not None and (not isinstance(position, int) or isinstance(position, bool) or position < 0):
+        raise TypeError(f"attacker argument position must be a non-negative integer, got {position!r}")
+    if not isinstance(variadic, bool):
+        raise TypeError(f"attacker argument variadic must be true or false, got {variadic!r}")
+    if argument is None and position is None:
+        raise ValueError("an attacker argument needs a name, a position or both")
+    if variadic and position is None:
+        raise ValueError("a variadic attacker argument needs the position it starts at")
+    return AttackerArgument(argument, position, variadic)
 
 
 def _condition(entry: Mapping[str, Any]) -> Condition:
