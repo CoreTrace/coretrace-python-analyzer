@@ -30,7 +30,7 @@ def require_changelog() -> None:
 def test_the_version_is_declared_once_and_mirrored() -> None:
     project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
 
-    assert project["version"] == coretrace_python.__version__ == "0.7.0"
+    assert project["version"] == coretrace_python.__version__ == "0.8.0"
 
 
 def test_the_changelog_starts_with_the_current_version() -> None:
