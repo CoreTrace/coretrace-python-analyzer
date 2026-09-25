@@ -182,6 +182,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "insecure-temp-file",
         "insecure-tls",
         "missing-timeout",
+        "nosql-injection",
         "open-redirect",
         "path-traversal",
         "plaintext-credentials",
@@ -199,7 +200,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "weak-crypto",
         "xss",
     }
-    for rule in ("sql-injection", "command-injection", "code-injection", "path-traversal", "ssrf", "xss"):
+    for rule in ("sql-injection", "command-injection", "code-injection", "nosql-injection", "path-traversal", "ssrf", "xss"):
         assert by_name[rule].requires == ("taint.flows", "findings.refutation")
         assert by_name[rule].provides == (f"vulnerability.{rule}",)
     assert by_name["python-stdlib-models"].provides == ("model.python-stdlib",)
