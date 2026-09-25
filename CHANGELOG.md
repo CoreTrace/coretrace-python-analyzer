@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Reports
+
+- A directory check names what its result was produced with, besides the engine and the sources. It lists each plugin it loaded, by manifest name and version, and each advisory file it read, by path, each with the SHA-256 digest of its content. The formats show them in these places:
+  - JSON: `tool.components`;
+  - SARIF: `tool.extensions`;
+  - CycloneDX SBOM: `metadata.tools.components`, with their hashes;
+  - OpenVEX: the document's `tooling`, so its `@id` changes with the advisory data.
+
+  Every finding about an advisory names the plugin (`name@version`) or advisory file it comes from, in its `advisory_source` metadata. The cache key and the reports identify a plugin by the same digest (#149).
+
 ## 0.9.0 (2026-09-25)
 
 ### Precision

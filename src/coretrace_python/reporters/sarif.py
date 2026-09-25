@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from coretrace_python.findings import Finding, Severity
+from coretrace_python.findings import Component, Finding, Severity
 from coretrace_python.reporters.report import Report
 
 SARIF_VERSION = "2.1.0"
@@ -59,6 +59,16 @@ def _result(
     return result
 
 
+def _extension(component: Component) -> dict[str, object]:
+    """A plugin or advisory file as a SARIF tool extension, its kind and digest as properties."""
+
+    extension: dict[str, object] = {"name": component.name}
+    if component.version is not None:
+        extension["version"] = component.version
+    extension["properties"] = {"kind": component.kind, "digest": component.digest}
+    return extension
+
+
 def render_sarif(report: Report) -> str:
     rule_ids: list[str] = []
     for finding in (*report.findings, *report.suppressed, *report.baselined):
@@ -78,7 +88,8 @@ def render_sarif(report: Report) -> str:
                             {"id": rule_id, "shortDescription": {"text": rule_id}}
                             for rule_id in rule_ids
                         ],
-                    }
+                    },
+                    **({"extensions": [_extension(c) for c in report.components]} if report.components else {}),
                 },
             "results": [
                 *(_result(report, f, rule_ids.index(f.rule_id), False, new) for f in report.findings),

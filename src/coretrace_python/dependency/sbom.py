@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from coretrace_python.dependency.graph import Advisory, DependencyGraph, Requirement
+from coretrace_python.findings import PLUGIN, Component
 
 SPEC_VERSION = "1.5"
 
@@ -33,8 +34,22 @@ def _component(requirement: Requirement) -> dict[str, object]:
     return component
 
 
+def _tool(component: Component) -> dict[str, object]:
+    """A plugin as an application, an advisory file as data, each with its SHA-256."""
+
+    tool: dict[str, object] = {"type": "application" if component.kind == PLUGIN else "data", "name": component.name}
+    if component.version is not None:
+        tool["version"] = component.version
+    tool["hashes"] = [{"alg": "SHA-256", "content": component.digest.removeprefix("sha256:")}]
+    return tool
+
+
 def render_sbom(
-    dependencies: DependencyGraph, advisories: Iterable[Advisory], tool_name: str, tool_version: str
+    dependencies: DependencyGraph,
+    advisories: Iterable[Advisory],
+    tool_name: str,
+    tool_version: str,
+    components: Sequence[Component] = (),
 ) -> str:
     """A CycloneDX JSON document: one component per requirement, and the advisories
     affecting them as vulnerabilities. Deterministic for a given graph."""
@@ -57,7 +72,12 @@ def render_sbom(
         "specVersion": SPEC_VERSION,
         "version": 1,
         "metadata": {
-            "tools": {"components": [{"type": "application", "name": tool_name, "version": tool_version}]}
+            "tools": {
+                "components": [
+                    {"type": "application", "name": tool_name, "version": tool_version},
+                    *(_tool(component) for component in components),
+                ]
+            }
         },
         "components": [_component(requirement) for requirement in requirements],
         "vulnerabilities": vulnerabilities,

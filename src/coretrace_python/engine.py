@@ -7,9 +7,10 @@ plugins and analyses never import it.
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
 import multiprocessing
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar
@@ -55,7 +56,10 @@ from coretrace_python.dependency.correlation import (
     correlate,
 )
 from coretrace_python.findings import (
+    ADVISORIES,
     FINDING_SCHEMA_VERSION,
+    PLUGIN,
+    Component,
     Confidence,
     Coverage,
     FileCoverage,
@@ -217,6 +221,8 @@ class ProjectAnalysis:
     suppressed: tuple[Finding, ...] = ()
     # Findings about an advisory the policy accepts, still evidence of what is reached.
     accepted: tuple[Finding, ...] = ()
+    # The plugins and advisory files the result was produced with.
+    components: tuple[Component, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -358,10 +364,10 @@ def analyze_project(
     for error in dependencies.errors:
         findings.append(_note("syntax-error", error, sources.add_source(error.split(":")[0], ""), 1))
     advisory_paths = _advisory_paths(root, advisory_files)
-    file_advisories: list[Advisory] = []
+    file_advisories: list[tuple[Path, tuple[Advisory, ...]]] = []
     for path in advisory_paths:
         try:
-            file_advisories.extend(load_advisories(path))
+            file_advisories.append((path, load_advisories(path)))
         except AdvisoryFileError as error:
             findings.append(_note("syntax-error", str(error), sources.add_source(str(path), ""), 1))
     policy = Policy()
@@ -392,9 +398,8 @@ def analyze_project(
     probe = next(iter(managers.values()), None) or _register_all(build_hir(sources.add_source("<empty>", "")))
     registry = load_plugins(plugin_roots, probe)
     all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *plugins)
-    advisories = _merge_advisories(
-        (a for plugin in all_plugins for a in plugin.advisories), file_advisories
-    )
+    components = _components(registry, root, (path for path, _ in file_advisories))
+    advisories, origins = _merge_advisories(_contributions(registry, plugins, root, file_advisories))
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins, root).extended(*advisory_sinks(affected))
     for manager in managers.values():
@@ -425,7 +430,7 @@ def analyze_project(
         manager.provide(EscapedTemplates, escaped)
         manager.provide(ClearingAnalysis, clearing)
 
-    configuration = _configuration_key(registry, plugins, models, advisories, dependencies, routes, escaped)
+    configuration = _configuration_key(components, plugins, models, advisories, dependencies, routes, escaped)
     keys = module_keys(
         graph,
         {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
@@ -511,6 +516,7 @@ def analyze_project(
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings = list(apply_refinement(plugin, findings, plugin.refine(context, tuple(findings))))
+    findings = [_sourced(finding, origins) for finding in findings]
     accepted = tuple(f for f in findings if policy.accepts(f))
     kept, suppressed = partition(apply_policy(policy, findings), _text_of(sources))
     return ProjectAnalysis(
@@ -524,20 +530,78 @@ def analyze_project(
         Coverage(tuple(sorted(coverage, key=lambda c: c.path))),
         suppressed,
         accepted,
+        components,
     )
 
 
-def _merge_advisories(
-    from_plugins: Iterable[Advisory], from_files: Iterable[Advisory]
-) -> tuple[Advisory, ...]:
-    """One advisory per identifier and package: a later contributor replaces an earlier
-    one, so a curated plugin refines a bundled sample and a local file, the project's
-    own feed, wins over every plugin."""
+Origins = Mapping[tuple[str, str], str]
 
-    merged: dict[tuple[str, str], Advisory] = {}
-    for advisory in (*from_plugins, *from_files):
-        merged[(advisory.id, advisory.package)] = advisory
-    return tuple(merged.values())
+
+def _merge_advisories(contributions: Iterable[tuple[str, Iterable[Advisory]]]) -> tuple[tuple[Advisory, ...], Origins]:
+    """One advisory per identifier and package, with the contributor it comes from: a
+    later contributor replaces an earlier one, so a curated plugin refines a bundled
+    sample and a local file, the project's own feed, wins over every plugin."""
+
+    merged: dict[tuple[str, str], tuple[str, Advisory]] = {}
+    for source, advisories in contributions:
+        for advisory in advisories:
+            merged[(advisory.id, advisory.package)] = (source, advisory)
+    return (
+        tuple(advisory for _, advisory in merged.values()),
+        MappingProxyType({key: source for key, (source, _) in merged.items()}),
+    )
+
+
+def _contributions(
+    registry: PluginRegistry,
+    plugins: Sequence[Plugin],
+    root: Path,
+    files: Iterable[tuple[Path, tuple[Advisory, ...]]],
+) -> list[tuple[str, Iterable[Advisory]]]:
+    """The advisories of each plugin, then of each advisory file, each under the name a
+    finding cites it by: ``name@version`` for a loaded plugin, the path for a file."""
+
+    return [
+        *((f"{loaded.manifest.name}@{loaded.manifest.version}", loaded.plugin.advisories) for loaded in registry),
+        *((plugin.name, plugin.advisories) for plugin in plugins),
+        *((_located(path, root), advisories) for path, advisories in files),
+    ]
+
+
+def _components(registry: PluginRegistry, root: Path, files: Iterable[Path]) -> tuple[Component, ...]:
+    """The plugins and advisory files a project result is produced with, each with the
+    digest of its content: the plugin directory as the cache fingerprints it, the file's
+    bytes."""
+
+    return (
+        *(
+            Component(PLUGIN, loaded.manifest.name, f"sha256:{directory_fingerprint(loaded.directory)}", loaded.manifest.version)
+            for loaded in registry
+        ),
+        *(
+            Component(ADVISORIES, _located(path, root), f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}")
+            for path in files
+        ),
+    )
+
+
+def _located(path: Path, root: Path) -> str:
+    """``path`` relative to ``root``, POSIX style, when it lies under it."""
+
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _sourced(finding: Finding, origins: Origins) -> Finding:
+    """``finding`` with the plugin or advisory file its advisory comes from, when it
+    cites one."""
+
+    origin = origins.get((finding.metadata.get("advisory", ""), finding.metadata.get("package", "")))
+    if origin is None:
+        return finding
+    return replace(finding, metadata={**finding.metadata, "advisory_source": origin})
 
 
 def _advisory_paths(root: Path, advisory_files: Sequence[Path]) -> tuple[Path, ...]:
@@ -623,15 +687,13 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     registry = load_plugins(batch.plugin_roots, next(iter(managers.values())))
     all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *batch.plugins)
     dependencies = resolve_dependencies(batch.root, sources)
-    file_advisories: list[Advisory] = []
+    file_advisories: list[tuple[Path, tuple[Advisory, ...]]] = []
     for path in batch.advisory_paths:
         try:
-            file_advisories.extend(load_advisories(path))
+            file_advisories.append((path, load_advisories(path)))
         except AdvisoryFileError:
             continue
-    advisories = _merge_advisories(
-        (a for plugin in all_plugins for a in plugin.advisories), file_advisories
-    )
+    advisories, _ = _merge_advisories(_contributions(registry, batch.plugins, batch.root, file_advisories))
     affected = affected_symbols(dependencies, advisories)
     models = plugin_models(all_plugins, batch.root).extended(*advisory_sinks(affected))
     routes = _decode_routes(batch.routes)
@@ -663,7 +725,7 @@ def _decode_routes(data: tuple[tuple[str, str, str, int], ...]) -> dict[SymbolId
 
 
 def _configuration_key(
-    registry: PluginRegistry,
+    components: Sequence[Component],
     plugins: Sequence[Plugin],
     models: ModelTable,
     advisories: tuple[Advisory, ...],
@@ -679,10 +741,7 @@ def _configuration_key(
         str(PYIR_SCHEMA_VERSION),
         str(FINDING_SCHEMA_VERSION),
         str(PLUGIN_API_VERSION),
-        *(
-            f"{loaded.manifest.name}={loaded.manifest.version}:{directory_fingerprint(loaded.directory)}"
-            for loaded in registry
-        ),
+        *(f"{c.name}={c.version}:{c.digest}" for c in components if c.kind == PLUGIN),
         *(f"{type(p).__module__}.{type(p).__qualname__}" for p in plugins),
         repr(models),
         repr(advisories),
@@ -776,6 +835,7 @@ def report(
     root: Path | None = None,
     suppressed: Sequence[Finding] = (),
     baselined: Sequence[Finding] | None = None,
+    components: Sequence[Component] = (),
 ) -> Report:
     """The report of a check; paths under ``root`` are rendered relative to it.
     ``baselined`` is the findings a baseline accounts for, ``None`` when none applied."""
@@ -789,4 +849,5 @@ def report(
         tuple(suppressed),
         tuple(baselined or ()),
         baselined is not None,
+        tuple(components),
     )
