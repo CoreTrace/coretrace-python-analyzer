@@ -32,12 +32,10 @@ VIEW = (
 )
 
 
-def verdict(*models: Model) -> Status:
+def verdict(*models: Model, sink: TaintKind = TaintKind.COMMAND) -> Status:
     module = build_hir(SourceManager().add_source("views.py", VIEW))
     registry = SecurityModelRegistry()
-    registry.register(
-        Source(SymbolId("python.builtins.input"), "stdin"), Sink(SymbolId("python.os.system"), TaintKind.COMMAND), *models
-    )
+    registry.register(Source(SymbolId("python.builtins.input"), "stdin"), Sink(SymbolId("python.os.system"), sink), *models)
     manager = engine.build_manager(module, registry)
     run = next(s for s in module.body if isinstance(s, nodes.Function) and s.name == "run")
     (found,) = manager.get(RefutationAnalysis, run).all()
@@ -46,6 +44,18 @@ def verdict(*models: Model) -> Status:
 
 def test_a_declared_project_validator_refutes_the_flow_it_guards() -> None:
     assert verdict(Validator(SymbolId("python.views.allowed"))) is Status.REFUTED
+
+
+def test_a_validator_proves_only_the_kinds_it_declares() -> None:
+    # A redirect validator says nothing of what a shell makes of the value.
+    allowed = SymbolId("python.views.allowed")
+
+    assert verdict(Validator(allowed, TaintKind.REDIRECT)) is Status.HOTSPOT
+    assert verdict(Validator(allowed, TaintKind.COMMAND)) is Status.REFUTED
+    assert verdict(Validator(allowed, TaintKind.COMMAND), sink=TaintKind.COMMAND | TaintKind.SQL) is Status.HOTSPOT
+    assert verdict(Validator(allowed, TaintKind.COMMAND | TaintKind.SQL), sink=TaintKind.COMMAND | TaintKind.SQL) is (
+        Status.REFUTED
+    )
 
 
 def test_an_undeclared_project_function_leaves_a_hotspot() -> None:
