@@ -60,6 +60,7 @@ from coretrace_python.taint import (
     TaintAnalysis,
     TaintFacts,
     TaintFlow,
+    TaintKind,
 )
 
 VALIDATORS = frozenset(
@@ -219,15 +220,16 @@ class _Judge:
 
     def interpret(
         self, condition: Value, truth: bool | None
-    ) -> tuple[dict[Value, str], set[Value]]:
-        """Values the condition proves safe (with the reason), and values it mentions
-        without proving anything. ``truth`` is ``None`` when it is not fixed at the sink.
+    ) -> tuple[dict[Value, tuple[str, TaintKind]], set[Value]]:
+        """Values the condition proves safe (with the reason and the kinds it proves them
+        safe for), and values it mentions without proving anything. ``truth`` is ``None``
+        when it is not fixed at the sink.
 
         A recognised check evaluated the wrong way (``isdigit()`` known false) yields
         nothing: it is neither a proof nor a reassuring guard."""
 
         definition = self.defs.get(condition)
-        proven: dict[Value, str] = {}
+        proven: dict[Value, tuple[str, TaintKind]] = {}
         mentioned: set[Value] = set()
         if isinstance(definition, UnaryOp) and definition.operator == "not":
             return self.interpret(definition.operand, None if truth is None else not truth)
@@ -241,27 +243,29 @@ class _Judge:
         recognised = self.recognise(definition)
         if recognised is None:
             return proven, set(self.closure(condition)) | {condition}
-        tested, reason, when_true = recognised
+        tested, reason, when_true, kinds = recognised
         if truth is None:
             mentioned = set(self.closure(condition)) | {condition}
         elif truth == when_true:
             # The check proves ``tested``; whatever else it reads is merely mentioned.
-            proven[tested] = reason
+            proven[tested] = (reason, kinds)
             mentioned = set(self.closure(condition)) | {condition}
         return proven, mentioned
 
-    def recognise(self, definition: Instruction | None) -> tuple[Value, str, bool] | None:
-        """``(validated value, reason, truth that validates)`` for known check shapes."""
+    def recognise(self, definition: Instruction | None) -> tuple[Value, str, bool, TaintKind] | None:
+        """``(validated value, reason, truth that validates, kinds it proves)`` for known
+        check shapes. A string check, a constant allowlist or an equality with a constant
+        proves every kind; a ``Validator`` only the kinds it declares."""
 
         if isinstance(definition, Call) and not definition.arguments:
             callee = self.defs.get(definition.callee)
             if isinstance(callee, GetAttr) and callee.attribute in VALIDATORS:
-                return callee.object, f"guarded by {callee.attribute}()", True
+                return callee.object, f"guarded by {callee.attribute}()", True, TaintKind.ALL
         if isinstance(definition, Call):
             symbol = self.symbols.get(definition.callee)
             validator = self.models.validator(symbol) if symbol is not None else None
             if validator is not None and validator.argument < len(definition.arguments):
-                return definition.arguments[validator.argument], f"validated by {symbol}", True
+                return definition.arguments[validator.argument], f"validated by {symbol}", True, validator.kinds
         if isinstance(definition, Compare):
             left, right = definition.left, definition.right
             if definition.operator in ("in", "not_in") and self.is_constant_collection(right):
@@ -269,11 +273,12 @@ class _Judge:
                     left,
                     "allowlisted by a membership check on constants",
                     definition.operator == "in",
+                    TaintKind.ALL,
                 )
             if definition.operator in ("eq", "not_eq"):
                 for tested, other in ((left, right), (right, left)):
                     if isinstance(self.defs.get(other), Constant):
-                        return tested, "equals a constant", definition.operator == "eq"
+                        return tested, "equals a constant", definition.operator == "eq", TaintKind.ALL
         return None
 
     def examined(
@@ -392,8 +397,9 @@ class _Judge:
         )
         for guard in self.guards(sink):
             found, mentioned = self.interpret(guard.condition, guard.truth)
-            for value, reason in found.items():
-                if value in chain:
+            for value, (reason, kinds) in found.items():
+                # A check proving some kinds only leaves the others reaching the sink.
+                if value in chain and not flow.kinds & ~kinds:
                     proven.setdefault(value, reason)
             examined = self.examined(guard.condition, mentioned, flow.argument, chain)
             for origin in origins:
