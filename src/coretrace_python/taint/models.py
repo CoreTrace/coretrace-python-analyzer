@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Flag, auto
 from types import MappingProxyType
@@ -17,7 +18,7 @@ from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext, MissingInputError
 from coretrace_python.interprocedural import Clearing
-from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.semantic.symbols import Members, SymbolId
 
 
 class TaintKind(Flag):
@@ -221,6 +222,7 @@ Model = (
     | SuffixSink
     | SafeArgument
     | TemplateRender
+    | Members
 )
 
 
@@ -238,6 +240,7 @@ class ModelTable:
     suffix_sinks: tuple[SuffixSink, ...] = ()
     safe_arguments: tuple[SafeArgument, ...] = ()
     template_renders: tuple[TemplateRender, ...] = ()
+    members: tuple[Members, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -321,6 +324,7 @@ class ModelTable:
             self.suffix_sinks,
             self.safe_arguments,
             self.template_renders,
+            self.members,
         )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
@@ -334,6 +338,11 @@ class ModelTable:
     def template_render(self, symbol: SymbolId) -> TemplateRender | None:
         found = self._by_symbol[TemplateRender].get(symbol)
         return found if isinstance(found, TemplateRender) else None
+
+    def members_by_class(self) -> Mapping[SymbolId, Members]:
+        """The ``Members`` models by class, as symbol resolution reads them."""
+
+        return MappingProxyType({m.symbol: m for m in self.members})
 
     def clearing(self, escaped: frozenset[str] = frozenset()) -> Clearing:
         """What calls clear from the data they return: every sanitizer its kinds, every
@@ -393,6 +402,7 @@ class SecurityModelRegistry:
             suffix_sinks=tuple(m for m in models if isinstance(m, SuffixSink)),
             safe_arguments=tuple(m for m in models if isinstance(m, SafeArgument)),
             template_renders=tuple(m for m in models if isinstance(m, TemplateRender)),
+            members=tuple(m for m in models if isinstance(m, Members)),
         )
 
 

@@ -141,7 +141,7 @@ class _FunctionLowerer:
             return self.symbols.resolve(self.scope.id, node.identifier)
         if isinstance(node, nodes.Attribute):
             parent = self.imported_symbol(node.value)
-            return parent.attribute(node.name) if parent is not None else None
+            return self.symbols.attribute(parent, node.name) if parent is not None else None
         return None
 
     def expression(self, node: nodes.Expression) -> Value:

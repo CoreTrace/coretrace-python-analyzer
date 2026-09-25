@@ -1,5 +1,6 @@
 """Security models and the global multi-kind taint engine (architecture §16, §17)."""
 
+from coretrace_python.semantic.symbols import Members
 from coretrace_python.taint.engine import (
     EntryPointAnalysis,
     Taint,
@@ -36,6 +37,7 @@ __all__ = [
     "EntryPoint",
     "EntryPointAnalysis",
     "EscapedTemplates",
+    "Members",
     "Model",
     "ModelError",
     "ModelTable",

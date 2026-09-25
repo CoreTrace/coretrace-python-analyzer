@@ -45,7 +45,7 @@ try:
     from coretrace_python.semantic import SEMANTIC_ANALYSES
     from coretrace_python.semantic.imports import ImportAnalysis
     from coretrace_python.semantic.scopes import ScopeAnalysis
-    from coretrace_python.semantic.symbols import SymbolAnalysis
+    from coretrace_python.semantic.symbols import MembersAnalysis, SymbolAnalysis
 except ImportError as error:  # pragma: no cover - red until the analysis manager lands
     MISSING = error
 else:
@@ -225,7 +225,8 @@ def test_dependency_cycles_are_rejected() -> None:
 def test_transitive_dependencies_are_exposed() -> None:
     engine = manager(*SEMANTIC_ANALYSES)
 
-    assert engine.dependencies(SymbolAnalysis) == frozenset({ScopeAnalysis, ImportAnalysis})
+    # Symbol resolution also reads the Members models the engine provides.
+    assert engine.dependencies(SymbolAnalysis) == frozenset({ScopeAnalysis, ImportAnalysis, MembersAnalysis})
     assert engine.dependencies(ScopeAnalysis) == frozenset()
 
 
