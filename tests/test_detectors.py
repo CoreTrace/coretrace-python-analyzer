@@ -165,6 +165,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "aiohttp-models",
         "bottle-models",
         "cli-models",
+        "code-injection",
         "command-injection",
         "config-secrets",
         "credential-models",
@@ -198,7 +199,7 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
         "weak-crypto",
         "xss",
     }
-    for rule in ("sql-injection", "command-injection", "path-traversal", "ssrf", "xss"):
+    for rule in ("sql-injection", "command-injection", "code-injection", "path-traversal", "ssrf", "xss"):
         assert by_name[rule].requires == ("taint.flows", "findings.refutation")
         assert by_name[rule].provides == (f"vulnerability.{rule}",)
     assert by_name["python-stdlib-models"].provides == ("model.python-stdlib",)
