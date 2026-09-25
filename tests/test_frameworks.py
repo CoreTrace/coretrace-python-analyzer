@@ -3,8 +3,9 @@
 Framework plugins enrich the security model; detectors stay generic. Three engine
 mechanisms make that possible:
 
-- a module-level ``name = Symbol(...)`` binds ``name`` to that symbol, so ``app.route``
-  resolves to ``python.flask.Flask.route`` when ``app = Flask(__name__)``;
+- a module-level name denotes what its value denotes in a function body, so ``app.route``
+  resolves to ``python.flask.Flask.route`` when ``app = Flask(__name__)``, and
+  ``cursor = conn.cursor()`` goes through the ``conn`` bound before it;
 - inside functions, call results and ``with`` contexts carry their callee's symbol, so
   ``conn.cursor().execute`` resolves to ``python.sqlite3.connect.cursor.execute``;
 - an ``EntryPoint`` model taints every parameter of a function decorated by its symbol,
@@ -87,6 +88,50 @@ def test_module_level_instances_resolve_to_their_class_symbol() -> None:
     assert symbols.resolve(scopes.module_scope.id, "app") == SymbolId("python.flask.Flask")
     assert symbols.resolve(f.id, "app") == SymbolId("python.flask.Flask")
     assert symbols.resolve(f.id, "limit") is None
+
+
+def test_module_level_names_bound_through_an_instance_denote_what_a_function_derives() -> None:
+    manager = manager_for(
+        "import os\nimport sqlite3\nfrom django.db import connections\n\n"
+        "early = conn.cursor()\n"
+        "conn = sqlite3.connect('app.db')\n"
+        "cursor = conn.cursor()\n"
+        "same = conn\n"
+        "run = os.system\n"
+        "home = os.environ['HOME']\n"
+        "raw = connections['default'].cursor()\n"
+        "limit = 3\n\n"
+        "def f():\n    return cursor\n"
+    )
+    symbols = manager.get(SymbolAnalysis)
+    scopes = manager.get(ScopeAnalysis)
+    f = next(s for s in scopes.children(scopes.module_scope.id) if s.name == "f")
+
+    assert {name: symbols.resolve(f.id, name) for name in ("cursor", "same", "run", "home", "raw")} == {
+        "cursor": SymbolId("python.sqlite3.connect.cursor"),
+        "same": SymbolId("python.sqlite3.connect"),
+        "run": SymbolId("python.os.system"),
+        # An item carries its container's symbol, as in a function body.
+        "home": SymbolId("python.os.environ"),
+        "raw": SymbolId("python.django.db.connections.cursor"),
+    }
+    # Names resolve in statement order: ``conn`` is not bound yet when ``early`` is.
+    assert symbols.resolve(f.id, "early") is None
+    assert symbols.resolve(f.id, "limit") is None
+
+
+def test_a_query_through_a_module_level_cursor_is_an_injection() -> None:
+    findings = check(
+        "import sqlite3\nfrom flask import Flask, request\n\n"
+        "app = Flask(__name__)\n"
+        "conn = sqlite3.connect('app.db')\n"
+        "cursor = conn.cursor()\n\n"
+        "@app.route('/users')\n"
+        "def users():\n"
+        "    return str(cursor.execute(\"SELECT * FROM users WHERE name = '\" + request.args['q'] + \"'\").fetchall())\n"
+    )
+
+    assert [(f.rule_id, f.span.start_line) for f in findings if f.rule_id == "sql-injection"] == [("sql-injection", 10)]
 
 
 def test_attributes_of_module_level_instances_lower_to_symbols() -> None:
