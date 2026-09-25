@@ -150,7 +150,7 @@ class BottleModels(ModelPlugin):
 | `SuffixSink(suffix, kinds, positions=())` | A sink matched by the end of the symbol, for methods of any class such as `objects.raw`. |
 | `SafeArgument(symbol, argument, values, position=None, kinds=ALL)` | A call to the sink `symbol` whose `argument` (by keyword, or at `position`) denotes one of `values` is not a sink for `kinds`, such as `yaml.load` with `Loader=yaml.SafeLoader`. Values are written as the analyzer records arguments: a symbol by its canonical name, a constant as Python writes it (`True`). Only a value given explicitly makes the call safe. |
 | `TemplateRender(symbol, position=0, keyword="template_name")` | A call rendering, with autoescaping, the template named by its argument at `position` or `keyword`, such as `render_to_string`. What it returns carries no `HTML` when the name is written in the call and the project's template escapes everything it prints (see the usage guide). |
-| `Validator(symbol, kinds=ALL, argument=0)` | A callable whose truth proves its argument safe, such as `re.fullmatch`; a flow guarded by it is refuted. |
+| `Validator(symbol, kinds=ALL, argument=0)` | A callable whose truth proves its argument safe, such as `re.fullmatch`; a flow guarded by it is refuted. `symbol` may be a function of the project, by its project symbol (`python.hc.accounts.views._allow_redirect`), which then counts wherever it is called, in its own module too. |
 | `AuthorizationGuard(symbol, label)` | A decorator or a condition restricting who reaches the code, such as `login_required`; a flow behind it is a hotspot. |
 
 Two plugins may describe the same symbol. An identical model is registered once; two

@@ -29,7 +29,12 @@ from coretrace_python.abstract import ConstantPropagation, RangeAnalysis, RangeF
 from coretrace_python.analysis import AnalysisContext, AnyAnalysis, FunctionAnalysis
 from coretrace_python.cfg import CFG, BlockId, CFGAnalysis, DominanceAnalysis, DominatorTree
 from coretrace_python.hir import nodes
-from coretrace_python.interprocedural import CallGraphAnalysis
+from coretrace_python.interprocedural import (
+    CallGraph,
+    CallGraphAnalysis,
+    KnownFunction,
+    project_symbol,
+)
 from coretrace_python.ir.model import (
     BoolOp,
     Branch,
@@ -478,6 +483,7 @@ class RefutationAnalysis(FunctionAnalysis[Verdicts]):
         constants = ctx.get(ConstantPropagation, function)
         graph = ctx.get(CallGraphAnalysis)
         models = ctx.get(SecurityModelAnalysis)
+        name = graph.name_of(function)
         return judge_flows(
             ssa,
             ctx.get(CFGAnalysis, function),
@@ -486,7 +492,21 @@ class RefutationAnalysis(FunctionAnalysis[Verdicts]):
             frozenset(b.id for b in ssa.blocks if constants.reachable(b.id)),
             ctx.get(RangeAnalysis, function),
             models,
-            graph.symbols(graph.name_of(function)),
+            _with_project_callees(ssa, graph, name, ctx.module.name),
             authorization_of(function, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)),
         )
+
+
+def _with_project_callees(function: FunctionIR, graph: CallGraph, name: str, module: str) -> dict[Value, SymbolId]:
+    """The symbols of ``name``'s values, with each call to a function of its module named
+    by its project symbol, so a model declared on it (``Validator``) applies there too."""
+
+    symbols = dict(graph.symbols(name))
+    for block in function.blocks:
+        for instruction in block.instructions:
+            if isinstance(instruction, Call):
+                target = graph.target_at(name, instruction.location)
+                if isinstance(target, KnownFunction):
+                    symbols.setdefault(instruction.callee, project_symbol(module, target.name))
+    return symbols
 
