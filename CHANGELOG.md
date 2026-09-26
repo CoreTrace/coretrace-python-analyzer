@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- `ssrf` judges a flow on how `+` and f-strings build its URL. A fixed host is a limited proof: when constant text fixes `scheme://host` and ends the authority with `/`, `?` or `#` before any input, as in `"https://api.example.com/users/" + id`, the flow is a hotspot, because the input still chooses the path and a redirect may lead elsewhere. It is refuted only when the constant text fixes the path too, the input reaching the query or fragment only, and the call disables redirects (`allow_redirects=False`, `follow_redirects=False`). A module-level name counts as known text when the module binds it once to a string literal and never rebinds it. Everything else stays a vulnerability, including a base of unknown value such as an imported `BASE_URL`, which may leave the authority open. The advisory correlation keeps its own verdict. The regression corpus is unchanged: its six `ssrf` findings build their URL from values of unknown content (#165).
+
+### Plugins
+
+- `TaintDetector.judge(ctx, function, flow, verdict)` lets a rule refine the refutation's verdict on a flow for its own findings, without changing the verdict other consumers of the flow read (#165).
+
 ## 0.13.0 (2026-09-26)
 
 ### Precision

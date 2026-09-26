@@ -115,6 +115,12 @@ ordinary input reaching a database write is not a plaintext credential; `LOG`, f
 values that must not be written to a log as they are; and `PII`, for personal data
 that must not leave the application through a log, a third party or plain storage.
 
+A rule may know more about its own sinks than the refutation does: `judge(ctx, function,
+flow, verdict)` returns the rule's verdict on a flow, given the refutation's, and by
+default returns it unchanged. `ssrf` reads there how the URL is built. The refutation's
+verdict, which other consumers of the flow such as the advisory correlation read, does
+not change; a rule reading more analyses declares them in its `requires`.
+
 ### Security models: `ModelPlugin`
 
 Declares sources, sinks and sanitizers for a library or a framework. A model plugin

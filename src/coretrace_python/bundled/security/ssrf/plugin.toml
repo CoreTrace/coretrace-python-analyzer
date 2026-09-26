@@ -1,7 +1,7 @@
 name = "ssrf"
 version = "1.0.0"
 plugin_api = ">=1,<2"
-requires = ["taint.flows", "findings.refutation"]
+requires = ["taint.flows", "findings.refutation", "ir.ssa", "abstract.module_strings"]
 provides = ["vulnerability.ssrf"]
 
 [entrypoint]
