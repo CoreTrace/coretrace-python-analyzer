@@ -157,7 +157,7 @@ class BottleModels(ModelPlugin):
 | `RouteRegistrar(symbol, argument, label, kinds=ALL, keyword=None)` | A call registering a view at argument `argument` (or `keyword`), such as Django's `path`; the view receives `label` input. |
 | `SuffixSink(suffix, kinds, positions=())` | A sink matched by the end of the symbol, for methods of any class such as `objects.raw`. |
 | `SafeArgument(symbol, argument, values, position=None, kinds=ALL)` | A call to the sink `symbol` whose `argument` (by keyword, or at `position`) denotes one of `values` is not a sink for `kinds`, such as `yaml.load` with `Loader=yaml.SafeLoader`. Values are written as the analyzer records arguments: a symbol by its canonical name, a constant as Python writes it (`True`). Only a value given explicitly makes the call safe. |
-| `TemplateRender(symbol, position=0, keyword="template_name")` | A call rendering, with autoescaping, the template named by its argument at `position` or `keyword`, such as `render_to_string`. What it returns carries no `HTML` when the name is written in the call and the project's template escapes everything it prints (see the usage guide). |
+| `TemplateRender(symbol, position=0, keyword="template_name")` | A call rendering, with autoescaping, the template named by its argument at `position` or `keyword`, such as `render_to_string`. What it returns carries no `HTML` when the name is written in the call and the project's template escapes everything it prints (see the usage guide). A name the analyzer cannot read keeps an advisory a template filter reaches under investigation in the VEX document. |
 | `Validator(symbol, kinds=ALL, argument=0)` | A callable whose truth proves its argument safe for `kinds`, such as `re.fullmatch`. A flow guarded by it is refuted when it carries no other kind into the sink, and is a hotspot otherwise: a redirect validator does not make a shell command safe. `symbol` may be a function of the project, by its project symbol (`python.hc.accounts.views._allow_redirect`), which then counts wherever it is called, in its own module too. |
 | `RequestObject(symbol, text=())` | The inputs from `symbol`, an entry point, a route registrar, a typed parameter or a source, are request objects. A view receives the request first (after `self`), then URL parameters, which are text. Reading one of the request's `text` attributes gives text, as Django's `GET` or aiohttp's `query`; its body and files keep the request's kinds. An attribute read counts only when every source of the value is such a request. |
 | `AuthorizationGuard(symbol, label)` | A decorator or a condition restricting who reaches the code, such as `login_required`; a flow behind it is a hotspot. |
@@ -258,6 +258,10 @@ one, and the label of the entry point it is (`http` for a route, `argv` for a co
 when the models make it one. `ctx.call_graph(module)` gives each function's call sites
 (`sites(function)`) and the symbols it reads, called or not (`reads(function)`: reading
 `request.form['name']` reads `python.flask.request.form`), each where it first reads it.
+`ctx.templates` gives the templates found under the project's `templates` directories:
+their `names`, the filters they apply as `calls` (each a `FilterCall(symbol, span)`, the
+function behind the filter and where the template applies it), and where they name a
+template the analyzer cannot read (`unread`).
 The shipped `vulnerable-dependency`, `reachable-vulnerability` and `dependency-policy`
 plugins are of this kind.
 

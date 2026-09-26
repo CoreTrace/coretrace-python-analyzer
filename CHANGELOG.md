@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Advisories
+
+- A filter of Django's own libraries that a project template applies is a call to the function behind it, at the template's line: `{{ bio|striptags }}` calls `django.template.defaultfilters.striptags`, and so do filters in tag arguments and `{% filter %}` blocks. An advisory entry point naming that function is reachable there, whether or not a Python call names the template, since a class-based view renders its `template_name` inside Django. The data a template passes to a filter is not tracked yet, so such a call is reachable, not exploitable. A template the analyzer cannot read may apply any filter: when the project names one by an expression, or by a name found under no `templates` directory, in `render`, `render_to_string`, `TemplateResponse`, `{% include %}` or `{% extends %}`, an advisory whose entry points include a template filter stays `under_investigation` in the VEX document, and the notes say where. `render`, `TemplateResponse` and `SimpleTemplateResponse` are now template renders like `render_to_string` (#146).
+
 ## 0.15.0 (2026-09-26)
 
 ### Precision

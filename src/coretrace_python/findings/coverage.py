@@ -2,7 +2,9 @@
 
 "No findings" only means something when the reader knows what was analysed. Each file
 is ``analysed``, a ``syntax-error`` (the frontend rejected it) or ``unreadable`` (it could
-not be decoded); analysed files count their functions and how many lowered.
+not be decoded); analysed files count their functions and how many lowered. The
+templates the project names but the run could not read are listed, each where the
+project names it: they may call any template filter.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ class FileCoverage:
 @dataclass(frozen=True)
 class Coverage:
     details: tuple[FileCoverage, ...] = ()
+    unread_templates: tuple[str, ...] = ()
 
     @property
     def files(self) -> int:
