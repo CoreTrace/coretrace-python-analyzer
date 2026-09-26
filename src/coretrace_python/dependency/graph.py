@@ -151,8 +151,10 @@ class Condition:
     ``argument`` condition names the argument by keyword, and by ``position`` when it may
     be passed positionally, and lists the ``values`` that satisfy it — symbols
     (``python.yaml.FullLoader``) or constants as Python writes them (``True``);
-    ``default`` says an absent argument means a vulnerable value. A ``semantic``
-    condition cannot be checked and is reported as pending review."""
+    ``default`` says an absent argument means a vulnerable value. A ``host`` condition
+    says the attacker must choose the host of the URL passed as ``argument`` (or at
+    ``position``); the engine decides it from what the URL's constant text proves. A
+    ``semantic`` condition cannot be checked and is reported as pending review."""
 
     kind: str
     text: str

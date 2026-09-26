@@ -6,6 +6,10 @@
 
 - `open-redirect` judges a flow on the destination a browser resolves from the target's constant text, with its own criteria rather than SSRF's. A reference on the current site keeps the browser there, so the flow is refuted. Such a reference is `/` followed by a character that is not a slash, a backslash, a space or a control character, as in `"/profile/" + id`; or `?`, `#`, or a relative path whose first segment holds no `:`. A fixed absolute host makes the flow a hotspot, since the input chooses the path, where that host may redirect again. Everything else stays a vulnerability, including `"/" + next`: `//evil.com` is another host. The URL facts both rules read are one shared proof, `coretrace_python.taint.urls`, and `ssrf` now reads it too, with the same verdicts. The regression corpus is unchanged: its three `open-redirect` findings redirect to values built without constant text (#168).
 
+### Advisories
+
+- An advisory entry point may declare a `host` condition: the attacker must choose the host of the URL passed as the named argument. It is decided from the URL's constant text, the proof `ssrf` and `open-redirect` read. A fixed host with redirects disabled in the call leaves the call reachable, not exploitable. A fixed host with redirects followed keeps it exploitable, because a redirect may lead to a host the attacker controls, and the condition pending review says so. Input in the query does not choose the host. Anything else stays pending review, and so do the environment conditions. A `host` condition must name its argument and carry nothing else (#170).
+
 ## 0.14.0 (2026-09-26)
 
 ### Precision

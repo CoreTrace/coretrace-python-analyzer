@@ -251,7 +251,7 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
     default = entry.get("default", False)
     if not isinstance(default, bool):
         raise TypeError(f"condition default must be true or false, got {default!r}")
-    return Condition(
+    condition = Condition(
         str(entry["kind"]),
         str(entry["text"]),
         None if entry.get("argument") is None else str(entry["argument"]),
@@ -259,3 +259,8 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
         position,
         default,
     )
+    if condition.kind == "host" and (
+        (condition.argument is None and condition.position is None) or condition.values or condition.default
+    ):
+        raise ValueError("a host condition names the URL argument, by keyword or position, and nothing else")
+    return condition

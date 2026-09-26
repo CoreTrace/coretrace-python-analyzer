@@ -386,6 +386,23 @@ a call passing a variable, or unpacking `*args` or `**kwargs`, leaves the condit
 pending review. A `semantic` condition — the document's tags, the platform, the
 template's origin — cannot be decided and is always pending review, never dropped.
 
+A `host` condition says the attacker must choose the host of the URL passed as
+`argument` (or at `position`), as credentials leaking to the host of a crafted URL
+need: `{"kind": "host", "text": "…", "argument": "url", "position": 0}`. It is
+decided from the URL's constant text, as `ssrf` and `open-redirect` read it, when the
+attacker's input is passed in that argument. The outcome has three cases:
+
+- Constant text fixes the host (`"https://api.example.com/" + path`) and the call
+  disables redirects (`allow_redirects=False`, `follow_redirects=False`): the call is
+  reachable, not exploitable.
+- Constant text fixes the host but redirects may be followed: the call stays
+  exploitable. The fixed initial host does not clear the chain, since a redirect may
+  lead to a host the attacker controls, and the condition pending review says so.
+  Input in the query does not choose the host.
+- Otherwise the condition stays pending review.
+
+The other conditions, the environment included, stay pending as before.
+
 Every dependency finding records the highest level of evidence established in its
 `level` metadata: `declared` (the requirement allows a vulnerable version), `imported`
 (a module of the package is imported somewhere), `reachable` (an entry point or affected
