@@ -74,6 +74,7 @@ from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeId, ScopeTable
 from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
 from coretrace_python.source import SourceSpan
 from coretrace_python.taint.models import (
+    TEXT_KINDS,
     EntryPoint,
     ModelTable,
     SecurityModelAnalysis,
@@ -83,6 +84,9 @@ from coretrace_python.taint.models import (
 )
 from coretrace_python.taint.routes import RegisteredRoutes, Routes
 from coretrace_python.taint.templates import EscapedTemplates
+
+# What only a structure carries, and text does not.
+_STRUCTURED = TaintKind.ALL & ~TEXT_KINDS
 
 
 @dataclass(frozen=True)
@@ -274,17 +278,40 @@ class _TaintProblem(DataflowProblem[State]):
         taint = Taint.none()
         symbol = self.symbols.get(instruction.result) if instruction.result else None
         if symbol is not None:
-            source = self.models.source_covering(symbol)
-            if source is not None:
-                taint = Taint(source.kinds, frozenset({source}))
+            taint = self.covered(symbol)
         if isinstance(instruction, Symbol | Compare):
             return taint
         for operand in instruction.operands():
-            taint = taint.join(state.get(operand, Taint.none()))
+            operand_taint = state.get(operand, Taint.none())
+            if isinstance(instruction, GetAttr):
+                operand_taint = self.attribute(operand_taint, instruction.attribute)
+            taint = taint.join(operand_taint)
         if isinstance(instruction, BuildList | BuildTuple | BuildDict | BuildSet):
             # ``[*xs]`` and ``{**d}`` copy the contents of what they unpack.
             for unpacked in instruction.unpacked:
                 taint = taint.join(self.deep(unpacked, state))
+        return taint
+
+    def covered(self, symbol: SymbolId) -> Taint:
+        """The taint of the source covering ``symbol``, if any. Below a request source, as
+        ``self.request.GET`` is, it is the taint of the request attribute read."""
+
+        source = self.models.source_covering(symbol)
+        if source is None:
+            return Taint.none()
+        taint = Taint(source.kinds, frozenset({source}))
+        if symbol == source.symbol:
+            return taint
+        read = symbol.canonical_name.removeprefix(f"{source.symbol.canonical_name}.").split(".")[0]
+        return self.attribute(taint, read)
+
+    def attribute(self, taint: Taint, name: str) -> Taint:
+        """What attribute ``name`` of a value carrying ``taint`` carries: text when every
+        source of the value is a request object listing ``name`` among its text attributes."""
+
+        requests = [self.models.request_object(source.symbol) for source in taint.sources]
+        if taint and all(request is not None and name in request.text for request in requests):
+            return taint.without(_STRUCTURED)
         return taint
 
     def call(self, call: Call, state: dict[Key, Taint], flows: list[TaintFlow]) -> Taint:
@@ -420,11 +447,7 @@ class _TaintProblem(DataflowProblem[State]):
         if cleared:
             return everything.without(TaintKind(cleared))
         # A method on a tainted object returns tainted data (``request.args.get``).
-        everything = everything.join(state.get(call.callee, Taint.none()))
-        source = self.models.source_covering(symbol)
-        if source is not None:
-            return everything.join(Taint(source.kinds, frozenset({source})))
-        return everything
+        return everything.join(state.get(call.callee, Taint.none())).join(self.covered(symbol))
 
     def guarded(self, sink: Sink | None, arguments: Arguments) -> Sink | None:
         """The sink as this call makes it: an argument declared safe (``yaml.load`` with
@@ -777,7 +800,8 @@ def parameter_sources(
     entry point (``self`` excepted for a method), including one registered elsewhere
     (``routes``), and every parameter annotated with a typed-parameter symbol. An entry
     point's parameter annotated with scalars is text: FastAPI validates it before the
-    handler runs, and a scalar cannot hold a query operator."""
+    handler runs, and a scalar cannot hold a query operator. So are the URL parameters
+    a view receives after a request object."""
 
     owner = _owner(module, function)
     sources: dict[int, Source] = {}
@@ -786,10 +810,13 @@ def parameter_sources(
     entry = function_entry_point(function, module, models, scopes, symbols, instances, routes)
     if entry is not None:
         first = 1 if owner is not None else 0
+        request = models.request_object(entry.symbol)
         for index in range(first, len(function.parameters)):
             annotation = function.parameters[index].annotation
-            scalar = annotation is not None and _scalar(annotation, symbols, enclosing)
-            kinds = entry.kinds & ~TaintKind.NOSQL if scalar else entry.kinds
+            text = (request is not None and index > first) or (
+                annotation is not None and _scalar(annotation, symbols, enclosing)
+            )
+            kinds = entry.kinds & ~_STRUCTURED if text else entry.kinds
             sources[index] = Source(entry.symbol, entry.label, kinds)
     for index, parameter in enumerate(function.parameters):
         if parameter.annotation is None:

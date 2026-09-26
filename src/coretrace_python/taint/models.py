@@ -206,6 +206,22 @@ class TemplateRender:
 
 
 @dataclass(frozen=True)
+class RequestObject:
+    """The inputs from ``symbol`` are request objects; ``symbol`` names an entry point, a
+    route registrar, a typed parameter or a source. A view receives the request first
+    (after ``self``), then URL parameters, which are text. Reading one of the request's
+    ``text`` attributes (``GET``, ``headers``) gives text, while its body and files keep the
+    kinds of the request: text carries ``TEXT_KINDS``."""
+
+    symbol: SymbolId
+    text: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        # Sorted: the models' repr is part of the cache key, the same in every process.
+        object.__setattr__(self, "text", tuple(sorted(set(self.text))))
+
+
+@dataclass(frozen=True)
 class AuthorizationGuard:
     """A decorator, or a condition, that restricts who reaches the code behind it; a
     flow behind one is a hotspot rather than a vulnerability (§24)."""
@@ -228,6 +244,7 @@ Model = (
     | SafeArgument
     | TemplateRender
     | Members
+    | RequestObject
 )
 
 
@@ -246,6 +263,7 @@ class ModelTable:
     safe_arguments: tuple[SafeArgument, ...] = ()
     template_renders: tuple[TemplateRender, ...] = ()
     members: tuple[Members, ...] = ()
+    request_objects: tuple[RequestObject, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -262,6 +280,7 @@ class ModelTable:
             RouteRegistrar: {m.symbol: m for m in self.route_registrars},
             SafeArgument: {m.symbol: m for m in self.safe_arguments},
             TemplateRender: {m.symbol: m for m in self.template_renders},
+            RequestObject: {m.symbol: m for m in self.request_objects},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
 
@@ -330,6 +349,7 @@ class ModelTable:
             self.safe_arguments,
             self.template_renders,
             self.members,
+            self.request_objects,
         )
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
@@ -343,6 +363,10 @@ class ModelTable:
     def template_render(self, symbol: SymbolId) -> TemplateRender | None:
         found = self._by_symbol[TemplateRender].get(symbol)
         return found if isinstance(found, TemplateRender) else None
+
+    def request_object(self, symbol: SymbolId) -> RequestObject | None:
+        found = self._by_symbol[RequestObject].get(symbol)
+        return found if isinstance(found, RequestObject) else None
 
     def members_by_class(self) -> Mapping[SymbolId, Members]:
         """The ``Members`` models by class, as symbol resolution reads them."""
@@ -408,6 +432,7 @@ class SecurityModelRegistry:
             safe_arguments=tuple(m for m in models if isinstance(m, SafeArgument)),
             template_renders=tuple(m for m in models if isinstance(m, TemplateRender)),
             members=tuple(m for m in models if isinstance(m, Members)),
+            request_objects=tuple(m for m in models if isinstance(m, RequestObject)),
         )
 
 

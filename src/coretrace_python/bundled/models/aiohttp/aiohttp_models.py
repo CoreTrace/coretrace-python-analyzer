@@ -12,6 +12,7 @@ from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import (
     EntryPoint,
     Model,
+    RequestObject,
     RouteRegistrar,
     Sink,
     Source,
@@ -22,6 +23,23 @@ from coretrace_python.taint import (
 _METHODS = ("get", "post", "put", "patch", "delete", "head", "options")
 _REQUEST_CLASSES = ("aiohttp.web.Request", "aiohttp.web_request.Request")
 _ROUTERS = ("aiohttp.web.Application.router", "aiohttp.web.UrlDispatcher")
+# ``@routes.get('/')`` on a ``RouteTableDef``.
+_ROUTE_TABLES = tuple(f"aiohttp.web.RouteTableDef.{method}" for method in (*_METHODS, "route", "view"))
+# ``app.router.add_route('GET', '/', handler)``, ``app.router.add_get('/', handler)`` and
+# ``app.add_routes([web.get('/', handler)])``, each with the argument naming the handler.
+_ROUTE_CALLS = (
+    *((f"{router}.add_route", 2) for router in _ROUTERS),
+    *((f"{router}.add_{method}", 1) for router in _ROUTERS for method in (*_METHODS, "view")),
+    ("aiohttp.web.route", 2),
+    *((f"aiohttp.web.{method}", 1) for method in (*_METHODS, "view")),
+)
+# What a request gives as text; its body (``json()``, ``text()``, ``read()``) may hold a
+# structure.
+_REQUEST_TEXT = (
+    "query", "rel_url", "url", "path", "raw_path", "path_qs", "query_string", "match_info", "headers",
+    "raw_headers", "cookies", "method", "host", "scheme", "remote", "forwarded", "content_type", "charset",
+    "if_modified_since", "post",
+)
 _REDIRECTS = ("HTTPFound", "HTTPMovedPermanently", "HTTPSeeOther", "HTTPTemporaryRedirect", "HTTPPermanentRedirect")
 _CLIENT_FUNCTIONS = (
     *(f"aiohttp.ClientSession.{method}" for method in (*_METHODS, "request")),
@@ -40,18 +58,12 @@ class AiohttpModels(ModelPlugin):
         # The whole request is attacker-controlled: its query, match info, headers,
         # cookies and body all come from the client.
         *(TypedParameter(_sym(cls), "http") for cls in _REQUEST_CLASSES),
-        # ``@routes.get('/')`` on a ``RouteTableDef``.
-        *(EntryPoint(_sym(f"aiohttp.web.RouteTableDef.{method}"), "http") for method in (*_METHODS, "route", "view")),
-        # ``app.router.add_route('GET', '/', handler)`` and ``app.router.add_get('/', handler)``.
-        *(RouteRegistrar(_sym(f"{router}.add_route"), 2, "http", keyword="handler") for router in _ROUTERS),
+        *(EntryPoint(_sym(table), "http") for table in _ROUTE_TABLES),
+        *(RouteRegistrar(_sym(call), argument, "http", keyword="handler") for call, argument in _ROUTE_CALLS),
         *(
-            RouteRegistrar(_sym(f"{router}.add_{method}"), 1, "http", keyword="handler")
-            for router in _ROUTERS
-            for method in (*_METHODS, "view")
+            RequestObject(_sym(symbol), _REQUEST_TEXT)
+            for symbol in (*_REQUEST_CLASSES, *_ROUTE_TABLES, *(call for call, _ in _ROUTE_CALLS))
         ),
-        # ``app.add_routes([web.get('/', handler)])``: the route definitions name the handler.
-        RouteRegistrar(_sym("aiohttp.web.route"), 2, "http", keyword="handler"),
-        *(RouteRegistrar(_sym(f"aiohttp.web.{method}"), 1, "http", keyword="handler") for method in (*_METHODS, "view")),
         Sink(_sym("aiohttp.web.Response"), TaintKind.HTML),
         Sink(_sym("aiohttp.web.FileResponse"), TaintKind.PATH),
         *(Sink(_sym(f"aiohttp.web.{exception}"), TaintKind.REDIRECT) for exception in _REDIRECTS),

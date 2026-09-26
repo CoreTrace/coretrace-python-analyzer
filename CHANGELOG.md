@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- The text attributes and URL parameters of a request object carry no `NOSQL`. Django, REST framework, aiohttp and tornado views read a request tainted as a whole, so `request.GET["name"]` and a URL parameter were `nosql-injection` like the body. Now `GET`, `POST`, `COOKIES`, `META`, `headers`, `query_params`, aiohttp's `query` and `match_info`, tornado's `arguments` and the other text attributes are text, and so are the URL parameters a view receives after the request. The body, the files, REST framework's `data` and aiohttp's `json()` keep the kinds of the request. The other kinds are unchanged, and so is the regression corpus. A helper function the request is passed to still reads it as a whole (#162).
+
+### Plugins
+
+- A `RequestObject(symbol, text=())` model says that the inputs from an entry point, a route registrar, a typed parameter or a source are request objects, and which of their attributes are text (#162).
+
 ## 0.12.0 (2026-09-26)
 
 ### Detection

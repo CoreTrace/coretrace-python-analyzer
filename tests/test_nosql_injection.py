@@ -11,9 +11,13 @@ text too, since FastAPI validates it before the handler runs.
 
 The engine ships no NOSQL sink; these tests declare one, ``docstore.find(filter)``.
 
-Limits: a Django or aiohttp request object is tainted as a whole, so ``request.GET``
-carries ``NOSQL`` like ``request.body``; the keys of a dict literal are not followed, so
-a string concatenated into ``$where`` is not reported.
+Django, Django REST framework, aiohttp and tornado hand views a request object, tainted as
+a whole: its text attributes (``GET``, ``headers``, ``query``, ``arguments``) are text, its
+body and files are not, and the URL parameters a view receives after it are text.
+
+Limits: a helper function the request is passed to reads it as a whole, since function
+summaries do not know where their parameters come from; the keys of a dict literal are
+not followed, so a string concatenated into ``$where`` is not reported.
 """
 
 from __future__ import annotations
@@ -176,9 +180,12 @@ def test_standard_input_is_a_payload_and_the_command_line_text(plugins: list[Pat
 
 
 DJANGO = (
-    "import json\n\nimport docstore\nfrom django.http import HttpRequest, JsonResponse\n\n"
-    "def users(request: HttpRequest):\n"
-    "    return JsonResponse(docstore.find({query}))\n"
+    "import json\n\nimport docstore\nfrom django.http import HttpRequest, JsonResponse\nfrom django.urls import path\n\n"
+    "def search(request, slug):\n"
+    "    return JsonResponse(docstore.find({query}))\n\n"
+    "def typed(request: HttpRequest):\n"
+    "    return JsonResponse(docstore.find({query}))\n\n"
+    "urlpatterns = [path('search/<slug>/', search)]\n"
 )
 
 
@@ -186,12 +193,131 @@ DJANGO = (
     "query",
     [
         "json.loads(request.body)",
-        # Limit: the request object is tainted as a whole, its text fields too.
-        '{"name": request.GET["name"]}',
+        "json.loads(request.read())",
+        "json.load(request.FILES['filter'])",
     ],
 )
-def test_a_django_request_carries_nosql_as_a_whole(plugins: list[Path], query: str) -> None:
-    assert injected(plugins, DJANGO.format(query=query)) == [7]
+def test_the_body_and_files_of_a_django_request_are_payloads(plugins: list[Path], query: str) -> None:
+    assert injected(plugins, DJANGO.format(query=query)) == [8, 11]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "{'name': request.GET['name']}",
+        "{'name': request.POST.get('name')}",
+        "{'agent': request.headers['User-Agent'], 'meta': request.META['REMOTE_ADDR']}",
+        "{'token': request.COOKIES['token'], 'path': request.get_full_path()}",
+    ],
+)
+def test_the_text_attributes_of_a_django_request_are_text(plugins: list[Path], query: str) -> None:
+    assert injected(plugins, DJANGO.format(query=query)) == []
+
+
+def test_the_url_parameters_after_the_request_are_text(plugins: list[Path]) -> None:
+    text = DJANGO.format(query="{'tag': slug}").replace("def typed(request: HttpRequest)", "def typed(request, slug)")
+
+    assert injected(plugins, text) == []
+
+
+@pytest.mark.parametrize(
+    "query, reported",
+    [
+        ("json.loads(request.body)", True),
+        ("json.loads(self.request.body)", True),
+        ("{'name': request.POST['name']}", False),
+        ("{'name': self.request.GET['name']}", False),
+        ("{'tag': slug}", False),
+    ],
+)
+def test_a_class_based_view_receives_the_same_request(plugins: list[Path], query: str, reported: bool) -> None:
+    text = (
+        "import json\n\nimport docstore\nfrom django.views import View\n\n"
+        "class Search(View):\n"
+        "    def post(self, request, slug):\n"
+        f"        return docstore.find({query})\n"
+    )
+
+    assert injected(plugins, text) == ([8] if reported else [])
+
+
+@pytest.mark.parametrize("query, reported", [("request.data", True), ("{'q': request.query_params['q']}", False)])
+def test_a_rest_framework_request_parses_the_body_into_data(plugins: list[Path], query: str, reported: bool) -> None:
+    text = (
+        "import docstore\nfrom rest_framework.decorators import api_view\n\n"
+        "@api_view(['POST'])\n"
+        "def create(request):\n"
+        f"    return docstore.find({query})\n"
+    )
+
+    assert injected(plugins, text) == ([6] if reported else [])
+
+
+@pytest.mark.parametrize(
+    "query, reported",
+    [
+        ("await request.json()", True),
+        ("{'name': request.match_info['name']}", False),
+        ("{'q': request.query['q'], 'agent': request.headers['User-Agent']}", False),
+        ("{'name': (await request.post())['name']}", False),
+    ],
+)
+def test_an_aiohttp_request_is_text_but_for_its_body(plugins: list[Path], query: str, reported: bool) -> None:
+    text = (
+        "import docstore\nfrom aiohttp import web\n\n"
+        "routes = web.RouteTableDef()\n\n"
+        "@routes.post('/users/{{name}}')\n"
+        "async def users(request):\n"
+        f"    return docstore.find({query})\n\n"
+        "async def typed(request: web.Request):\n"
+        f"    return docstore.find({query})\n"
+    )
+
+    assert injected(plugins, text) == ([8, 11] if reported else [])
+
+
+@pytest.mark.parametrize(
+    "query, reported",
+    [
+        ("json.loads(self.request.body)", True),
+        ("{'args': self.request.arguments, 'uri': self.request.uri}", False),
+        ("{'name': name}", False),
+    ],
+)
+def test_a_tornado_request_is_text_but_for_its_body(plugins: list[Path], query: str, reported: bool) -> None:
+    text = (
+        "import json\n\nimport docstore\nimport tornado.web\n\n"
+        "class Users(tornado.web.RequestHandler):\n"
+        "    def post(self, name):\n"
+        f"        docstore.find({query})\n"
+    )
+
+    assert injected(plugins, text) == ([8] if reported else [])
+
+
+def test_text_attributes_still_carry_the_other_kinds(plugins: list[Path]) -> None:
+    text = (
+        "from django.http import HttpResponse\nfrom django.urls import path\n\n"
+        "def hello(request, slug):\n"
+        "    return HttpResponse(request.GET['name'] + slug)\n\n"
+        "urlpatterns = [path('hello/<slug>/', hello)]\n"
+    )
+
+    assert [f.span.start_line for f in check(plugins, text) if f.rule_id == "xss"] == [5]
+
+
+def test_a_helper_the_request_is_passed_to_reads_it_as_a_whole(plugins: list[Path]) -> None:
+    text = (
+        "import docstore\nfrom rest_framework.decorators import api_view\n\n"
+        "def lookup(request):\n"
+        "    return docstore.find({'name': request.GET['name']})\n\n"
+        "@api_view(['GET'])\n"
+        "def view(request):\n"
+        "    return lookup(request)\n"
+    )
+
+    # Limit: the summary of ``lookup`` does not know its parameter is a request.
+    assert injected(plugins, text) == [9]
 
 
 def test_parameters_of_one_entry_point_remain_one_origin(plugins: list[Path]) -> None:
