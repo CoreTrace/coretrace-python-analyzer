@@ -13,13 +13,14 @@ from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
 from coretrace_python.findings import Confidence, Finding, Severity
-from coretrace_python.findings.refutation import RefutationAnalysis, Status
+from coretrace_python.findings.refutation import RefutationAnalysis, Status, Verdict
+from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import CallGraphAnalysis
 from coretrace_python.ir.model import Call, Instruction, Symbol, Value
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.plugins.api import Plugin, PluginContext
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import TaintAnalysis, TaintKind
+from coretrace_python.taint import TaintAnalysis, TaintFlow, TaintKind
 
 
 class TaintDetector(Plugin):
@@ -40,6 +41,9 @@ class TaintDetector(Plugin):
                 if not flow.kinds & self.kind:
                     continue
                 verdict = verdicts.verdict(flow)
+                if verdict.status is Status.REFUTED:
+                    continue
+                verdict = self.judge(ctx, function, flow, verdict)
                 if verdict.status is Status.REFUTED:
                     continue
                 message = f"{self.title}: {flow.source.label} input reaches {flow.sink.symbol}"
@@ -69,6 +73,13 @@ class TaintDetector(Plugin):
                     )
                 )
         return findings
+
+    def judge(self, ctx: PluginContext, function: nodes.Function, flow: TaintFlow, verdict: Verdict) -> Verdict:
+        """This rule's verdict on ``flow``, given the refutation's: the same, unless the rule
+        knows more about its own sinks. The refutation's verdict, which other consumers
+        of the flow read, does not change."""
+
+        return verdict
 
 
 def _lower(confidence: Confidence) -> Confidence:
