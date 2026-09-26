@@ -10,7 +10,7 @@ are correlated here into one high-confidence ``exploitable-vulnerability`` findi
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from coretrace_python.dependency.graph import (
     DIRECT,
@@ -24,6 +24,7 @@ from coretrace_python.findings.refutation import Status, Verdict, Verdicts
 from coretrace_python.interprocedural import Arguments, CallSite, ExternalSymbol
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import Sink, TaintFlow, TaintKind
+from coretrace_python.taint.urls import UrlProof, redirects_disabled
 
 Affected = Mapping[SymbolId, tuple[Advisory, ...]]
 
@@ -61,14 +62,33 @@ class ConditionCheck:
     passed: str | None = None
 
 
-def check_conditions(entry: AdvisoryEntryPoint | None, arguments: Arguments | None) -> ConditionCheck:
-    """Decide ``entry``'s conditions against what the call's ``arguments`` denote."""
+def check_conditions(
+    entry: AdvisoryEntryPoint | None,
+    arguments: Arguments | None,
+    url: UrlProof | None = None,
+    passed_as: frozenset[tuple[int | None, str | None]] = frozenset(),
+) -> ConditionCheck:
+    """Decide ``entry``'s conditions against what the call's ``arguments`` denote and, for
+    a ``host`` condition, what ``url`` proves of the value the attacker's input is passed
+    in (``passed_as``). A host the URL's constant text fixes rules the call out when the
+    call disables redirects; otherwise a redirect may still lead to a host the attacker
+    controls, and the condition stays pending with that uncertainty."""
 
     if entry is None:
         return ConditionCheck()
     met: list[Condition] = []
     pending: list[Condition] = []
     for condition in entry.conditions:
+        if condition.kind == "host":
+            origin = url.origin if url is not None and _passed_in(condition, passed_as) else None
+            if origin is None:
+                pending.append(condition)
+            elif redirects_disabled(arguments):
+                return ConditionCheck(tuple(met), tuple(pending), condition, repr(origin))
+            else:
+                text = f"the host is fixed by {origin!r}, but a redirect may lead to a host the attacker controls"
+                pending.append(replace(condition, text=text))
+            continue
         given = arguments.given(condition.argument, condition.position) if condition.checkable and arguments is not None else None
         if given is None:
             pending.append(condition)
@@ -82,6 +102,16 @@ def check_conditions(entry: AdvisoryEntryPoint | None, arguments: Arguments | No
             return ConditionCheck(tuple(met), tuple(pending), condition, value)
         met.append(condition)
     return ConditionCheck(tuple(met), tuple(pending))
+
+
+def _passed_in(condition: Condition, passed_as: frozenset[tuple[int | None, str | None]]) -> bool:
+    """Whether a value passed as ``passed_as`` is the argument ``condition`` names."""
+
+    return any(
+        (keyword is not None and keyword == condition.argument)
+        or (keyword is None and position is not None and position == condition.position)
+        for position, keyword in passed_as
+    )
 
 
 def ruled_out(module: str, site: CallSite, check: ConditionCheck) -> str:
@@ -120,9 +150,10 @@ def correlate(
     flows: Iterable[TaintFlow],
     verdicts: Verdicts | None,
     affected: Affected,
+    urls: Mapping[TaintFlow, UrlProof] | None = None,
 ) -> tuple[Finding, ...]:
     """Exploitable-vulnerability findings for the non-refuted ADVISORY flows of a function,
-    one per advisory the sink is affected by."""
+    one per advisory the sink is affected by; ``urls`` holds what each flow's URL proves."""
 
     findings: list[Finding] = []
     for flow in flows:
@@ -136,7 +167,7 @@ def correlate(
             entry = advisory.entry_point(flow.sink.symbol)
             if entry is not None and not any(entry.exploitable_through(p, k) for p, k in flow.passed_as):
                 continue
-            check = check_conditions(entry, flow.sink_arguments)
+            check = check_conditions(entry, flow.sink_arguments, (urls or {}).get(flow), flow.passed_as)
             if check.contradicted is None:
                 findings.append(_exploitable(function, flow, advisory, verdict, hotspot, check))
     return tuple(findings)

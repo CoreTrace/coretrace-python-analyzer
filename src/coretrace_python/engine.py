@@ -126,6 +126,7 @@ from coretrace_python.taint import (
     escaped_templates,
     registered_routes,
 )
+from coretrace_python.taint.urls import flow_url
 
 TOOL_NAME = "coretrace-python-analyzer"
 
@@ -770,14 +771,14 @@ def _analyse_module(
     graph = manager.get(CallGraphAnalysis)
     correlated: list[Finding] = []
     if affected:
+        strings = manager.get(ModuleStringsAnalysis)
         for function in supported:
+            flows = manager.get(TaintAnalysis, function).flows
+            ssa = manager.get(SSAAnalysis, function)
+            defs = {i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None}
+            urls = {flow: flow_url(flow, defs, strings) for flow in flows if flow.kinds & TaintKind.ADVISORY}
             correlated.extend(
-                correlate(
-                    graph.name_of(function),
-                    manager.get(TaintAnalysis, function).flows,
-                    manager.get(RefutationAnalysis, function),
-                    affected,
-                )
+                correlate(graph.name_of(function), flows, manager.get(RefutationAnalysis, function), affected, urls)
             )
     return CachedModule(
         manager.get(EntryPointAnalysis),
