@@ -32,19 +32,30 @@ from coretrace_python.taint.models import (
     Validator,
 )
 from coretrace_python.taint.routes import RegisteredRoutes, Routes, registered_routes
-from coretrace_python.taint.templates import EscapedTemplates, escaped_templates
+from coretrace_python.taint.templates import (
+    FILTER_FUNCTIONS,
+    EscapedTemplates,
+    FilterCall,
+    ProjectTemplates,
+    escaped_templates,
+    project_templates,
+    unread_renders,
+)
 
 __all__ = [
+    "FILTER_FUNCTIONS",
     "TEXT_KINDS",
     "AuthorizationGuard",
     "EntryPoint",
     "EntryPointAnalysis",
     "EscapedTemplates",
+    "FilterCall",
     "Members",
     "Model",
     "ModelError",
     "ModelTable",
     "NamedParameter",
+    "ProjectTemplates",
     "RegisteredRoutes",
     "RequestObject",
     "RouteRegistrar",
@@ -65,6 +76,8 @@ __all__ = [
     "TypedParameter",
     "Validator",
     "escaped_templates",
+    "project_templates",
     "propagate_taint",
     "registered_routes",
+    "unread_renders",
 ]

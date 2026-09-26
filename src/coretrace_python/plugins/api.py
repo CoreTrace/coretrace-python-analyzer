@@ -33,7 +33,7 @@ from coretrace_python.interprocedural import (
 )
 from coretrace_python.ir.lowering import analyzable_functions
 from coretrace_python.semantic.imports import ImportAnalysis, ImportTable
-from coretrace_python.taint import EntryPointAnalysis, Model
+from coretrace_python.taint import EntryPointAnalysis, Model, ProjectTemplates
 
 PLUGIN_API_VERSION = 1
 
@@ -69,9 +69,10 @@ class ModelPlugin(Plugin):
 
 class ProjectContext:
     """What a project-scoped plugin sees: the module graph, the dependency graph, the
-    advisories every plugin and advisory file contributed, the dependency policy, and
-    each module's imports, call graph and functions. The engine passes the call graphs
-    and functions of modules it served from its cache."""
+    advisories every plugin and advisory file contributed, the dependency policy, each
+    module's imports, call graph and functions, and the project's templates with the
+    filters they call. The engine passes the call graphs and functions of modules it
+    served from its cache."""
 
     def __init__(
         self,
@@ -83,8 +84,10 @@ class ProjectContext:
         policy: Policy | None = None,
         root: Path | None = None,
         functions: Mapping[str, tuple[ModuleFunction, ...]] | None = None,
+        templates: ProjectTemplates | None = None,
     ) -> None:
         self.root = root
+        self.templates = templates or ProjectTemplates()
         self.graph = graph
         self.dependencies = dependencies
         self.advisories = advisories

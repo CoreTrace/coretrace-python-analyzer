@@ -198,7 +198,8 @@ class Validator:
 class TemplateRender:
     """A call rendering the template it names (argument ``position``, or ``keyword``)
     with autoescaping on, such as ``render_to_string``: what it returns carries no
-    ``HTML`` when the project shows that template escaping everything it renders."""
+    ``HTML`` when the project shows that template escaping everything it renders. A
+    template it names that the engine cannot read may call any filter."""
 
     symbol: SymbolId
     position: int = 0
