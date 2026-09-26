@@ -117,7 +117,9 @@ that must not leave the application through a log, a third party or plain storag
 
 A rule may know more about its own sinks than the refutation does: `judge(ctx, function,
 flow, verdict)` returns the rule's verdict on a flow, given the refutation's, and by
-default returns it unchanged. `ssrf` reads there how the URL is built. The refutation's
+default returns it unchanged. `ssrf` and `open-redirect` read there what the URL's
+constant text proves, a proof they share (`coretrace_python.taint.urls`) and each
+judges by its own criteria. The refutation's
 verdict, which other consumers of the flow such as the advisory correlation read, does
 not change; a rule reading more analyses declares them in its `requires`.
 
