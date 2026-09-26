@@ -17,6 +17,7 @@ from coretrace_python.taint import (
     AuthorizationGuard,
     EntryPoint,
     Model,
+    RequestObject,
     RouteRegistrar,
     Sanitizer,
     Sink,
@@ -88,6 +89,23 @@ _AUTHORIZATION_DECORATORS = (
 )
 
 
+# What a request object gives as text: the query string, form fields, headers, cookies
+# and path. Its body, its files and REST framework's parsed ``data`` may hold a structure.
+_REQUEST_TEXT = (
+    "GET", "POST", "COOKIES", "META", "headers", "path", "path_info", "method", "scheme", "encoding",
+    "content_type", "content_params", "resolver_match", "get_full_path", "get_full_path_info",
+    "build_absolute_uri", "get_host", "get_port", "get_signed_cookie", "query_params",
+)
+# Every input a request object comes from: an annotated parameter, a class-based view's
+# method or ``self.request``, a decorated view, a view registered in a URL configuration.
+_REQUEST_INPUTS = (
+    *_REQUEST_CLASSES,
+    *_VIEW_BASES,
+    *(f"{base}.request" for base in _VIEW_BASES),
+    *_VIEW_DECORATORS,
+    *_ROUTE_REGISTRARS,
+)
+
 _TARGET_ONLY = ((TaintKind.REDIRECT, (0,)),)
 
 
@@ -103,6 +121,7 @@ class DjangoModels(ModelPlugin):
         # ``self.request`` in a class-based view: the attribute is inherited from the base.
         *(Source(_sym(f"{base}.request"), "http") for base in _VIEW_BASES),
         *(EntryPoint(_sym(decorator), "http") for decorator in _VIEW_DECORATORS),
+        *(RequestObject(_sym(symbol), _REQUEST_TEXT) for symbol in _REQUEST_INPUTS),
         Sink(_sym("django.db.connection.cursor.execute"), TaintKind.SQL | TaintKind.CREDENTIAL, ((TaintKind.SQL, (0,)),)),
         Sink(_sym("django.db.connection.cursor.executemany"), TaintKind.SQL | TaintKind.CREDENTIAL, ((TaintKind.SQL, (0,)),)),
         Sink(_sym("django.db.models.expressions.RawSQL"), TaintKind.SQL | TaintKind.CREDENTIAL),
