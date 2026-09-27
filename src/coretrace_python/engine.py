@@ -124,7 +124,9 @@ from coretrace_python.taint import (
     TaintAnalysis,
     TaintKind,
     escaped_templates,
+    project_templates,
     registered_routes,
+    unread_renders,
 )
 from coretrace_python.taint.urls import flow_url
 
@@ -431,6 +433,7 @@ def analyze_project(
         for symbol, registered in _routes_of(analysable[name]).items():
             routes.setdefault(symbol, registered)
     escaped = escaped_templates(root)
+    templates = project_templates(root)
     clearing = models.clearing(escaped)
     for manager in analysable.values():
         manager.provide(RegisteredRoutes, routes)
@@ -516,7 +519,9 @@ def analyze_project(
             frozenset(),
             reads={f: tuple(r) for f, r in reads.items()},
         )
-    context = ProjectContext(graph, dependencies, advisories, analysable, call_graphs, policy, root, functions)
+    context = ProjectContext(
+        graph, dependencies, advisories, analysable, call_graphs, policy, root, functions, templates
+    )
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
@@ -526,6 +531,9 @@ def analyze_project(
     findings = [_sourced(finding, origins) for finding in findings]
     accepted = tuple(f for f in findings if policy.accepts(f))
     kept, suppressed = partition(apply_policy(policy, findings), _text_of(sources))
+    unread = list(templates.unread)
+    for name in sorted(call_graphs):
+        unread.extend(unread_renders(name, call_graphs[name], models, templates.names))
     return ProjectAnalysis(
         graph,
         index,
@@ -534,7 +542,7 @@ def analyze_project(
         MappingProxyType(keys),
         reused,
         advisories,
-        Coverage(tuple(sorted(coverage, key=lambda c: c.path))),
+        Coverage(tuple(sorted(coverage, key=lambda c: c.path)), tuple(unread)),
         suppressed,
         accepted,
         components,

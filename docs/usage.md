@@ -362,6 +362,18 @@ it is reachable, called or not — `request.form['name']`, `for key in request.f
 `request.form.get('name')` all read it. A function reading it several times is reported
 once, where it first reads it.
 
+A filter of Django's own libraries that a project template applies is a call to the
+function behind it, placed at the template's line: `{{ bio|striptags }}` calls
+`python.django.template.defaultfilters.striptags`, and so do filters in tag arguments
+(`{% if bio|striptags %}`) and `{% filter %}` blocks. A template counts whether or not a
+Python call names it, since a class-based view renders its `template_name` inside
+Django. Most filters are functions of the same name in `django.template.defaultfilters`;
+`escape`, `escapejs`, `linebreaks`, `phone2numeric`, `slice`, `timesince` and `timeuntil`
+are `<name>_filter` there, and the filters of `i18n`, `l10n`, `tz` and `humanize` are in
+their library's module (`timezone` is `django.templatetags.tz.do_timezone`). The data a
+template passes to a filter is not tracked yet, so such a call is reachable, not
+exploitable.
+
 Most vulnerabilities need attacker input in one argument: the path `send_from_directory`
 serves, not its `download_name`; the URL `requests.get` fetches, not its body. An entry
 point may name them in `attacker_arguments`, by keyword `argument` and, when it may be
@@ -444,8 +456,17 @@ check, including findings the policy accepts or a comment suppresses:
 | Status | When |
 |---|---|
 | `affected` | The project's code reaches the vulnerable code. The notes give each place and its level, `reachable` or `exploitable`. |
-| `not_affected` | Justified as `vulnerable_code_not_in_execute_path`, only when all of these hold: the advisory names entry points, no code of the project reaches them, every file and function was analysed, and a lock file (`uv.lock` or `poetry.lock`) shows that no other package requires the vulnerable one. The impact statement names the entry points and any calls ruled out by their arguments. |
+| `not_affected` | Justified as `vulnerable_code_not_in_execute_path`, only when all of these hold: the advisory names entry points, no code of the project reaches them, every file and function was analysed, every template the project names was read if a template filter is among them, and a lock file (`uv.lock` or `poetry.lock`) shows that no other package requires the vulnerable one. The impact statement names the entry points and any calls ruled out by their arguments. |
 | `under_investigation` | Anything else. The notes say which condition failed. |
+
+A template the analyzer cannot read may apply any filter. The project names one when
+`render`, `render_to_string`, `TemplateResponse`, an `{% include %}` or an `{% extends %}`
+names a template by an expression, or by a name found under no `templates` directory,
+including one an installed package ships; a template file that cannot be read counts
+too. An advisory whose entry points include a template filter then stays
+`under_investigation`, and the notes list where the project names each such template
+(`app.views:12 names a template by an expression`). A template named elsewhere, such as
+a class-based view's `template_name`, is not checked.
 
 `not_affected` needs the lock-file check because the analyzer reads the project's code,
 not the code of installed packages. A framework calling the vulnerable function on the

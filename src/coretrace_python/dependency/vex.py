@@ -7,7 +7,8 @@ subcomponent of the project:
   exploitable finding, whatever the policy or a suppression did with it;
 - ``not_affected``, as ``vulnerable_code_not_in_execute_path``, only when the advisory is
   curated (it names entry points), no code of the project reaches them, every file and
-  function was analysed, and a lock file shows that no other package requires the
+  function was analysed, every template the project names was read when a template
+  filter can reach them, and a lock file shows that no other package requires the
   vulnerable one, since the code of installed packages is not analysed;
 - ``under_investigation`` otherwise, with the reason in its notes.
 """
@@ -25,6 +26,7 @@ from coretrace_python.dependency.graph import Advisory, DependencyGraph, Require
 from coretrace_python.dependency.sbom import purl
 from coretrace_python.findings import Component, Finding
 from coretrace_python.findings.coverage import Coverage
+from coretrace_python.taint import FILTER_FUNCTIONS
 
 CONTEXT = "https://openvex.dev/ns/v0.2.0"
 # OpenVEX's shared namespace for documents without an IRI of their own, and the author
@@ -33,6 +35,8 @@ NAMESPACE = "https://openvex.dev/docs/public/vex-"
 AUTHOR = "Unknown Author"
 # Evidence levels that put the vulnerable code in the project's execution path, lowest first.
 REACHED = ("reachable", "exploitable")
+# What a template calls: a template the engine cannot read may reach these.
+_TEMPLATE_CALLS = frozenset(FILTER_FUNCTIONS.values())
 
 
 def render_vex(
@@ -139,6 +143,11 @@ def _status(
         return _investigating(
             f"No analysed code reaches {entries}, but {', '.join(partial)} could not be fully "
             f"analysed.{ruled}"
+        )
+    if coverage.unread_templates and _TEMPLATE_CALLS.intersection(advisory.reachable_symbols):
+        return _investigating(
+            f"No analysed code reaches {entries}, but a template can reach them, and the engine could "
+            f"not read every template the project names: {'; '.join(coverage.unread_templates)}.{ruled}"
         )
     required_by = dependencies.required_by(package)
     if required_by is None:
