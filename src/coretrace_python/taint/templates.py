@@ -308,13 +308,17 @@ def project_templates(root: Path) -> ProjectTemplates:
             unread.append(f"{relative}, unreadable")
             continue
         for offset, expression, tag in _expressions(text):
+            words = expression.split()
+            if tag and words[:1] == ["filter"]:
+                # ``{% filter striptags %}``: no ``|`` stands before its first filter.
+                start = expression.index("filter") + len("filter")
+                offset, expression = offset + start - 1, "|" + expression[start:]
             blanked = re.sub(_QUOTED, lambda quoted: " " * len(quoted.group()), expression)
             for applied in _APPLIED.finditer(blanked):
                 symbol = FILTER_FUNCTIONS.get(applied.group(1))
                 if symbol is not None:
                     line, column = _position(text, offset + applied.start(1))
                     calls.append(FilterCall(symbol, SourceSpan(SourceId(str(path)), line, column)))
-            words = expression.split()
             if tag and words[:1] in (["include"], ["extends"]):
                 named = _constant(words[1]) if len(words) > 1 else None
                 where = f"{relative}:{_position(text, offset)[0]}"
