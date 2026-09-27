@@ -129,6 +129,7 @@ def test_a_filter_a_project_template_applies_is_a_call_to_the_function_behind_it
         "{% if bio|striptags %}yes{% endif %}",
         "{% with text=bio|striptags %}{{ text }}{% endwith %}",
         "{% filter lower|striptags %}{{ bio }}{% endfilter %}",
+        "{% filter striptags %}{{ bio }}{% endfilter %}",
         "{% include 'app/card.html' with text=bio|striptags %}",
     ],
 )
