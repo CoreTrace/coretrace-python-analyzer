@@ -83,6 +83,8 @@ from coretrace_python.interprocedural import (
     SummaryAnalysis,
     SummaryIndex,
     SymbolRead,
+    TemplateCalls,
+    TemplateCallsAnalysis,
     build_module_graph,
     discover_sources,
     project_symbol,
@@ -160,6 +162,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     RegisteredRoutes,
     EscapedTemplates,
     ClearingAnalysis,
+    TemplateCallsAnalysis,
 )
 
 
@@ -200,6 +203,7 @@ class ResultsEvicted(TransformationPass):
             RegisteredRoutes,
             EscapedTemplates,
             ClearingAnalysis,
+            TemplateCallsAnalysis,
         }
     )
 
@@ -435,12 +439,16 @@ def analyze_project(
     escaped = escaped_templates(root)
     templates = project_templates(root)
     clearing = models.clearing(escaped)
+    template_calls = models.template_calls(templates.filters)
     for manager in analysable.values():
         manager.provide(RegisteredRoutes, routes)
         manager.provide(EscapedTemplates, escaped)
         manager.provide(ClearingAnalysis, clearing)
+        manager.provide(TemplateCallsAnalysis, template_calls)
 
-    configuration = _configuration_key(components, plugins, models, advisories, dependencies, routes, escaped)
+    configuration = _configuration_key(
+        components, plugins, models, advisories, dependencies, routes, escaped, template_calls
+    )
     keys = module_keys(
         graph,
         {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
@@ -482,6 +490,7 @@ def analyze_project(
                             advisory_paths,
                             _encode_routes(routes),
                             tuple(sorted(escaped)),
+                            template_calls,
                         ),
                     )
                     for component in pending
@@ -694,6 +703,7 @@ class _Batch:
     advisory_paths: tuple[Path, ...] = ()
     routes: tuple[tuple[str, str, str, int], ...] = ()
     escaped: tuple[str, ...] = ()
+    template_calls: TemplateCalls = field(default_factory=TemplateCalls)
 
 
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
@@ -721,6 +731,7 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
         manager.provide(RegisteredRoutes, routes)
         manager.provide(EscapedTemplates, escaped)
         manager.provide(ClearingAnalysis, models.clearing(escaped))
+        manager.provide(TemplateCallsAnalysis, batch.template_calls)
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
     results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected)
     return {name: encode(entry) for name, entry in results.items()}
@@ -749,6 +760,7 @@ def _configuration_key(
     dependencies: DependencyGraph,
     routes: Routes | None = None,
     escaped: frozenset[str] = frozenset(),
+    template_calls: TemplateCalls | None = None,
 ) -> str:
     """Everything a module's results depend on besides the project sources (§11)."""
 
@@ -766,6 +778,7 @@ def _configuration_key(
         repr(dependencies.errors),
         repr(_encode_routes(routes or {})),
         repr(sorted(escaped)),
+        repr(template_calls),
     )
 
 

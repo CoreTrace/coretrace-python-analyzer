@@ -7,7 +7,9 @@ over the call graph, so recursion converges to the least solution. Summaries car
 security knowledge of their own: the taint engine decides which external symbols
 matter. They only keep, per parameter, the bits a ``Clearing`` the engine provides says
 the calls on the way cleared, on every path, so a caller's data reaches a sink or comes
-back without the kinds a sanitizer inside the function removed.
+back without the kinds a sanitizer inside the function removed. A call rendering a
+template makes the filter calls ``TemplateCalls`` says the template makes, with the
+values of the context entries it reads.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from types import MappingProxyType
 from typing import ClassVar, TypeVar
 
@@ -38,6 +41,7 @@ from coretrace_python.interprocedural.callgraph import (
     UnknownTarget,
     _is_staticmethod,
 )
+from coretrace_python.ir.defuse import DefUse, def_use
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
@@ -143,6 +147,87 @@ class Clearing:
             if named is not None and named[0] and named[1] in self.escaped:
                 bits |= rendered
         return bits
+
+
+@dataclass(frozen=True)
+class TemplateFilter:
+    """A filter call rendering a template makes: the function behind the filter, where
+    it is applied, in the template named ``template``, and the keys of the render
+    context whose values reach its value and its argument. Keys are sorted: the calls
+    are part of the cache key."""
+
+    symbol: SymbolId
+    location: SourceSpan
+    template: str
+    value: tuple[str, ...] = ()
+    argument: tuple[str, ...] = ()
+
+
+# What the analysis knows of the arguments of a filter call: nothing, so no condition on
+# them is decided.
+FILTER_ARGUMENTS = Arguments(unpacked=True)
+
+
+@dataclass(frozen=True)
+class TemplateCalls:
+    """The filter calls a render makes, provided by the engine from the project's
+    templates: ``renders`` gives, for each render symbol, the position and keyword of
+    the template's name and the position of its ``context``; ``filters`` the calls
+    rendering each template makes, by its name the way call sites record a constant."""
+
+    renders: Mapping[SymbolId, tuple[int, str, int]] = dataclasses.field(default_factory=dict)
+    filters: Mapping[str, tuple[TemplateFilter, ...]] = dataclasses.field(default_factory=dict)
+
+    def made_by(
+        self, symbol: SymbolId, call: Call, arguments: Arguments, defs: Mapping[Value, Instruction], uses: DefUse
+    ) -> tuple[tuple[TemplateFilter, Mapping[str, Value]], ...]:
+        """The filter calls ``call`` makes by rendering the template it names, each with
+        the context entries it may read. There are none unless the context is a dict
+        literal with constant keys that ``call`` alone uses: any other context may hold
+        other values by the time the template reads it."""
+
+        render = self.renders.get(symbol)
+        if render is None:
+            return ()
+        position, keyword, context = render
+        named = arguments.given(keyword, position)
+        filters = self.filters.get(named[1] or "", ()) if named is not None and named[0] else ()
+        entries = _literal_entries(_passed(call, context, "context"), defs, uses) if filters else None
+        return () if entries is None else tuple((f, entries) for f in filters)
+
+
+def _passed(call: Call, position: int, keyword: str) -> Value | None:
+    """The value ``call`` passes at ``position`` or as ``keyword``, when it is certain."""
+
+    if call.starred:
+        return None
+    if position < len(call.arguments):
+        return call.arguments[position]
+    return next((value for name, value in call.keywords if name == keyword), None)
+
+
+def _literal_entries(value: Value | None, defs: Mapping[Value, Instruction], uses: DefUse) -> Mapping[str, Value] | None:
+    built = defs.get(value) if value is not None else None
+    if value is None or not isinstance(built, BuildDict) or built.unpacked or len(uses.uses(value)) != 1:
+        return None
+    entries: dict[str, Value] = {}
+    for key, item in built.items:
+        constant = defs.get(key)
+        if not isinstance(constant, Constant) or not isinstance(constant.value, str):
+            return None
+        entries[constant.value] = item
+    return entries
+
+
+class TemplateCallsAnalysis(Analysis[TemplateCalls]):
+    """The filter calls renders make, provided by the engine for a project; none on its
+    own."""
+
+    name: ClassVar[str] = "interprocedural.template_calls"
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> TemplateCalls:
+        return TemplateCalls()
 
 
 class ClearingAnalysis(Analysis[Clearing]):
@@ -278,6 +363,7 @@ class _DependenceProblem(DataflowProblem[State]):
         project: Mapping[SymbolId, FunctionSummary] | None = None,
         heap: HeapFacts | None = None,
         clearing: Clearing | None = None,
+        templates: TemplateCalls | None = None,
     ) -> None:
         self.name = name
         self.function = function
@@ -286,6 +372,7 @@ class _DependenceProblem(DataflowProblem[State]):
         self.project = project or {}
         self.heap = heap or HeapFacts({})
         self.clearing = clearing or Clearing()
+        self.templates = templates or TemplateCalls()
         self.blocks = {block.id: block for block in function.blocks}
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
@@ -428,6 +515,7 @@ class _DependenceProblem(DataflowProblem[State]):
                 return self.known(project, arguments, keywords, everything, call, state, bound)
             given = self.graph.arguments_at(self.name, call.location)
             self.record(target.symbol, arguments, named, call.location, None, given)
+            self.record_filters(target.symbol, call, given, state)
             cleared = everything.clearing(self.clearing.clears(target.symbol, given))
             return cleared | Dep(externals=frozenset({target.symbol}))
         if isinstance(target, KnownFunction):
@@ -521,6 +609,24 @@ class _DependenceProblem(DataflowProblem[State]):
                 self.store(state, values[mutation.parameter], mutation.field, deps)
         return mapped(callee.return_dependencies, callee.return_cleared) | Dep(externals=callee.return_externals)
 
+    @cached_property
+    def uses(self) -> DefUse:
+        return def_use(self.function)
+
+    def record_filters(self, symbol: SymbolId, call: Call, given: Arguments, state: Mapping[Key, Dep]) -> None:
+        """The filter calls a render makes, each at the filter in its template, with what
+        the context entries reaching its value and its argument depend on."""
+
+        for template_filter, entries in self.templates.made_by(symbol, call, given, self.defs, self.uses):
+            passed: list[Dep] = []
+            for keys in (template_filter.value, template_filter.argument):
+                deps = EMPTY
+                for key in keys:
+                    if key in entries:
+                        deps |= self.deep(entries[key], state)
+                passed.append(deps)
+            self.record(template_filter.symbol, tuple(passed), (), template_filter.location, None, FILTER_ARGUMENTS)
+
     def record(
         self,
         symbol: SymbolId,
@@ -570,8 +676,9 @@ def summarize(
     heap: HeapFacts | None = None,
     static: bool = False,
     clearing: Clearing | None = None,
+    templates: TemplateCalls | None = None,
 ) -> FunctionSummary:
-    problem = _DependenceProblem(name, function, graph, table, project, heap, clearing)
+    problem = _DependenceProblem(name, function, graph, table, project, heap, clearing, templates)
     solution = solve(problem, cfg)
     problem.external = {}
     problem.returns = EMPTY
@@ -610,7 +717,15 @@ def summarize(
 class SummaryAnalysis(Analysis[SummaryTable]):
     name: ClassVar[str] = "interprocedural.summaries"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {CallGraphAnalysis, SSAAnalysis, CFGAnalysis, ProjectSummaries, HeapAnalysis, ClearingAnalysis}
+        {
+            CallGraphAnalysis,
+            SSAAnalysis,
+            CFGAnalysis,
+            ProjectSummaries,
+            HeapAnalysis,
+            ClearingAnalysis,
+            TemplateCallsAnalysis,
+        }
     )
 
     @classmethod
@@ -618,6 +733,7 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         graph = ctx.get(CallGraphAnalysis)
         project = ctx.get(ProjectSummaries).summaries
         clearing = ctx.get(ClearingAnalysis)
+        templates = ctx.get(TemplateCallsAnalysis)
         table: dict[str, FunctionSummary] = {}
         supported: dict[str, tuple[FunctionIR, CFG, HeapFacts]] = {}
         for name, function in graph.definitions.items():
@@ -635,9 +751,8 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         while changed:
             changed = False
             for name, (ssa, cfg, heap) in supported.items():
-                updated = summarize(
-                    name, ssa, cfg, graph, table, project, heap, _is_staticmethod(graph.definitions[name]), clearing
-                )
+                static = _is_staticmethod(graph.definitions[name])
+                updated = summarize(name, ssa, cfg, graph, table, project, heap, static, clearing, templates)
                 if updated != table[name]:
                     table[name] = updated
                     changed = True

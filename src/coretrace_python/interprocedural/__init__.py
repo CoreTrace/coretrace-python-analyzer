@@ -20,6 +20,7 @@ from coretrace_python.interprocedural.modulegraph import (
     project_symbol,
 )
 from coretrace_python.interprocedural.summaries import (
+    FILTER_ARGUMENTS,
     Cleared,
     Clearing,
     ClearingAnalysis,
@@ -31,10 +32,14 @@ from coretrace_python.interprocedural.summaries import (
     SummaryAnalysis,
     SummaryIndex,
     SummaryTable,
+    TemplateCalls,
+    TemplateCallsAnalysis,
+    TemplateFilter,
     cleared_by,
 )
 
 __all__ = [
+    "FILTER_ARGUMENTS",
     "Arguments",
     "CallGraph",
     "CallGraphAnalysis",
@@ -56,6 +61,9 @@ __all__ = [
     "SummaryTable",
     "SymbolRead",
     "Target",
+    "TemplateCalls",
+    "TemplateCallsAnalysis",
+    "TemplateFilter",
     "UnknownTarget",
     "build_module_graph",
     "cleared_by",
