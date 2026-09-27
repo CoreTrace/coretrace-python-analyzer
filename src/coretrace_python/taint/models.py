@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext, MissingInputError
-from coretrace_python.interprocedural import Clearing
+from coretrace_python.interprocedural import Clearing, TemplateCalls, TemplateFilter
 from coretrace_python.semantic.symbols import Members, SymbolId
 
 
@@ -198,12 +198,17 @@ class Validator:
 class TemplateRender:
     """A call rendering the template it names (argument ``position``, or ``keyword``)
     with autoescaping on, such as ``render_to_string``: what it returns carries no
-    ``HTML`` when the project shows that template escaping everything it renders. A
-    template it names that the engine cannot read may call any filter."""
+    ``HTML`` when the project shows that template escaping everything it renders. The
+    template reads its variables from the ``context`` argument (at that position, or
+    ``context=``), and the request from the ``request`` one, None when the call takes
+    none; it makes the filter calls it applies. A template it names that the engine
+    cannot read may call any filter."""
 
     symbol: SymbolId
     position: int = 0
     keyword: str = "template_name"
+    context: int = 1
+    request: int | None = None
 
 
 @dataclass(frozen=True)
@@ -383,6 +388,18 @@ class ModelTable:
             MappingProxyType({r.symbol: (r.position, r.keyword, TaintKind.HTML.value) for r in self.template_renders}),
             # As call sites record a constant argument: the way Python writes it.
             frozenset(repr(name) for name in escaped),
+        )
+
+    def template_calls(self, filters: Mapping[str, tuple[TemplateFilter, ...]], request: bool = False) -> TemplateCalls:
+        """The filter calls every template render makes, from the ``filters`` rendering
+        each template, by name, makes; ``request`` says the request context processor
+        certainly runs."""
+
+        return TemplateCalls(
+            {r.symbol: (r.position, r.keyword, r.context, r.request) for r in self.template_renders},
+            # As call sites record a constant argument: the way Python writes it.
+            {repr(name): found for name, found in filters.items() if found},
+            request,
         )
 
 

@@ -28,14 +28,21 @@ where the project names one.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext
-from coretrace_python.interprocedural import CallGraph, ExternalSymbol, discover_files
+from coretrace_python.hir import nodes
+from coretrace_python.hir.visitors import Node, children
+from coretrace_python.interprocedural import (
+    CallGraph,
+    ExternalSymbol,
+    TemplateFilter,
+    discover_files,
+)
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 from coretrace_python.taint.models import ModelTable
@@ -111,7 +118,22 @@ _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*)((?:\s*[^\s\"'>/=]+(?:\s*=\s*(?:{_
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*>(.*?)</\1\s*>", re.DOTALL | re.IGNORECASE)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _END_TAG = re.compile(r"</[A-Za-z][^>]*>")
-_APPLIED = re.compile(r"\|\s*(\w+)")
+# Django's filter expressions: a constant or a variable, then filters, each with an
+# optional argument, the way ``django.template.base.FilterExpression`` reads them.
+_STRING = r"\"[^\"\\]*(?:\\.[^\"\\]*)*\"|'[^'\\]*(?:\\.[^'\\]*)*'"
+_OPERAND = rf"{_STRING}|_\((?:{_STRING})\)|[\w.]+|[-+.]?\d[\d.e]*"
+_HEAD = re.compile(rf"\s*({_OPERAND})?")
+_FILTER = re.compile(rf"\s*\|\s*(\w+)(?::({_OPERAND}))?")
+_TOKEN = re.compile(rf"(?:[^\s\"']+|{_STRING})+")
+_BINDING = re.compile(r"(\w+)=")
+# A variable with its first attribute: what a context entry holds, or what the request
+# the request context processor adds gives (``request.GET``).
+_VARIABLE = re.compile(r"([A-Za-z_]\w*)(?:\.(\w+))?")
+_LITERALS = frozenset({"True", "False", "None"})
+
+REQUEST_PROCESSOR = "django.template.context_processors.request"
+_DJANGO_ENGINE = "django.template.backends.django.DjangoTemplates"
+_ENGINES_SETTING = "TEMPLATES"
 
 
 def escaped_templates(root: Path) -> frozenset[str]:
@@ -283,23 +305,86 @@ class FilterCall:
 @dataclass(frozen=True)
 class ProjectTemplates:
     """The templates found under the project's ``templates`` directories: their
-    ``names``, as a render call names them; the filters they apply, as ``calls``; and
-    where they name a template the engine cannot read, as ``unread``."""
+    ``names``, as a render call names them; the filters they apply, as ``calls``; where
+    they name a template the engine cannot read, as ``unread``; and, by name, the filter
+    calls rendering each template makes with the context keys reaching them, as
+    ``filters``."""
 
     names: frozenset[str] = frozenset()
     calls: tuple[FilterCall, ...] = ()
     unread: tuple[str, ...] = ()
+    filters: Mapping[str, tuple[TemplateFilter, ...]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _Application:
+    """A filter a template applies: the function behind it, where, the names free in the
+    template whose values reach its value and its argument, and the blocks it is in."""
+
+    symbol: SymbolId
+    span: SourceSpan
+    value: frozenset[str]
+    argument: frozenset[str]
+    blocks: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _Reference:
+    """A template another one includes, or ``extends``, at ``offset`` in its ``blocks``:
+    by ``name``, None when an expression names it. The referenced template's free names
+    are ``bindings``, then, unless ``only``, what the ``scope`` binds there, then the
+    referencing template's."""
+
+    name: str | None
+    offset: int
+    bindings: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    only: bool = False
+    scope: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    blocks: tuple[str, ...] = ()
+    extends: bool = False
+
+    def maps(self, names: frozenset[str]) -> frozenset[str]:
+        found: set[str] = set()
+        for name in names:
+            variable = name.split(".", 1)[0]
+            if variable in self.bindings:
+                found |= _through(self.bindings[variable], name)
+            elif not self.only:
+                found |= _through(self.scope.get(variable, frozenset({variable})), name)
+        return frozenset(found)
+
+
+@dataclass(frozen=True)
+class _Template:
+    """What one template file applies and references, and the ``blocks`` it defines."""
+
+    applications: tuple[_Application, ...]
+    references: tuple[_Reference, ...]
+    blocks: frozenset[str]
+
+    def rendered(self, blocks: tuple[str, ...], overridden: frozenset[str]) -> bool:
+        """Whether what stands in ``blocks`` renders when a template extending this one
+        defines the ``overridden`` blocks: a template extending another renders only
+        its blocks, where they replace the blocks of that name in what it extends."""
+
+        extends = any(reference.extends for reference in self.references)
+        return not overridden.intersection(blocks) and (bool(blocks) or not extends)
 
 
 def project_templates(root: Path) -> ProjectTemplates:
     """What the templates under ``root`` call, and the templates they include or extend
     that the engine cannot read: named by an expression, or by a name found under no
-    ``templates`` directory. A template file that cannot be read is unread too."""
+    ``templates`` directory. A template file that cannot be read is unread too. A name
+    found in several files gives no ``filters``: which one renders depends on the
+    loaders."""
 
     found = {path: tuple(_names(path.relative_to(root).parts)) for path in discover_files(root)}
     templates = sorted(path for path, names in found.items() if names)
-    names = frozenset(name for path in templates for name in found[path])
-    calls: list[FilterCall] = []
+    files: dict[str, list[Path]] = {}
+    for path in templates:
+        for name in found[path]:
+            files.setdefault(name, []).append(path)
+    read: dict[Path, _Template] = {}
     unread: list[str] = []
     for path in templates:
         relative = path.relative_to(root).as_posix()
@@ -307,26 +392,242 @@ def project_templates(root: Path) -> ProjectTemplates:
         if text is None:
             unread.append(f"{relative}, unreadable")
             continue
-        for offset, expression, tag in _expressions(text):
-            words = expression.split()
-            if tag and words[:1] == ["filter"]:
-                # ``{% filter striptags %}``: no ``|`` stands before its first filter.
-                start = expression.index("filter") + len("filter")
-                offset, expression = offset + start - 1, "|" + expression[start:]
-            blanked = re.sub(_QUOTED, lambda quoted: " " * len(quoted.group()), expression)
-            for applied in _APPLIED.finditer(blanked):
-                symbol = FILTER_FUNCTIONS.get(applied.group(1))
-                if symbol is not None:
-                    line, column = _position(text, offset + applied.start(1))
-                    calls.append(FilterCall(symbol, SourceSpan(SourceId(str(path)), line, column)))
-            if tag and words[:1] in (["include"], ["extends"]):
-                named = _constant(words[1]) if len(words) > 1 else None
-                where = f"{relative}:{_position(text, offset)[0]}"
-                if named is None:
-                    unread.append(f"{where} names a template by an expression")
-                elif named not in names:
-                    unread.append(f"{where} names {named!r}, not found")
-    return ProjectTemplates(names, tuple(calls), tuple(unread))
+        read[path] = _read_scopes(text, SourceId(str(path)))
+        for reference in read[path].references:
+            where = f"{relative}:{_position(text, reference.offset)[0]}"
+            if reference.name is None:
+                unread.append(f"{where} names a template by an expression")
+            elif reference.name not in files:
+                unread.append(f"{where} names {reference.name!r}, not found")
+    calls = tuple(FilterCall(a.symbol, a.span) for template in read.values() for a in template.applications)
+    filters = {
+        name: tuple(
+            dict.fromkeys(
+                TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
+                for symbol, span, where, value, argument in _reaching(name, files, read, frozenset())
+            )
+        )
+        for name in files
+    }
+    return ProjectTemplates(frozenset(files), calls, tuple(unread), filters)
+
+
+def _reaching(
+    name: str,
+    files: Mapping[str, list[Path]],
+    read: Mapping[Path, _Template],
+    visiting: frozenset[str],
+    overridden: frozenset[str] = frozenset(),
+) -> Iterator[tuple[SymbolId, SourceSpan, str, frozenset[str], frozenset[str]]]:
+    """The filters rendering the template ``name`` applies, in it and in what it includes
+    or extends, each with the template applying it and the names free in ``name`` whose
+    values reach its value and its argument; the templates extending ``name`` on the way
+    define the ``overridden`` blocks."""
+
+    paths = files.get(name, [])
+    if len(paths) != 1 or paths[0] not in read or name in visiting:
+        return
+    template = read[paths[0]]
+    for application in template.applications:
+        if template.rendered(application.blocks, overridden):
+            yield application.symbol, application.span, name, application.value, application.argument
+    for reference in template.references:
+        if reference.name is None:
+            continue
+        if reference.extends:
+            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.blocks)
+        elif template.rendered(reference.blocks, overridden):
+            found = _reaching(reference.name, files, read, visiting | {name})
+        else:
+            continue
+        for symbol, span, where, value, argument in found:
+            yield symbol, span, where, reference.maps(value), reference.maps(argument)
+
+
+def _read_scopes(text: str, source: SourceId) -> _Template:
+    """The filters a template applies and the templates it includes or extends, with the
+    names free in it that reach each: through ``{% for %}``, ``{% with %}`` and the
+    ``as`` of other tags, which bind a name until their block ends, the arguments of
+    earlier filters, and the output of ``{% filter %}`` blocks."""
+
+    applications: list[_Application] = []
+    references: list[_Reference] = []
+    opened: list[str] = []
+    defined: set[str] = set()
+    scopes: list[dict[str, frozenset[str]]] = [{}]
+    blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
+
+    def free(names: frozenset[str]) -> frozenset[str]:
+        found: set[str] = set()
+        for name in names:
+            variable = name.split(".", 1)[0]
+            bound = next((scope[variable] for scope in reversed(scopes) if variable in scope), None)
+            found |= {name} if bound is None else _through(bound, name)
+        return frozenset(found)
+
+    def apply(head: frozenset[str], chain: list[tuple[str, int, frozenset[str]]]) -> frozenset[str]:
+        """Record the filters of ``chain`` applied to a value the free names ``head``
+        reach; the free names reaching the value of the whole expression."""
+
+        value = head
+        for name, offset, argument in chain:
+            symbol = FILTER_FUNCTIONS.get(name)
+            if symbol is not None:
+                line, column = _position(text, offset)
+                span = SourceSpan(source, line, column)
+                applications.append(_Application(symbol, span, value, free(argument), tuple(opened)))
+            value |= free(argument)
+        return value
+
+    for offset, expression, tag in _expressions(text):
+        if not tag:
+            head, chain = _chain(expression, offset)
+            printed = apply(free(head), chain)
+            for _, collected in blocks:
+                collected |= printed
+            continue
+        tokens = [(match.start() + offset, match.group()) for match in _TOKEN.finditer(expression)]
+        words = [word for _, word in tokens]
+        name = words[0] if words else ""
+        if name == "filter":
+            # ``{% filter lower|striptags %}``: filters without a value, applied to the
+            # block's output at its end.
+            start = expression.index("filter") + len("filter")
+            blocks.append((_chain("|" + expression[start:], offset + start - 1)[1], set()))
+            continue
+        if name == "endfilter" and blocks:
+            chain, collected = blocks.pop()
+            printed = apply(frozenset(collected), chain)
+            if blocks:
+                blocks[-1][1].update(printed)
+            continue
+        values: dict[str, frozenset[str]] = {}
+        bindings: dict[str, frozenset[str]] = {}
+        for start, word in tokens[1:]:
+            bound = _BINDING.match(word)
+            skipped = bound.end() if bound else 0
+            head, chain = _chain(word[skipped:], start + skipped)
+            reached = apply(free(head), chain)
+            if bound:
+                bindings[bound.group(1)] = reached
+            else:
+                values.setdefault(word, reached)
+        if name == "block" and len(words) > 1:
+            opened.append(words[1])
+            defined.add(words[1])
+        elif name == "endblock" and opened:
+            opened.pop()
+        elif name == "for" and "in" in words:
+            loop = words.index("in")
+            targets = [t for word in words[1:loop] for t in word.split(",") if t]
+            iterated = values.get(words[loop + 1], frozenset()) if loop + 1 < len(words) else frozenset()
+            scopes.append({"forloop": frozenset(), **{target: iterated for target in targets}})
+        elif name == "with":
+            as_form = len(words) == 4 and words[2] == "as"
+            scopes.append({words[3]: values.get(words[1], frozenset())} if as_form else bindings)
+        elif name in ("endfor", "endwith") and len(scopes) > 1:
+            scopes.pop()
+        elif name in ("include", "extends"):
+            named = _constant(words[1]) if len(words) > 1 else None
+            if name == "extends":
+                references.append(_Reference(named, offset, extends=True))
+            else:
+                context = {k: v for scope in scopes for k, v in scope.items()}
+                references.append(_Reference(named, offset, bindings, "only" in words, context, tuple(opened)))
+        elif "as" in words[1:-1]:
+            target = words[words.index("as", 1) + 1]
+            scopes[-1][target] = values.get(words[1], frozenset()) if name == "regroup" else frozenset()
+    return _Template(tuple(applications), tuple(references), frozenset(defined))
+
+
+def _chain(expression: str, offset: int) -> tuple[frozenset[str], list[tuple[str, int, frozenset[str]]]]:
+    """What a filter expression's value is reached by, and its filters, each with the
+    offset of its name and what its argument is reached by."""
+
+    head = _HEAD.match(expression)
+    assert head is not None  # every part of it is optional
+    chain = [
+        (applied.group(1), offset + applied.start(1), _reached_by(applied.group(2)))
+        for applied in _FILTER.finditer(expression, head.end())
+    ]
+    return _reached_by(head.group(1)), chain
+
+
+def _reached_by(operand: str | None) -> frozenset[str]:
+    """The variable an operand reads, with its first attribute; none for a constant."""
+
+    variable = _VARIABLE.match(operand) if operand else None
+    return frozenset() if variable is None or variable.group(1) in _LITERALS else frozenset({variable.group()})
+
+
+def _through(bound: frozenset[str], name: str) -> frozenset[str]:
+    """What ``name``, a variable with its first attribute, reads when its variable is
+    ``bound`` to those names: ``query.q`` with ``query`` bound to ``request.GET`` reads
+    ``request.GET``."""
+
+    attribute = name.partition(".")[2]
+    return frozenset(".".join(f"{b}.{attribute}".split(".")[:2]) if attribute else b for b in bound)
+
+
+def request_processor(modules: Iterable[nodes.Module]) -> bool:
+    """Whether every Django template engine the project's settings configure runs the
+    ``request`` context processor, for certain: each assignment to ``TEMPLATES`` is a
+    literal list of literal engines, at least one of them ``DjangoTemplates``, and each
+    of those lists the processor in a literal ``context_processors``; no other code
+    names ``TEMPLATES``, which could change it. A mere mention of the processor proves
+    nothing."""
+
+    assignments = mentions = 0
+    for module in modules:
+        stack: list[Node] = list(module.body)
+        while stack:
+            node = stack.pop()
+            stack.extend(children(node))
+            if isinstance(node, nodes.Name) and node.identifier == _ENGINES_SETTING:
+                mentions += 1
+            elif isinstance(node, nodes.Assign) and _names_engines(node.target):
+                if not _runs_request_processor(node.value):
+                    return False
+                assignments += 1
+    return assignments > 0 and mentions == assignments
+
+
+def _names_engines(target: nodes.Expression) -> bool:
+    return isinstance(target, nodes.Name) and target.identifier == _ENGINES_SETTING
+
+
+def _runs_request_processor(engines: nodes.Expression) -> bool:
+    if not isinstance(engines, nodes.List | nodes.Tuple):
+        return False
+    django = 0
+    for engine in engines.elements:
+        settings = _literal_dict(engine)
+        backend = settings.get("BACKEND") if settings is not None else None
+        if settings is None or not isinstance(backend, nodes.Constant) or not isinstance(backend.value, str):
+            return False
+        if backend.value != _DJANGO_ENGINE:
+            continue
+        django += 1
+        options = _literal_dict(settings.get("OPTIONS"))
+        processors = options.get("context_processors") if options is not None else None
+        if not isinstance(processors, nodes.List | nodes.Tuple):
+            return False
+        if not any(isinstance(p, nodes.Constant) and p.value == REQUEST_PROCESSOR for p in processors.elements):
+            return False
+    return django > 0
+
+
+def _literal_dict(expression: nodes.Expression | None) -> dict[str, nodes.Expression] | None:
+    """A dict display with constant string keys, by key; None for anything else."""
+
+    if not isinstance(expression, nodes.Dict):
+        return None
+    found: dict[str, nodes.Expression] = {}
+    for key, value in expression.items:
+        if not isinstance(key, nodes.Constant) or not isinstance(key.value, str):
+            return None
+        found[key.value] = value
+    return found
 
 
 def unread_renders(module: str, graph: CallGraph, models: ModelTable, names: frozenset[str]) -> Iterator[str]:

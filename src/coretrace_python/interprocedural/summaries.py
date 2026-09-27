@@ -7,14 +7,17 @@ over the call graph, so recursion converges to the least solution. Summaries car
 security knowledge of their own: the taint engine decides which external symbols
 matter. They only keep, per parameter, the bits a ``Clearing`` the engine provides says
 the calls on the way cleared, on every path, so a caller's data reaches a sink or comes
-back without the kinds a sanitizer inside the function removed.
+back without the kinds a sanitizer inside the function removed. A call rendering a
+template makes the filter calls ``TemplateCalls`` says the template makes, with the
+values of the context entries it reads.
 """
 
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from types import MappingProxyType
 from typing import ClassVar, TypeVar
 
@@ -38,6 +41,7 @@ from coretrace_python.interprocedural.callgraph import (
     UnknownTarget,
     _is_staticmethod,
 )
+from coretrace_python.ir.defuse import DefUse, def_use
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
@@ -143,6 +147,131 @@ class Clearing:
             if named is not None and named[0] and named[1] in self.escaped:
                 bits |= rendered
         return bits
+
+
+@dataclass(frozen=True)
+class TemplateFilter:
+    """A filter call rendering a template makes: the function behind the filter, where
+    it is applied, in the template named ``template``, and the variables of the render,
+    each with its first attribute (``bio``, ``request.GET``), whose values reach its value
+    and its argument. They are sorted: the calls are part of the cache key."""
+
+    symbol: SymbolId
+    location: SourceSpan
+    template: str
+    value: tuple[str, ...] = ()
+    argument: tuple[str, ...] = ()
+
+
+# What the analysis knows of the arguments of a filter call: nothing, so no condition on
+# them is decided.
+FILTER_ARGUMENTS = Arguments(unpacked=True)
+
+
+@dataclass(frozen=True)
+class Rendering:
+    """What a render call gives the template: the filter calls it makes, the context
+    ``entries`` by key, and the ``request`` the request context processor adds, if it
+    certainly does. An entry of that name shadows the request."""
+
+    filters: tuple[TemplateFilter, ...]
+    entries: Mapping[str, Value]
+    request: Value | None = None
+
+    def values(self, names: tuple[str, ...]) -> Iterator[tuple[Value, str | None]]:
+        """The values reaching a filter through ``names``, each a variable with its first
+        attribute: a context entry, or the request with the attribute read from it."""
+
+        for name in names:
+            variable, _, attribute = name.partition(".")
+            if variable in self.entries:
+                yield self.entries[variable], None
+            elif variable == REQUEST and self.request is not None and attribute:
+                yield self.request, attribute
+
+
+# The variable the request context processor adds.
+REQUEST = "request"
+
+
+@dataclass(frozen=True)
+class TemplateCalls:
+    """The filter calls a render makes, provided by the engine from the project's
+    templates: ``renders`` gives, for each render symbol, the position and keyword of
+    the template's name, the position of its ``context`` and that of its ``request``
+    (None when it takes none); ``filters`` the calls rendering each template makes, by
+    its name the way call sites record a constant; ``request`` says the request context
+    processor certainly runs for every template."""
+
+    renders: Mapping[SymbolId, tuple[int, str, int, int | None]] = dataclasses.field(default_factory=dict)
+    filters: Mapping[str, tuple[TemplateFilter, ...]] = dataclasses.field(default_factory=dict)
+    request: bool = False
+
+    def rendering(
+        self, symbol: SymbolId, call: Call, arguments: Arguments, defs: Mapping[Value, Instruction], uses: DefUse
+    ) -> Rendering | None:
+        """What ``call`` gives the template it names, when it renders one whose filter
+        calls are known. None unless the context is certain: absent, or a dict literal
+        with constant keys that ``call`` alone uses; any other context may hold other
+        values, or a ``request`` entry, by the time the template reads it."""
+
+        render = self.renders.get(symbol)
+        if render is None:
+            return None
+        position, keyword, context, request = render
+        named = arguments.given(keyword, position)
+        filters = self.filters.get(named[1] or "", ()) if named is not None and named[0] else ()
+        passed = _passed(call, context, "context") if filters else None
+        entries = _literal_entries(passed[1], defs, uses) if passed is not None and passed[0] else None
+        if entries is None:
+            return None
+        given = _passed(call, request, REQUEST) if self.request and request is not None else None
+        return Rendering(filters, entries, given[1] if given is not None and given[0] else None)
+
+
+def _passed(call: Call, position: int, keyword: str) -> tuple[bool, Value | None]:
+    """Whether what ``call`` passes at ``position`` or as ``keyword`` is certain, and
+    that value: None when the call passes none."""
+
+    if call.starred or any(name is None for name, _ in call.keywords):
+        return False, None
+    if position < len(call.arguments):
+        return True, call.arguments[position]
+    return True, next((value for name, value in call.keywords if name == keyword), None)
+
+
+def _is_none(value: Value | None, defs: Mapping[Value, Instruction]) -> bool:
+    constant = defs.get(value) if value is not None else None
+    return value is None or (isinstance(constant, Constant) and constant.value is None)
+
+
+def _literal_entries(value: Value | None, defs: Mapping[Value, Instruction], uses: DefUse) -> Mapping[str, Value] | None:
+    """The entries of a context, by key: none for an absent context, None unless it is a
+    dict literal with constant keys that nothing else uses."""
+
+    if _is_none(value, defs):
+        return {}
+    built = defs.get(value) if value is not None else None
+    if value is None or not isinstance(built, BuildDict) or built.unpacked or len(uses.uses(value)) != 1:
+        return None
+    entries: dict[str, Value] = {}
+    for key, item in built.items:
+        constant = defs.get(key)
+        if not isinstance(constant, Constant) or not isinstance(constant.value, str):
+            return None
+        entries[constant.value] = item
+    return entries
+
+
+class TemplateCallsAnalysis(Analysis[TemplateCalls]):
+    """The filter calls renders make, provided by the engine for a project; none on its
+    own."""
+
+    name: ClassVar[str] = "interprocedural.template_calls"
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> TemplateCalls:
+        return TemplateCalls()
 
 
 class ClearingAnalysis(Analysis[Clearing]):
@@ -278,6 +407,7 @@ class _DependenceProblem(DataflowProblem[State]):
         project: Mapping[SymbolId, FunctionSummary] | None = None,
         heap: HeapFacts | None = None,
         clearing: Clearing | None = None,
+        templates: TemplateCalls | None = None,
     ) -> None:
         self.name = name
         self.function = function
@@ -286,6 +416,7 @@ class _DependenceProblem(DataflowProblem[State]):
         self.project = project or {}
         self.heap = heap or HeapFacts({})
         self.clearing = clearing or Clearing()
+        self.templates = templates or TemplateCalls()
         self.blocks = {block.id: block for block in function.blocks}
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
@@ -428,6 +559,7 @@ class _DependenceProblem(DataflowProblem[State]):
                 return self.known(project, arguments, keywords, everything, call, state, bound)
             given = self.graph.arguments_at(self.name, call.location)
             self.record(target.symbol, arguments, named, call.location, None, given)
+            self.record_filters(target.symbol, call, given, state)
             cleared = everything.clearing(self.clearing.clears(target.symbol, given))
             return cleared | Dep(externals=frozenset({target.symbol}))
         if isinstance(target, KnownFunction):
@@ -521,6 +653,31 @@ class _DependenceProblem(DataflowProblem[State]):
                 self.store(state, values[mutation.parameter], mutation.field, deps)
         return mapped(callee.return_dependencies, callee.return_cleared) | Dep(externals=callee.return_externals)
 
+    @cached_property
+    def uses(self) -> DefUse:
+        return def_use(self.function)
+
+    def record_filters(self, symbol: SymbolId, call: Call, given: Arguments, state: Mapping[Key, Dep]) -> None:
+        """The filter calls a render makes, each at the filter in its template, with what
+        the context entries reaching its value and its argument depend on. The request the
+        request context processor adds is not followed through a project function."""
+
+        rendering = self.templates.rendering(symbol, call, given, self.defs, self.uses)
+        if rendering is None:
+            return
+        for template_filter in rendering.filters:
+            passed: list[Dep] = []
+            for names in (template_filter.value, template_filter.argument):
+                deps = EMPTY
+                for value, attribute in rendering.values(names):
+                    # Only the kinds of a request object say which of its attributes the
+                    # user controls, and a dependency carries no kinds.
+                    if attribute is None:
+                        deps |= self.deep(value, state)
+                passed.append(deps)
+            if any(deps.parameters for deps in passed):
+                self.record(template_filter.symbol, tuple(passed), (), template_filter.location, None, FILTER_ARGUMENTS)
+
     def record(
         self,
         symbol: SymbolId,
@@ -570,8 +727,9 @@ def summarize(
     heap: HeapFacts | None = None,
     static: bool = False,
     clearing: Clearing | None = None,
+    templates: TemplateCalls | None = None,
 ) -> FunctionSummary:
-    problem = _DependenceProblem(name, function, graph, table, project, heap, clearing)
+    problem = _DependenceProblem(name, function, graph, table, project, heap, clearing, templates)
     solution = solve(problem, cfg)
     problem.external = {}
     problem.returns = EMPTY
@@ -610,7 +768,15 @@ def summarize(
 class SummaryAnalysis(Analysis[SummaryTable]):
     name: ClassVar[str] = "interprocedural.summaries"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {CallGraphAnalysis, SSAAnalysis, CFGAnalysis, ProjectSummaries, HeapAnalysis, ClearingAnalysis}
+        {
+            CallGraphAnalysis,
+            SSAAnalysis,
+            CFGAnalysis,
+            ProjectSummaries,
+            HeapAnalysis,
+            ClearingAnalysis,
+            TemplateCallsAnalysis,
+        }
     )
 
     @classmethod
@@ -618,6 +784,7 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         graph = ctx.get(CallGraphAnalysis)
         project = ctx.get(ProjectSummaries).summaries
         clearing = ctx.get(ClearingAnalysis)
+        templates = ctx.get(TemplateCallsAnalysis)
         table: dict[str, FunctionSummary] = {}
         supported: dict[str, tuple[FunctionIR, CFG, HeapFacts]] = {}
         for name, function in graph.definitions.items():
@@ -635,9 +802,8 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         while changed:
             changed = False
             for name, (ssa, cfg, heap) in supported.items():
-                updated = summarize(
-                    name, ssa, cfg, graph, table, project, heap, _is_staticmethod(graph.definitions[name]), clearing
-                )
+                static = _is_staticmethod(graph.definitions[name])
+                updated = summarize(name, ssa, cfg, graph, table, project, heap, static, clearing, templates)
                 if updated != table[name]:
                     table[name] = updated
                     changed = True

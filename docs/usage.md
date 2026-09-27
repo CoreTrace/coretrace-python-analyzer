@@ -370,9 +370,48 @@ Python call names it, since a class-based view renders its `template_name` insid
 Django. Most filters are functions of the same name in `django.template.defaultfilters`;
 `escape`, `escapejs`, `linebreaks`, `phone2numeric`, `slice`, `timesince` and `timeuntil`
 are `<name>_filter` there, and the filters of `i18n`, `l10n`, `tz` and `humanize` are in
-their library's module (`timezone` is `django.templatetags.tz.do_timezone`). The data a
-template passes to a filter is not tracked yet, so such a call is reachable, not
-exploitable.
+their library's module (`timezone` is `django.templatetags.tz.do_timezone`).
+
+Attacker input in the render context makes the filter exploitable at the render call:
+`render(request, "app/profile.html", {"bio": request.POST["bio"]})` with
+`{{ bio|striptags }}`. The analyzer links a context value to a filter only where it is
+certain of it:
+
+- The context is a dict literal with constant keys, used by the render call and
+  nothing else, written in the call or through a variable. A dict mutated or passed
+  elsewhere, one unpacking another (`**extra`), or a context built any other way leaves
+  the filter reachable.
+- The filter's value is a context variable, directly or through `{% for %}` and
+  `{% with %}`, the templates the template includes or extends by a constant name, the
+  arguments of the filters before it, or the output of a `{% filter %}` block. A name a
+  tag binds shadows the context, and `{% include ... only %}` passes none of it.
+- The filter renders: a template extending another renders only its blocks, which
+  replace the blocks of that name in what it extends.
+- One file has the template's name; of two files of the same name, which one renders
+  depends on the loaders.
+
+The filter's value is its first argument and its argument (`cut:bio`) its second, so an
+entry point naming only the value in `attacker_arguments` is not exploitable through
+the argument. A project function rendering the values it receives carries them the same
+way.
+
+With the `django.template.context_processors.request` context processor, a template
+rendered with the request reads it as `request`: `{{ request.GET.q|striptags }}` is
+exploitable at the render call too. The analyzer counts it only where all of these hold:
+
+- The project's settings assign `TEMPLATES` a literal list, every `DjangoTemplates`
+  engine of it lists the processor in a literal `context_processors`, and no other code
+  of the project names `TEMPLATES`. A mere mention of the processor proves nothing.
+- The render call passes the request: `render` and `TemplateResponse` always do,
+  `render_to_string` when given `request`, `SimpleTemplateResponse` never.
+- The render's context is certain, absent or a dict literal as above, so it cannot hide
+  a `request` entry. An entry of that name, a name a tag binds or `{% include ... only %}`
+  shadows the processor's request.
+- The template reads text the user controls: an attribute the request object lists
+  among its text attributes, such as `GET`, `POST`, `COOKIES` or `headers`; not `user` or
+  `session`.
+
+Through a project function, only the context entries are followed.
 
 Most vulnerabilities need attacker input in one argument: the path `send_from_directory`
 serves, not its `download_name`; the URL `requests.get` fetches, not its body. An entry

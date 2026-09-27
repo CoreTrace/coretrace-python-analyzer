@@ -39,6 +39,7 @@ from coretrace_python.taint.templates import (
     ProjectTemplates,
     escaped_templates,
     project_templates,
+    request_processor,
     unread_renders,
 )
 
@@ -79,5 +80,6 @@ __all__ = [
     "project_templates",
     "propagate_taint",
     "registered_routes",
+    "request_processor",
     "unread_renders",
 ]

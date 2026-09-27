@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
+from functools import cached_property
 from types import MappingProxyType
 from typing import ClassVar
 
@@ -27,6 +28,7 @@ from coretrace_python.cfg import CFG, BlockId, CFGAnalysis
 from coretrace_python.dataflow import DataflowProblem, Direction, solve
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import (
+    FILTER_ARGUMENTS,
     Arguments,
     CallGraph,
     CallGraphAnalysis,
@@ -40,9 +42,12 @@ from coretrace_python.interprocedural import (
     SummaryAnalysis,
     SummaryIndex,
     SummaryTable,
+    TemplateCalls,
+    TemplateCallsAnalysis,
     cleared_by,
     project_symbol,
 )
+from coretrace_python.ir.defuse import DefUse, def_use
 from coretrace_python.ir.lowering import analyzable_functions, is_body_function
 from coretrace_python.ir.model import (
     BasicBlock,
@@ -164,10 +169,12 @@ class _TaintProblem(DataflowProblem[State]):
         seeds: Mapping[HeapLocation, Taint] | None = None,
         module: str = "",
         clearing: Clearing | None = None,
+        templates: TemplateCalls | None = None,
     ) -> None:
         self.name = name
         self.module = module
         self.clearing = clearing or Clearing()
+        self.templates = templates or TemplateCalls()
         self.function = function
         self.models = models
         self.graph = graph
@@ -309,10 +316,14 @@ class _TaintProblem(DataflowProblem[State]):
         """What attribute ``name`` of a value carrying ``taint`` carries: text when every
         source of the value is a request object listing ``name`` among its text attributes."""
 
+        return taint.without(_STRUCTURED) if self.requests_text(taint, name) else taint
+
+    def requests_text(self, taint: Taint, name: str) -> bool:
+        """Whether every source of a value carrying ``taint`` is a request object listing
+        ``name`` among its text attributes."""
+
         requests = [self.models.request_object(source.symbol) for source in taint.sources]
-        if taint and all(request is not None and name in request.text for request in requests):
-            return taint.without(_STRUCTURED)
-        return taint
+        return bool(taint) and all(request is not None and name in request.text for request in requests)
 
     def call(self, call: Call, state: dict[Key, Taint], flows: list[TaintFlow]) -> Taint:
         arguments = tuple(self.deep(a, state) for a in call.arguments)
@@ -443,11 +454,54 @@ class _TaintProblem(DataflowProblem[State]):
                 self.report(
                     flows, sink, self.rendered(argument, state), argument, call, None, None, None, given, keyword=name
                 )
+        self.template_filters(symbol, call, given, state, flows)
         cleared = self.clearing.clears(symbol, given)
         if cleared:
             return everything.without(TaintKind(cleared))
         # A method on a tainted object returns tainted data (``request.args.get``).
         return everything.join(state.get(call.callee, Taint.none())).join(self.covered(symbol))
+
+    @cached_property
+    def uses(self) -> DefUse:
+        return def_use(self.function)
+
+    def template_filters(
+        self, symbol: SymbolId, call: Call, given: Arguments, state: Mapping[Key, Taint], flows: list[TaintFlow]
+    ) -> None:
+        """Flows into the filters a render call makes, through the context entries each
+        filter's value and argument read, and the text attributes of the request the
+        request context processor adds, placed at the render call and naming the
+        template the filter is in."""
+
+        rendering = self.templates.rendering(symbol, call, given, self.defs, self.uses)
+        if rendering is None:
+            return
+        for template_filter in rendering.filters:
+            sink = self.models.sink(template_filter.symbol)
+            if sink is None:
+                continue
+            for position, names in enumerate((template_filter.value, template_filter.argument)):
+                taint, witness = Taint.none(), None
+                for value, attribute in rendering.values(names):
+                    carried = self.deep(value, state)
+                    if attribute is not None:
+                        # The request the request context processor adds: only the text
+                        # the user controls.
+                        carried = carried.without(_STRUCTURED) if self.requests_text(carried, attribute) else Taint.none()
+                    witness = value if witness is None and carried else witness
+                    taint = taint.join(carried)
+                if witness is not None:
+                    self.report(
+                        flows,
+                        sink,
+                        taint,
+                        witness,
+                        call,
+                        template_filter.template,
+                        template_filter.location,
+                        position,
+                        FILTER_ARGUMENTS,
+                    )
 
     def guarded(self, sink: Sink | None, arguments: Arguments) -> Sink | None:
         """The sink as this call makes it: an argument declared safe (``yaml.load`` with
@@ -903,8 +957,11 @@ def propagate_taint(
     seeds: Mapping[HeapLocation, Taint] | None = None,
     module: str = "",
     clearing: Clearing | None = None,
+    templates: TemplateCalls | None = None,
 ) -> TaintFacts:
-    problem = _TaintProblem(name, function, models, graph, summaries, parameters, project, heap, seeds, module, clearing)
+    problem = _TaintProblem(
+        name, function, models, graph, summaries, parameters, project, heap, seeds, module, clearing, templates
+    )
     solution = solve(problem, cfg)
     taints: dict[Key, Taint] = {}
     flows: list[TaintFlow] = []
@@ -944,6 +1001,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             HeapAnalysis,
             RegisteredRoutes,
             EscapedTemplates,
+            TemplateCallsAnalysis,
         }
     )
 
@@ -981,6 +1039,7 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
             seeds,
             ctx.module.name,
             models.clearing(ctx.get(EscapedTemplates)),
+            ctx.get(TemplateCallsAnalysis),
         )
 
 
