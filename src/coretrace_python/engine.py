@@ -128,6 +128,7 @@ from coretrace_python.taint import (
     escaped_templates,
     project_templates,
     registered_routes,
+    request_processor,
     unread_renders,
 )
 from coretrace_python.taint.urls import flow_url
@@ -439,7 +440,9 @@ def analyze_project(
     escaped = escaped_templates(root)
     templates = project_templates(root)
     clearing = models.clearing(escaped)
-    template_calls = models.template_calls(templates.filters)
+    template_calls = models.template_calls(
+        templates.filters, request_processor(modules[name] for name in sorted(analysable))
+    )
     for manager in analysable.values():
         manager.provide(RegisteredRoutes, routes)
         manager.provide(EscapedTemplates, escaped)

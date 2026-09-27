@@ -395,6 +395,24 @@ entry point naming only the value in `attacker_arguments` is not exploitable thr
 the argument. A project function rendering the values it receives carries them the same
 way.
 
+With the `django.template.context_processors.request` context processor, a template
+rendered with the request reads it as `request`: `{{ request.GET.q|striptags }}` is
+exploitable at the render call too. The analyzer counts it only where all of these hold:
+
+- The project's settings assign `TEMPLATES` a literal list, every `DjangoTemplates`
+  engine of it lists the processor in a literal `context_processors`, and no other code
+  of the project names `TEMPLATES`. A mere mention of the processor proves nothing.
+- The render call passes the request: `render` and `TemplateResponse` always do,
+  `render_to_string` when given `request`, `SimpleTemplateResponse` never.
+- The render's context is certain, absent or a dict literal as above, so it cannot hide
+  a `request` entry. An entry of that name, a name a tag binds or `{% include ... only %}`
+  shadows the processor's request.
+- The template reads text the user controls: an attribute the request object lists
+  among its text attributes, such as `GET`, `POST`, `COOKIES` or `headers`; not `user` or
+  `session`.
+
+Through a project function, only the context entries are followed.
+
 Most vulnerabilities need attacker input in one argument: the path `send_from_directory`
 serves, not its `download_name`; the URL `requests.get` fetches, not its body. An entry
 point may name them in `attacker_arguments`, by keyword `argument` and, when it may be

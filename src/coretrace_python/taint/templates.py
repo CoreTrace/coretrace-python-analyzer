@@ -28,13 +28,15 @@ where the project names one.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext
+from coretrace_python.hir import nodes
+from coretrace_python.hir.visitors import Node, children
 from coretrace_python.interprocedural import (
     CallGraph,
     ExternalSymbol,
@@ -124,8 +126,14 @@ _HEAD = re.compile(rf"\s*({_OPERAND})?")
 _FILTER = re.compile(rf"\s*\|\s*(\w+)(?::({_OPERAND}))?")
 _TOKEN = re.compile(rf"(?:[^\s\"']+|{_STRING})+")
 _BINDING = re.compile(r"(\w+)=")
-_VARIABLE = re.compile(r"[A-Za-z_]\w*")
+# A variable with its first attribute: what a context entry holds, or what the request
+# the request context processor adds gives (``request.GET``).
+_VARIABLE = re.compile(r"([A-Za-z_]\w*)(?:\.(\w+))?")
 _LITERALS = frozenset({"True", "False", "None"})
+
+REQUEST_PROCESSOR = "django.template.context_processors.request"
+_DJANGO_ENGINE = "django.template.backends.django.DjangoTemplates"
+_ENGINES_SETTING = "TEMPLATES"
 
 
 def escaped_templates(root: Path) -> frozenset[str]:
@@ -338,10 +346,11 @@ class _Reference:
     def maps(self, names: frozenset[str]) -> frozenset[str]:
         found: set[str] = set()
         for name in names:
-            if name in self.bindings:
-                found |= self.bindings[name]
+            variable = name.split(".", 1)[0]
+            if variable in self.bindings:
+                found |= _through(self.bindings[variable], name)
             elif not self.only:
-                found |= self.scope.get(name, frozenset({name}))
+                found |= _through(self.scope.get(variable, frozenset({variable})), name)
         return frozenset(found)
 
 
@@ -451,8 +460,9 @@ def _read_scopes(text: str, source: SourceId) -> _Template:
     def free(names: frozenset[str]) -> frozenset[str]:
         found: set[str] = set()
         for name in names:
-            bound = next((scope[name] for scope in reversed(scopes) if name in scope), None)
-            found |= {name} if bound is None else bound
+            variable = name.split(".", 1)[0]
+            bound = next((scope[variable] for scope in reversed(scopes) if variable in scope), None)
+            found |= {name} if bound is None else _through(bound, name)
         return frozenset(found)
 
     def apply(head: frozenset[str], chain: list[tuple[str, int, frozenset[str]]]) -> frozenset[str]:
@@ -544,10 +554,80 @@ def _chain(expression: str, offset: int) -> tuple[frozenset[str], list[tuple[str
 
 
 def _reached_by(operand: str | None) -> frozenset[str]:
-    """The variable an operand reads, none for a constant."""
+    """The variable an operand reads, with its first attribute; none for a constant."""
 
     variable = _VARIABLE.match(operand) if operand else None
-    return frozenset() if variable is None or variable.group() in _LITERALS else frozenset({variable.group()})
+    return frozenset() if variable is None or variable.group(1) in _LITERALS else frozenset({variable.group()})
+
+
+def _through(bound: frozenset[str], name: str) -> frozenset[str]:
+    """What ``name``, a variable with its first attribute, reads when its variable is
+    ``bound`` to those names: ``query.q`` with ``query`` bound to ``request.GET`` reads
+    ``request.GET``."""
+
+    attribute = name.partition(".")[2]
+    return frozenset(".".join(f"{b}.{attribute}".split(".")[:2]) if attribute else b for b in bound)
+
+
+def request_processor(modules: Iterable[nodes.Module]) -> bool:
+    """Whether every Django template engine the project's settings configure runs the
+    ``request`` context processor, for certain: each assignment to ``TEMPLATES`` is a
+    literal list of literal engines, at least one of them ``DjangoTemplates``, and each
+    of those lists the processor in a literal ``context_processors``; no other code
+    names ``TEMPLATES``, which could change it. A mere mention of the processor proves
+    nothing."""
+
+    assignments = mentions = 0
+    for module in modules:
+        stack: list[Node] = list(module.body)
+        while stack:
+            node = stack.pop()
+            stack.extend(children(node))
+            if isinstance(node, nodes.Name) and node.identifier == _ENGINES_SETTING:
+                mentions += 1
+            elif isinstance(node, nodes.Assign) and _names_engines(node.target):
+                if not _runs_request_processor(node.value):
+                    return False
+                assignments += 1
+    return assignments > 0 and mentions == assignments
+
+
+def _names_engines(target: nodes.Expression) -> bool:
+    return isinstance(target, nodes.Name) and target.identifier == _ENGINES_SETTING
+
+
+def _runs_request_processor(engines: nodes.Expression) -> bool:
+    if not isinstance(engines, nodes.List | nodes.Tuple):
+        return False
+    django = 0
+    for engine in engines.elements:
+        settings = _literal_dict(engine)
+        backend = settings.get("BACKEND") if settings is not None else None
+        if settings is None or not isinstance(backend, nodes.Constant) or not isinstance(backend.value, str):
+            return False
+        if backend.value != _DJANGO_ENGINE:
+            continue
+        django += 1
+        options = _literal_dict(settings.get("OPTIONS"))
+        processors = options.get("context_processors") if options is not None else None
+        if not isinstance(processors, nodes.List | nodes.Tuple):
+            return False
+        if not any(isinstance(p, nodes.Constant) and p.value == REQUEST_PROCESSOR for p in processors.elements):
+            return False
+    return django > 0
+
+
+def _literal_dict(expression: nodes.Expression | None) -> dict[str, nodes.Expression] | None:
+    """A dict display with constant string keys, by key; None for anything else."""
+
+    if not isinstance(expression, nodes.Dict):
+        return None
+    found: dict[str, nodes.Expression] = {}
+    for key, value in expression.items:
+        if not isinstance(key, nodes.Constant) or not isinstance(key.value, str):
+            return None
+        found[key.value] = value
+    return found
 
 
 def unread_renders(module: str, graph: CallGraph, models: ModelTable, names: frozenset[str]) -> Iterator[str]:

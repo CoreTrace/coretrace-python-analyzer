@@ -316,10 +316,14 @@ class _TaintProblem(DataflowProblem[State]):
         """What attribute ``name`` of a value carrying ``taint`` carries: text when every
         source of the value is a request object listing ``name`` among its text attributes."""
 
+        return taint.without(_STRUCTURED) if self.requests_text(taint, name) else taint
+
+    def requests_text(self, taint: Taint, name: str) -> bool:
+        """Whether every source of a value carrying ``taint`` is a request object listing
+        ``name`` among its text attributes."""
+
         requests = [self.models.request_object(source.symbol) for source in taint.sources]
-        if taint and all(request is not None and name in request.text for request in requests):
-            return taint.without(_STRUCTURED)
-        return taint
+        return bool(taint) and all(request is not None and name in request.text for request in requests)
 
     def call(self, call: Call, state: dict[Key, Taint], flows: list[TaintFlow]) -> Taint:
         arguments = tuple(self.deep(a, state) for a in call.arguments)
@@ -465,20 +469,27 @@ class _TaintProblem(DataflowProblem[State]):
         self, symbol: SymbolId, call: Call, given: Arguments, state: Mapping[Key, Taint], flows: list[TaintFlow]
     ) -> None:
         """Flows into the filters a render call makes, through the context entries each
-        filter's value and argument read, placed at the render call and naming the
+        filter's value and argument read, and the text attributes of the request the
+        request context processor adds, placed at the render call and naming the
         template the filter is in."""
 
-        for template_filter, entries in self.templates.made_by(symbol, call, given, self.defs, self.uses):
+        rendering = self.templates.rendering(symbol, call, given, self.defs, self.uses)
+        if rendering is None:
+            return
+        for template_filter in rendering.filters:
             sink = self.models.sink(template_filter.symbol)
             if sink is None:
                 continue
-            for position, keys in enumerate((template_filter.value, template_filter.argument)):
+            for position, names in enumerate((template_filter.value, template_filter.argument)):
                 taint, witness = Taint.none(), None
-                for key in keys:
-                    if key in entries:
-                        carried = self.deep(entries[key], state)
-                        witness = entries[key] if witness is None and carried else witness
-                        taint = taint.join(carried)
+                for value, attribute in rendering.values(names):
+                    carried = self.deep(value, state)
+                    if attribute is not None:
+                        # The request the request context processor adds: only the text
+                        # the user controls.
+                        carried = carried.without(_STRUCTURED) if self.requests_text(carried, attribute) else Taint.none()
+                    witness = value if witness is None and carried else witness
+                    taint = taint.join(carried)
                 if witness is not None:
                     self.report(
                         flows,

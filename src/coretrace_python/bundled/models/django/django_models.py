@@ -139,9 +139,9 @@ class DjangoModels(ModelPlugin):
         Sink(_sym("django.http.HttpResponseRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
         Sink(_sym("django.http.HttpResponsePermanentRedirect"), TaintKind.REDIRECT, _TARGET_ONLY),
         Sanitizer(_sym("django.utils.html.escape"), TaintKind.HTML),
-        TemplateRender(_sym("django.template.loader.render_to_string")),
-        TemplateRender(_sym("django.shortcuts.render"), 1, context=2),
-        TemplateRender(_sym("django.template.response.TemplateResponse"), 1, "template", 2),
+        TemplateRender(_sym("django.template.loader.render_to_string"), request=2),
+        TemplateRender(_sym("django.shortcuts.render"), 1, context=2, request=0),
+        TemplateRender(_sym("django.template.response.TemplateResponse"), 1, "template", 2, 0),
         TemplateRender(_sym("django.template.response.SimpleTemplateResponse"), 0, "template"),
         Sanitizer(_sym("django.utils.html.conditional_escape"), TaintKind.HTML),
         # The masked CSRF secret: ASCII letters and digits only, a malformed cookie is

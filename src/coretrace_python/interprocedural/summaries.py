@@ -15,7 +15,7 @@ values of the context entries it reads.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from types import MappingProxyType
@@ -152,9 +152,9 @@ class Clearing:
 @dataclass(frozen=True)
 class TemplateFilter:
     """A filter call rendering a template makes: the function behind the filter, where
-    it is applied, in the template named ``template``, and the keys of the render
-    context whose values reach its value and its argument. Keys are sorted: the calls
-    are part of the cache key."""
+    it is applied, in the template named ``template``, and the variables of the render,
+    each with its first attribute (``bio``, ``request.GET``), whose values reach its value
+    and its argument. They are sorted: the calls are part of the cache key."""
 
     symbol: SymbolId
     location: SourceSpan
@@ -169,44 +169,88 @@ FILTER_ARGUMENTS = Arguments(unpacked=True)
 
 
 @dataclass(frozen=True)
+class Rendering:
+    """What a render call gives the template: the filter calls it makes, the context
+    ``entries`` by key, and the ``request`` the request context processor adds, if it
+    certainly does. An entry of that name shadows the request."""
+
+    filters: tuple[TemplateFilter, ...]
+    entries: Mapping[str, Value]
+    request: Value | None = None
+
+    def values(self, names: tuple[str, ...]) -> Iterator[tuple[Value, str | None]]:
+        """The values reaching a filter through ``names``, each a variable with its first
+        attribute: a context entry, or the request with the attribute read from it."""
+
+        for name in names:
+            variable, _, attribute = name.partition(".")
+            if variable in self.entries:
+                yield self.entries[variable], None
+            elif variable == REQUEST and self.request is not None and attribute:
+                yield self.request, attribute
+
+
+# The variable the request context processor adds.
+REQUEST = "request"
+
+
+@dataclass(frozen=True)
 class TemplateCalls:
     """The filter calls a render makes, provided by the engine from the project's
     templates: ``renders`` gives, for each render symbol, the position and keyword of
-    the template's name and the position of its ``context``; ``filters`` the calls
-    rendering each template makes, by its name the way call sites record a constant."""
+    the template's name, the position of its ``context`` and that of its ``request``
+    (None when it takes none); ``filters`` the calls rendering each template makes, by
+    its name the way call sites record a constant; ``request`` says the request context
+    processor certainly runs for every template."""
 
-    renders: Mapping[SymbolId, tuple[int, str, int]] = dataclasses.field(default_factory=dict)
+    renders: Mapping[SymbolId, tuple[int, str, int, int | None]] = dataclasses.field(default_factory=dict)
     filters: Mapping[str, tuple[TemplateFilter, ...]] = dataclasses.field(default_factory=dict)
+    request: bool = False
 
-    def made_by(
+    def rendering(
         self, symbol: SymbolId, call: Call, arguments: Arguments, defs: Mapping[Value, Instruction], uses: DefUse
-    ) -> tuple[tuple[TemplateFilter, Mapping[str, Value]], ...]:
-        """The filter calls ``call`` makes by rendering the template it names, each with
-        the context entries it may read. There are none unless the context is a dict
-        literal with constant keys that ``call`` alone uses: any other context may hold
-        other values by the time the template reads it."""
+    ) -> Rendering | None:
+        """What ``call`` gives the template it names, when it renders one whose filter
+        calls are known. None unless the context is certain: absent, or a dict literal
+        with constant keys that ``call`` alone uses; any other context may hold other
+        values, or a ``request`` entry, by the time the template reads it."""
 
         render = self.renders.get(symbol)
         if render is None:
-            return ()
-        position, keyword, context = render
+            return None
+        position, keyword, context, request = render
         named = arguments.given(keyword, position)
         filters = self.filters.get(named[1] or "", ()) if named is not None and named[0] else ()
-        entries = _literal_entries(_passed(call, context, "context"), defs, uses) if filters else None
-        return () if entries is None else tuple((f, entries) for f in filters)
+        passed = _passed(call, context, "context") if filters else None
+        entries = _literal_entries(passed[1], defs, uses) if passed is not None and passed[0] else None
+        if entries is None:
+            return None
+        given = _passed(call, request, REQUEST) if self.request and request is not None else None
+        return Rendering(filters, entries, given[1] if given is not None and given[0] else None)
 
 
-def _passed(call: Call, position: int, keyword: str) -> Value | None:
-    """The value ``call`` passes at ``position`` or as ``keyword``, when it is certain."""
+def _passed(call: Call, position: int, keyword: str) -> tuple[bool, Value | None]:
+    """Whether what ``call`` passes at ``position`` or as ``keyword`` is certain, and
+    that value: None when the call passes none."""
 
-    if call.starred:
-        return None
+    if call.starred or any(name is None for name, _ in call.keywords):
+        return False, None
     if position < len(call.arguments):
-        return call.arguments[position]
-    return next((value for name, value in call.keywords if name == keyword), None)
+        return True, call.arguments[position]
+    return True, next((value for name, value in call.keywords if name == keyword), None)
+
+
+def _is_none(value: Value | None, defs: Mapping[Value, Instruction]) -> bool:
+    constant = defs.get(value) if value is not None else None
+    return value is None or (isinstance(constant, Constant) and constant.value is None)
 
 
 def _literal_entries(value: Value | None, defs: Mapping[Value, Instruction], uses: DefUse) -> Mapping[str, Value] | None:
+    """The entries of a context, by key: none for an absent context, None unless it is a
+    dict literal with constant keys that nothing else uses."""
+
+    if _is_none(value, defs):
+        return {}
     built = defs.get(value) if value is not None else None
     if value is None or not isinstance(built, BuildDict) or built.unpacked or len(uses.uses(value)) != 1:
         return None
@@ -615,17 +659,24 @@ class _DependenceProblem(DataflowProblem[State]):
 
     def record_filters(self, symbol: SymbolId, call: Call, given: Arguments, state: Mapping[Key, Dep]) -> None:
         """The filter calls a render makes, each at the filter in its template, with what
-        the context entries reaching its value and its argument depend on."""
+        the context entries reaching its value and its argument depend on. The request the
+        request context processor adds is not followed through a project function."""
 
-        for template_filter, entries in self.templates.made_by(symbol, call, given, self.defs, self.uses):
+        rendering = self.templates.rendering(symbol, call, given, self.defs, self.uses)
+        if rendering is None:
+            return
+        for template_filter in rendering.filters:
             passed: list[Dep] = []
-            for keys in (template_filter.value, template_filter.argument):
+            for names in (template_filter.value, template_filter.argument):
                 deps = EMPTY
-                for key in keys:
-                    if key in entries:
-                        deps |= self.deep(entries[key], state)
+                for value, attribute in rendering.values(names):
+                    # Only the kinds of a request object say which of its attributes the
+                    # user controls, and a dependency carries no kinds.
+                    if attribute is None:
+                        deps |= self.deep(value, state)
                 passed.append(deps)
-            self.record(template_filter.symbol, tuple(passed), (), template_filter.location, None, FILTER_ARGUMENTS)
+            if any(deps.parameters for deps in passed):
+                self.record(template_filter.symbol, tuple(passed), (), template_filter.location, None, FILTER_ARGUMENTS)
 
     def record(
         self,
