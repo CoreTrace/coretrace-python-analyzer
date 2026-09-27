@@ -15,7 +15,9 @@ The engine links a filter to the context only where it is certain of the value:
   of the filters before it, or the output of a ``{% filter %}`` block; a name a tag
   binds shadows the context, and ``{% include ... only %}`` passes none of it;
 - a template name found in one file only: of two files of the same name, which one
-  renders depends on the loaders.
+  renders depends on the loaders;
+- a filter a template rendering it renders: a template extending another renders only
+  its blocks, and they replace the blocks of that name in what it extends.
 
 A filter's argument (``cut:bio``) is its second argument, so an advisory naming only the
 value as attacker argument is not exploitable through it. The same holds when a project
@@ -155,10 +157,19 @@ BASE = "app/templates/app/base.html"
         {PAGE: "{% for b in bio.split %}{% include 'app/card.html' %}{% endfor %}", CARD: "{{ b|striptags }}"},
         {PAGE: "{% extends 'app/base.html' %}", BASE: "{{ bio|striptags }}"},
         {PAGE: "{% with bio='Hello' %}{{ bio }}{% endwith %}{% for bio in 'ab' %}{% endfor %}{{ bio|striptags }}"},
+        {
+            PAGE: "{% extends 'app/base.html' %}{% block body %}{{ bio|striptags }}{% endblock %}",
+            BASE: "<main>{% block body %}{% endblock %}</main>",
+        },
+        {
+            PAGE: "{% extends 'app/base.html' %}{% block title %}Me{% endblock %}",
+            BASE: "{% block title %}{% endblock %}{% block body %}{{ bio|striptags }}{% endblock %}",
+        },
     ],
     ids=[
         "chained", "earlier-argument", "tag-argument", "with", "with-as", "for", "filter-block", "include",
-        "include-with", "include-in-loop", "extends", "after-shadowing-blocks",
+        "include-with", "include-in-loop", "extends", "after-shadowing-blocks", "child-block",
+        "parent-block-kept",
     ],
 )
 def test_template_scopes_carry_the_context_value_to_the_filter(tmp_path: Path, templates: dict[str, str]) -> None:
@@ -191,10 +202,33 @@ def test_template_scopes_carry_the_context_value_to_the_filter(tmp_path: Path, t
             render(),
             {PAGE: "{{ bio|striptags }}", "other/templates/app/profile.html": "{{ bio|striptags }}"},
         ),
+        (
+            render(),
+            {
+                PAGE: "{% extends 'app/base.html' %}{% block body %}{{ bio }}{% endblock %}",
+                BASE: "{% block body %}{{ bio|striptags }}{% endblock %}",
+            },
+        ),
+        (
+            render(),
+            {
+                PAGE: "{% extends 'app/base.html' %}{{ bio|striptags }}{% block body %}{% endblock %}",
+                BASE: "{% block body %}{% endblock %}",
+            },
+        ),
+        (
+            render(),
+            {
+                PAGE: "{% extends 'app/middle.html' %}{% block body %}{{ bio }}{% endblock %}",
+                "app/templates/app/middle.html": "{% extends 'app/base.html' %}{% block body %}{{ bio|striptags }}{% endblock %}",
+                BASE: "{% block body %}{% endblock %}",
+            },
+        ),
     ],
     ids=[
         "other-key", "with-shadows", "for-shadows", "as-shadows", "include-only", "include-with-shadows",
         "comment", "mutated", "passed-elsewhere", "unpacked", "not-a-literal", "two-files",
+        "overridden-block", "outside-child-blocks", "overridden-twice",
     ],
 )
 def test_a_value_the_engine_cannot_link_to_the_filter_leaves_it_reachable(
