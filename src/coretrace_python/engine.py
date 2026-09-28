@@ -9,6 +9,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import multiprocessing
+from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -88,6 +89,7 @@ from coretrace_python.interprocedural import (
     TemplateCallsAnalysis,
     build_module_graph,
     discover_sources,
+    name_modules,
     project_symbol,
 )
 from coretrace_python.ir import PYIR_SCHEMA_VERSION
@@ -371,7 +373,11 @@ def analyze_project(
     strongly connected components of the module graph, imports first; with ``jobs``
     above one the components of a wave are analysed in that many processes (§29).
     ``advisory_files`` add to the ``advisories.json`` at ``root``; ``policy_file``
-    replaces the ``coretrace-policy.toml`` there."""
+    replaces the ``coretrace-policy.toml`` there.
+
+    Every module is known by the name ``name_modules`` gives its file: its import name,
+    or its path from the root when another file has that import name. Such files carry
+    an ``ambiguous-module`` note and are covered as ``ambiguous``."""
 
     if jobs < 1:
         raise ValueError("jobs must be at least 1")
@@ -398,18 +404,18 @@ def analyze_project(
     files: dict[str, SourceFile] = {}
     unreadable: list[tuple[Path, str]] = []
     coverage: list[FileCoverage] = []
-    discovered = discover_sources(root, sources, unreadable)
+    named = name_modules(root, discover_sources(root, sources, unreadable))
     for path, reason in unreadable:
         findings.append(_note("syntax-error", f"{path}: {reason}", sources.add_source(str(path), ""), 1))
         coverage.append(FileCoverage(str(path), "unreadable", 0, 0))
-    for source in discovered:
+    for name, source in named.items():
         try:
-            modules[source.module_name] = build_hir(source)
+            modules[name] = build_hir(source)
         except (ParseError, HIRBuildError) as error:
             findings.append(_note("syntax-error", str(error), source, 1))
             coverage.append(FileCoverage(str(source.source_id), "syntax-error", 0, 0))
             continue
-        files[source.module_name] = source
+        files[name] = source
 
     managers = {name: _register_all(module) for name, module in modules.items()}
     probe = next(iter(managers.values()), None) or _register_all(build_hir(sources.add_source("<empty>", "")))
@@ -439,6 +445,8 @@ def analyze_project(
     graph = build_module_graph(
         {name: files[name] for name in analysable}, {name: modules[name] for name in analysable}, imports
     )
+    shared = _shared_names(graph)
+    findings.extend(_ambiguity_notes(graph, shared, root))
     routes: dict[SymbolId, EntryPoint] = {}
     for name in sorted(analysable):
         for symbol, registered in _routes_of(analysable[name]).items():
@@ -514,15 +522,16 @@ def analyze_project(
         if pool is not None:
             pool.shutdown()
 
-    index = _seed(results, graph, frozenset())
+    index = _index(results, {name: name for name in results})
     call_graphs: dict[str, CallGraph] = {}
     functions: dict[str, tuple[ModuleFunction, ...]] = {}
     for name in sorted(analysable):
         entry = results[name]
         findings.extend(entry.findings)
         unsupported = sum(1 for f in entry.findings if f.rule_id == "unsupported-syntax")
+        status = "ambiguous" if files[name].module_name in shared else "analysed"
         coverage.append(
-            FileCoverage(str(files[name].source_id), "analysed", len(entry.functions), len(entry.functions) - unsupported)
+            FileCoverage(str(files[name].source_id), status, len(entry.functions), len(entry.functions) - unsupported)
         )
         functions[name] = entry.functions
         sites: dict[str, list[CallSite]] = {function.name: [] for function in entry.functions}
@@ -644,24 +653,76 @@ def _advisory_paths(root: Path, advisory_files: Sequence[Path]) -> tuple[Path, .
     return (*([default] if default.is_file() else []), *advisory_files)
 
 
+def _shared_names(graph: ModuleGraph) -> dict[str, list[str]]:
+    """The import names several analysable files have, each with those files' modules."""
+
+    by_name: dict[str, list[str]] = {}
+    for name in graph.modules:
+        by_name.setdefault(graph.source(name).module_name, []).append(name)
+    return {import_name: names for import_name, names in by_name.items() if len(names) > 1}
+
+
+def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: Path) -> list[Finding]:
+    """One note on each file whose import name another file shares, since a symbol of
+    that name may denote a function of either, and one on each importer whose import of
+    such a name no root resolved, since calls through it are not followed."""
+
+    def located(name: str) -> str:
+        return _located(_path_of(graph.source(name)), root)
+
+    notes: list[Finding] = []
+    for import_name, names in sorted(shared.items()):
+        for name in names:
+            others = ", ".join(located(other) for other in names if other != name)
+            message = (
+                f"{located(name)} is the module '{import_name}' like {others}: a symbol "
+                f"python.{import_name}.* may name a function of either, and an import of "
+                f"'{import_name}' resolves only from its own root"
+            )
+            notes.append(_note("ambiguous-module", message, graph.source(name), 1))
+    for name in graph.modules:
+        for import_name in sorted(graph.unresolved(name)):
+            candidates = " or ".join(located(other) for other in shared[import_name])
+            message = f"'{import_name}' imported here is {candidates}: calls into it are not followed"
+            notes.append(_note("ambiguous-module", message, graph.source(name), 1))
+    return notes
+
+
 def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: frozenset[str]) -> SummaryIndex:
     """The summaries a component starts from: those of every module it imports,
-    transitively, all final by the time its wave runs; the whole index for no component."""
+    transitively, all final by the time its wave runs, each under the import name the
+    component's code refers to it by. Of several files with one import name, only the
+    one a member imports directly, resolved in its own root, goes under that name: the
+    others are reached through summaries that inline them already, and a name no
+    member's root resolved is followed into neither file."""
 
-    if component:
-        wanted: set[str] = set()
-        pending = list(component)
-        while pending:
-            for imported in graph.imports(pending.pop()):
-                if imported in results and imported not in wanted:
-                    wanted.add(imported)
-                    pending.append(imported)
-    else:
-        wanted = set(results)
+    wanted: set[str] = set()
+    pending = list(component)
+    while pending:
+        for imported in graph.imports(pending.pop()):
+            if imported in results and imported not in wanted:
+                wanted.add(imported)
+                pending.append(imported)
+    direct = {imported for member in component for imported in graph.imports(member)}
+    by_import: dict[str, list[str]] = {}
+    for name in wanted:
+        by_import.setdefault(graph.source(name).module_name, []).append(name)
+    names: dict[str, str] = {}
+    for import_name, modules in by_import.items():
+        chosen = modules if len(modules) == 1 else [name for name in modules if name in direct]
+        if len(chosen) == 1:
+            names[chosen[0]] = import_name
+    return _index(results, names)
+
+
+def _index(results: Mapping[str, CachedModule], names: Mapping[str, str]) -> SummaryIndex:
+    """The summaries of the modules in ``names``, each function under the project symbol
+    of the module name given for its module."""
+
     return SummaryIndex(
         {
-            project_symbol(name, function): summary
-            for name in sorted(wanted)
+            project_symbol(module, function): summary
+            for name, module in sorted(names.items())
             for function, summary in results[name].summaries.items()
         }
     )
@@ -674,8 +735,12 @@ def _analyse_managers(
     affected: Affected,
 ) -> dict[str, CachedModule]:
     """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
-    then extract what the rest of the run needs from each module."""
+    then extract what the rest of the run needs from each module. Each member registers
+    its functions under its import name, what the others' code refers to it by; a name
+    two members share, a cycle across roots, is registered by neither."""
 
+    counts = Counter(manager.module.name for manager in managers.values())
+    names = {name: manager.module.name for name, manager in managers.items() if counts[manager.module.name] == 1}
     index = seed
     for manager in managers.values():
         manager.provide(ProjectSummaries, index)
@@ -684,9 +749,9 @@ def _analyse_managers(
             {
                 **seed.summaries,
                 **{
-                    project_symbol(name, function): summary
-                    for name, manager in managers.items()
-                    for function, summary in _summaries_of(manager).items()
+                    project_symbol(module, function): summary
+                    for name, module in names.items()
+                    for function, summary in _summaries_of(managers[name]).items()
                 },
             }
         )
@@ -701,8 +766,9 @@ def _analyse_managers(
 
 @dataclass(frozen=True)
 class _Batch:
-    """One component handed to a worker process: it rebuilds the configuration from the
-    project root and the plugin roots, so only paths and the imported summaries travel."""
+    """One component handed to a worker process, its files under the engine's module
+    names: it rebuilds the configuration from the project root and the plugin roots, so
+    only paths and the imported summaries travel."""
 
     root: Path
     plugin_roots: tuple[Path, ...]

@@ -1,10 +1,12 @@
 """Analysis coverage: which files and functions a run actually looked at.
 
 "No findings" only means something when the reader knows what was analysed. Each file
-is ``analysed``, a ``syntax-error`` (the frontend rejected it) or ``unreadable`` (it could
-not be decoded); analysed files count their functions and how many lowered. The
-templates the project names but the run could not read are listed, each where the
-project names it: they may call any template filter.
+is ``analysed``, ``ambiguous`` (analysed, but another file has its Python module name,
+so a symbol of that name may denote a function of either and an import of it resolves
+only from its own root), a ``syntax-error`` (the frontend rejected it) or ``unreadable``
+(it could not be decoded); analysed and ambiguous files count their functions and how
+many lowered. The templates the project names but the run could not read are listed,
+each where the project names it: they may call any template filter.
 """
 
 from __future__ import annotations

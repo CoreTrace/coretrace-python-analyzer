@@ -6,12 +6,18 @@ each module imports. Functions defined in the project get project symbols
 (``python.app.helpers.run``) whose summaries live in a ``SummaryIndex`` that the engine
 provides to every module's manager, so calls into other files are analysed through
 summaries rather than by retaining every module's PyIR.
+
+The identity of a module is its file. Two files may have the same import name
+(``a/app.py`` and ``z/app.py`` outside any package are both ``app``, each from its own
+directory): the engine then names them by their path from the root, ``a.app`` and
+``z.app``, and an import of ``app`` resolves within the importer's own root only.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
@@ -67,6 +73,66 @@ def _is_environment(directory: Path, known: dict[Path, bool]) -> bool:
     return known[directory]
 
 
+def name_modules(root: Path, sources: Iterable[SourceFile]) -> dict[str, SourceFile]:
+    """One name per file, in the order given: its import name when no other file has it;
+    otherwise its path from ``root`` as a dotted name (``a/app.py`` and ``z/app.py`` are
+    ``a.app`` and ``z.app``, a root-level ``manage.py`` stays ``manage``), or that path
+    itself when even the dotted names coincide (``x.y/app.py`` and ``x/y/app.py``).
+    Decided over the whole set, so the names do not depend on the order the files are
+    found in."""
+
+    found = tuple(sources)
+    counts = Counter(source.module_name for source in found)
+    shared = [source for source in found if counts[source.module_name] > 1]
+    paths = {source.source_id: _relative(root, source) for source in shared}
+    dotted = {source_id: _dotted(path) for source_id, path in paths.items()}
+    taken = (
+        {name for name, count in counts.items() if count == 1}
+        | {name for name, count in Counter(dotted.values()).items() if count > 1}
+        | {path.as_posix() for path in paths.values()}
+    )
+    named: dict[str, SourceFile] = {}
+    for source in found:
+        if counts[source.module_name] == 1:
+            named[source.module_name] = source
+        elif dotted[source.source_id] not in taken:
+            named[dotted[source.source_id]] = source
+        else:
+            named[paths[source.source_id].as_posix()] = source
+    return named
+
+
+def _relative(root: Path, source: SourceFile) -> Path:
+    path = source.path if source.path is not None else Path(str(source.source_id))
+    try:
+        return path.relative_to(root.resolve())
+    except ValueError:
+        return path
+
+
+def _dotted(path: Path) -> str:
+    """``a/app.py`` as ``a.app`` and ``pkg/__init__.py`` as ``pkg``; a root-level
+    ``__init__.py`` has no dotted name and keeps its path."""
+
+    parts = path.with_suffix("").parts
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts) or path.as_posix()
+
+
+def _import_root(source: SourceFile) -> Path | None:
+    """The directory an import of ``source`` by its module name starts from: the parent
+    of its top-level package, or its own directory for a module outside any package,
+    where ``module_name_for`` stopped. ``None`` for a source not on disk."""
+
+    if source.path is None:
+        return None
+    directory = source.path.parent
+    while (directory / "__init__.py").is_file():
+        directory = directory.parent
+    return directory
+
+
 def project_symbol(module_name: str, qualified_name: str) -> SymbolId:
     """The canonical symbol of a project function. A module whose name is not an
     identifier cannot be imported by that name, but its functions still need stable
@@ -90,6 +156,7 @@ def _component(part: str) -> str:
 class ModuleGraph:
     _sources: Mapping[str, SourceFile]
     _imports: Mapping[str, frozenset[str]]
+    _unresolved: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
     @property
     def modules(self) -> tuple[str, ...]:
@@ -103,6 +170,12 @@ class ModuleGraph:
 
     def importers(self, name: str) -> frozenset[str]:
         return frozenset(m for m, imported in self._imports.items() if name in imported)
+
+    def unresolved(self, name: str) -> frozenset[str]:
+        """The import names ``name`` imports that several project files have and not
+        exactly one in its own root: no edge records them."""
+
+        return self._unresolved.get(name, frozenset())
 
     def schedule(self) -> tuple[tuple[frozenset[str], ...], ...]:
         """Strongly connected components in waves: every component of a wave imports,
@@ -167,10 +240,17 @@ def build_module_graph(
     modules: Mapping[str, nodes.Module],
     imports: Mapping[str, ImportTable],
 ) -> ModuleGraph:
-    """Edges from each module to the project modules it imports, in any scope."""
+    """Edges from each module to the project modules it imports, in any scope. An import
+    names a module by its import name; when several files have that name, it resolves to
+    the one in the importer's own root and, without exactly one there, stays unresolved:
+    no edge, and the name is recorded on the graph."""
 
-    names = frozenset(sources)
+    by_name: dict[str, list[str]] = {}
+    for name, source in sources.items():
+        by_name.setdefault(source.module_name, []).append(name)
+    roots = {name: _import_root(source) for name, source in sources.items()}
     edges: dict[str, frozenset[str]] = {}
+    unresolved: dict[str, frozenset[str]] = {}
     for name, module in modules.items():
         candidates: set[str] = set()
         dotted_tops: set[str] = set()
@@ -187,11 +267,24 @@ def build_module_graph(
                 candidates.add(path)
         # The most specific project module each import names; ``app.helpers`` implies
         # the ``app`` package, which is not an edge worth recording.
-        found = {
-            next((m for m in _prefixes(candidate) if m in names), None) for candidate in candidates
-        }
-        edges[name] = frozenset(m for m in found if m is not None and m != name)
-    return ModuleGraph(MappingProxyType(dict(sources)), MappingProxyType(edges))
+        found: set[str] = set()
+        missing: set[str] = set()
+        for candidate in candidates:
+            for prefix in _prefixes(candidate):
+                matching = by_name.get(prefix)
+                if matching is None:
+                    continue
+                if len(matching) > 1:
+                    matching = [m for m in matching if roots[m] == roots[name]]
+                if len(matching) == 1:
+                    found.add(matching[0])
+                else:
+                    missing.add(prefix)
+                break
+        edges[name] = frozenset(found - {name})
+        if missing:
+            unresolved[name] = frozenset(missing)
+    return ModuleGraph(MappingProxyType(dict(sources)), MappingProxyType(edges), MappingProxyType(unresolved))
 
 
 def _prefixes(dotted: str) -> list[str]:
@@ -217,5 +310,6 @@ __all__ = [
     "SummaryIndex",
     "build_module_graph",
     "discover_sources",
+    "name_modules",
     "project_symbol",
 ]
