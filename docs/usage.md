@@ -156,9 +156,9 @@ It establishes escaping only when all of the following hold:
 - No Python file of the project sets `autoescape` to `False`.
 
 The analyzer never assumes escaping where it cannot read the template. That covers a
-template named by an expression, a template found through a `DIRS` entry not named
-`templates`, one shipped by an installed package, one rendered through `get_template`,
-and Flask's Jinja2 templates. The flow is then reported as before. A single-file check
+template file it cannot read, a template named by an expression, a template found
+through a `DIRS` entry not named `templates`, one shipped by an installed package, one
+rendered through `get_template`, and Flask's Jinja2 templates. The flow is then reported as before. A single-file check
 reads no template.
 
 ### Dangerous API usage
