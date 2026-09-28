@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- An `EntryPoint` naming a project function or class applies through a module-level alias of it: `main = actual` makes `python.app.handlers.main` name `actual`, so a deployment declaring `handlers.main` reaches the function doing the work. An alias is an assignment of one name to another at module level, followed transitively and in source order, in a conditional or a `try` as well; a name bound inside a function or class, or to a call, an import or anything but a name, is no alias, and the engine still infers nothing from a name. A model naming a method wins over one naming its class, whichever name it uses.
+
 ## 0.18.0 (2026-09-28)
 
 ### Precision
