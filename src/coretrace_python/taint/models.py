@@ -110,12 +110,17 @@ class Sanitizer:
 
 @dataclass(frozen=True)
 class EntryPoint:
-    """Functions decorated by ``symbol``, and methods of classes deriving from it,
-    receive attacker-controlled parameters."""
+    """Functions decorated by ``symbol``, methods of classes deriving from it, and, when
+    ``symbol`` names a project function or class, that function or the class's methods
+    receive attacker-controlled parameters: those at ``inputs``, by position after
+    ``self`` for a method, or every parameter when ``inputs`` is None. A deployment
+    declaration an integration reads names a Lambda handler this way, whose event is
+    input and whose context is not."""
 
     symbol: SymbolId
     label: str
     kinds: TaintKind = TaintKind.ALL
+    inputs: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,10 @@
 
 - A Django template file the analyzer cannot read, because of its permissions, no longer counts as escaping everything it renders: it read the file as empty text, and an empty template escapes. The flow through `render_to_string` stays `xss`, and a template extending or including the unreadable one is not established to escape either, as for a template the analyzer cannot find. An unreadable file was already listed among the templates the project names but the run could not read.
 
+### Plugins
+
+- An `EntryPoint` may name a project function or class by its own symbol, `python.app.handlers.main`, so an integration reading a deployment declaration, a SAM template or a `serverless.yml`, can make a bare Lambda handler an entry point; the engine itself infers nothing from a function's name. `EntryPoint.inputs` limits the parameters that are input to the given positions, after `self` for a method: the handler's event, not its context (#180).
+
 ## 0.17.0 (2026-09-28)
 
 ### Plugins
