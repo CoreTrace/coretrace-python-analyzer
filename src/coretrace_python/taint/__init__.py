@@ -12,6 +12,7 @@ from coretrace_python.taint.engine import (
 from coretrace_python.taint.models import (
     TEXT_KINDS,
     AuthorizationGuard,
+    BasePattern,
     EntryPoint,
     Model,
     ModelError,
@@ -47,6 +48,7 @@ __all__ = [
     "FILTER_FUNCTIONS",
     "TEXT_KINDS",
     "AuthorizationGuard",
+    "BasePattern",
     "EntryPoint",
     "EntryPointAnalysis",
     "EscapedTemplates",

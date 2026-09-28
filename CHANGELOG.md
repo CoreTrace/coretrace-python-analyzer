@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- `BasePattern(pattern, label, parameters, kinds)` makes the methods of a class whose base's canonical symbol matches a regular expression entry points, for bases generated per project such as a gRPC servicer's, whatever the module's prefix and however the base is imported. Each parameter after `self` is, by position, either input of the model's kinds or an object of a class the model names, which the sources on that class taint without the object being input: a `Source` on `ServicerContext.invocation_metadata` gives the client's metadata, and `peer()` gives nothing. When the project holds the base, only the methods the base defines are entry points, so a servicer's utility methods are not; otherwise every method with the listed number of parameters is. `async` methods and the messages of an iterated parameter are covered (#176).
+
 ## 0.16.0 (2026-09-27)
 
 ### Advisories

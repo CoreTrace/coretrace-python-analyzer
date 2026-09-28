@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext, MissingInputError
-from coretrace_python.interprocedural import Clearing, TemplateCalls, TemplateFilter
+from coretrace_python.interprocedural import Clearing, Signature, TemplateCalls, TemplateFilter
 from coretrace_python.semantic.symbols import Members, SymbolId
 
 
@@ -146,6 +146,32 @@ class NamedParameter:
 
 
 @dataclass(frozen=True)
+class BasePattern:
+    """Methods of a class whose base's canonical symbol matches ``pattern`` are entry
+    points labelled ``label``, when they take the parameters the model lists, by
+    position after ``self``: a position left None is attacker input carrying ``kinds``;
+    one holding a class symbol denotes an object of that class, which the sources on
+    the class taint. A gRPC servicer's RPCs take the request, or the iterator of the
+    client's messages, and a ``ServicerContext``. When the project holds the base,
+    only the methods it defines are entry points; otherwise every method with that
+    number of parameters. Inheritance identifies a potential service, not its
+    registration on a server."""
+
+    pattern: str
+    label: str
+    parameters: tuple[SymbolId | None, ...] = (None,)
+    kinds: TaintKind = TaintKind.ALL
+
+    @property
+    def symbol(self) -> SymbolId:
+        digest = hashlib.sha1(self.pattern.encode("utf-8")).hexdigest()[:12]
+        return SymbolId(f"python.base.p{digest}")
+
+    def matches(self, base: SymbolId) -> bool:
+        return re.search(self.pattern, base.canonical_name) is not None
+
+
+@dataclass(frozen=True)
 class RouteRegistrar:
     """A call registering a handler elsewhere (``path('login/', views.log_in)``): the
     function or class referenced by ``argument`` (or ``keyword``) is an entry point."""
@@ -251,6 +277,7 @@ Model = (
     | TemplateRender
     | Members
     | RequestObject
+    | BasePattern
 )
 
 
@@ -270,6 +297,7 @@ class ModelTable:
     template_renders: tuple[TemplateRender, ...] = ()
     members: tuple[Members, ...] = ()
     request_objects: tuple[RequestObject, ...] = ()
+    base_patterns: tuple[BasePattern, ...] = ()
     _by_symbol: dict[type[Model], dict[SymbolId, Model]] = field(
         init=False, repr=False, compare=False
     )
@@ -287,6 +315,7 @@ class ModelTable:
             SafeArgument: {m.symbol: m for m in self.safe_arguments},
             TemplateRender: {m.symbol: m for m in self.template_renders},
             RequestObject: {m.symbol: m for m in self.request_objects},
+            BasePattern: {m.symbol: m for m in self.base_patterns},
         }
         object.__setattr__(self, "_by_symbol", MappingProxyType(index))
 
@@ -356,7 +385,19 @@ class ModelTable:
             self.template_renders,
             self.members,
             self.request_objects,
+            self.base_patterns,
         )
+
+    def base_pattern(self, base: SymbolId) -> BasePattern | None:
+        """The pattern model the canonical symbol of a class's ``base`` matches, if any."""
+
+        return next((m for m in self.base_patterns if m.matches(base)), None)
+
+    def signatures(self) -> tuple[Signature, ...]:
+        """What the methods of the classes the base patterns match receive, by position,
+        for the call graph to type them."""
+
+        return tuple(Signature(m.pattern, m.parameters) for m in self.base_patterns)
 
     def sanitizer(self, symbol: SymbolId) -> Sanitizer | None:
         found = self._by_symbol[Sanitizer].get(symbol)
@@ -451,6 +492,7 @@ class SecurityModelRegistry:
             template_renders=tuple(m for m in models if isinstance(m, TemplateRender)),
             members=tuple(m for m in models if isinstance(m, Members)),
             request_objects=tuple(m for m in models if isinstance(m, RequestObject)),
+            base_patterns=tuple(m for m in models if isinstance(m, BasePattern)),
         )
 
 

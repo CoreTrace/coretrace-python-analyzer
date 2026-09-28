@@ -9,6 +9,7 @@ reads, called or not: reading ``request.form`` runs its getter.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -102,6 +103,30 @@ class SymbolRead:
     function: str
     location: SourceSpan
     symbol: SymbolId
+
+
+@dataclass(frozen=True)
+class Signature:
+    """What the parameters of the methods of a class denote when the canonical symbol
+    of its base matches ``pattern``, by position after ``self``: a class symbol, or None
+    for a parameter denoting none. A method taking another number of parameters has
+    none. The engine derives signatures from the security models (§16)."""
+
+    pattern: str
+    parameters: tuple[SymbolId | None, ...]
+
+    def matches(self, base: SymbolId) -> bool:
+        return re.search(self.pattern, base.canonical_name) is not None
+
+
+class SignaturesAnalysis(Analysis[tuple[Signature, ...]]):
+    """The signatures the models declare, provided by the engine; none on its own."""
+
+    name: ClassVar[str] = "interprocedural.signatures"
+
+    @classmethod
+    def compute(cls, ctx: AnalysisContext) -> tuple[Signature, ...]:
+        return ()
 
 
 @dataclass(frozen=True)
@@ -357,6 +382,20 @@ def _annotated(
     return found
 
 
+def _declared(
+    function: nodes.Function, ssa: FunctionIR, bases: tuple[SymbolId, ...], signatures: tuple[Signature, ...]
+) -> dict[Value, SymbolId]:
+    """Parameters a signature types by their position, for a method of a class one of
+    whose ``bases`` matches the signature and which takes the parameters it lists."""
+
+    given = function.parameters[1:]
+    for signature in signatures:
+        if any(signature.matches(base) for base in bases) and len(given) == len(signature.parameters):
+            typed = zip(ssa.parameters[1:], signature.parameters, strict=False)
+            return {value: symbol for value, symbol in typed if symbol is not None}
+    return {}
+
+
 def _typed_with_module_classes(
     function: nodes.Function, ssa: FunctionIR, classes: Mapping[str, frozenset[str]]
 ) -> dict[Value, str]:
@@ -372,12 +411,15 @@ def _typed_with_module_classes(
 
 class CallGraphAnalysis(Analysis[CallGraph]):
     name: ClassVar[str] = "interprocedural.callgraph"
-    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis, ScopeAnalysis, SymbolAnalysis})
+    requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
+        {SSAAnalysis, ScopeAnalysis, SymbolAnalysis, SignaturesAnalysis}
+    )
 
     @classmethod
     def compute(cls, ctx: AnalysisContext) -> CallGraph:
         scopes = ctx.get(ScopeAnalysis)
         table = ctx.get(SymbolAnalysis)
+        signatures = ctx.get(SignaturesAnalysis)
         definitions: dict[str, nodes.Function] = {}
         for function in analyzable_functions(ctx.module):
             # A property and its setter, or a redefinition, share a qualified name; each
@@ -396,14 +438,15 @@ class CallGraphAnalysis(Analysis[CallGraph]):
             for statement in ctx.module.body
             if isinstance(statement, nodes.Class)
         }
+        # Inheritance follows the first base that resolves; a signature may match any.
         bases: dict[str, SymbolId] = {}
+        ancestry: dict[str, tuple[SymbolId, ...]] = {}
         for statement in ctx.module.body:
             if isinstance(statement, nodes.Class):
-                for base_expression in statement.bases:
-                    symbol = table.resolve_expression(scopes.module_scope.id, base_expression)
-                    if symbol is not None:
-                        bases[statement.name] = symbol
-                        break
+                resolved = [table.resolve_expression(scopes.module_scope.id, base) for base in statement.bases]
+                ancestry[statement.name] = tuple(symbol for symbol in resolved if symbol is not None)
+                if ancestry[statement.name]:
+                    bases[statement.name] = ancestry[statement.name][0]
         sites: dict[str, tuple[CallSite, ...]] = {}
         symbols: dict[str, Mapping[Value, SymbolId]] = {}
         reads: dict[str, tuple[SymbolRead, ...]] = {}
@@ -418,11 +461,13 @@ class CallGraphAnalysis(Analysis[CallGraph]):
             owner = name.rsplit(".", 1)[0] if "." in name and name.rsplit(".", 1)[0] in classes else None
             if owner is not None and _is_staticmethod(function):
                 owner = None  # a static method has no receiver
+            # A signature types parameters by their position; an annotation says more.
+            declared = _declared(function, ssa, ancestry.get(owner, ()) if owner is not None else (), signatures)
             targets, symbols[name] = resolve_targets(
                 ssa,
                 scopes,
                 known,
-                _annotated(function, ssa, scopes, table),
+                {**declared, **_annotated(function, ssa, scopes, table)},
                 frozenset(definitions),
                 classes,
                 owner,
