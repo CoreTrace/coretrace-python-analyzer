@@ -1,11 +1,17 @@
 {
   "coverage": {
-    "files": 29,
-    "files_analysed": 29,
-    "functions": 71,
-    "functions_analysed": 71
+    "files": 31,
+    "files_analysed": 27,
+    "functions": 85,
+    "functions_analysed": 85
   },
   "findings": [
+    {
+      "file": "authentication/__init__.py",
+      "line": 1,
+      "rule": "ambiguous-module",
+      "function": null
+    },
     {
       "file": "authentication/views.py",
       "line": 57,
@@ -24,6 +30,24 @@
       "line": 196,
       "rule": "hardcoded-credential",
       "function": "after_all"
+    },
+    {
+      "file": "features/steps/authentication.py",
+      "line": 1,
+      "rule": "ambiguous-module",
+      "function": null
+    },
+    {
+      "file": "features/steps/notes.py",
+      "line": 1,
+      "rule": "ambiguous-module",
+      "function": null
+    },
+    {
+      "file": "notes/__init__.py",
+      "line": 1,
+      "rule": "ambiguous-module",
+      "function": null
     },
     {
       "file": "requirements_app.txt",
