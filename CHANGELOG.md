@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- A project tag library registering a filter of a built-in's name replaces the built-in in every Django template loading it before applying the filter, as Django's parser does: `{% load custom %}{{ bio|striptags }}` calls the project's `striptags` when `app/templatetags/custom.py` registers one, so it is no longer a reachable or exploitable call to `django.template.defaultfilters.striptags`; the project's function is ordinary code, analysed as any other. A load affects only the filters after it, a later load overrides an earlier one, `{% load striptags from custom %}` replaces only what it names, and Django's own libraries change nothing. The analyzer reads the registrations on `register`, a `django.template.Library` however it is imported, in decorator and call form, at module level or under `if`, `try` or a function. Where it cannot tell what a library registers — no such library file, one it cannot read or parse, a name not written as a constant, `register` passed elsewhere or filled through `filters=` or `register.filters`, or two apps giving the name and registering different filters — a filter of that name applied under the load is neither the built-in nor certainly replaced: no call is claimed, and the load counts among the templates the analyzer could not read (`app/templates/app/profile.html:1 loads 'custom', not read`), so an advisory naming the filter stays `under_investigation` in the VEX document. The settings' `OPTIONS["libraries"]` and `OPTIONS["builtins"]` are not read (#183).
+
 ## 0.18.0 (2026-09-28)
 
 ### Precision
