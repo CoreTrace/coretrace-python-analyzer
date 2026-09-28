@@ -15,7 +15,8 @@ it extends or includes, can output data unescaped:
 
 Templates are found under the project's ``templates`` directories, by their path below
 one. A template the engine cannot find — named by an expression, under a ``DIRS`` entry
-of another name, shipped by an installed package — is never assumed to escape.
+of another name, shipped by an installed package — or cannot read is never assumed to
+escape.
 
 A template applying a filter of Django's own libraries calls the function behind it
 whenever it is rendered, though no Python call names that function: ``{{ bio|striptags }}``
@@ -149,7 +150,7 @@ def escaped_templates(root: Path) -> frozenset[str]:
     local: dict[str, bool] = {}
     requires: dict[str, set[str]] = {}
     for name, paths in found.items():
-        verdicts = [_inspect(_read(path)) for path in paths]
+        verdicts = [_verdict(path) for path in paths]
         local[name] = all(safe for safe, _ in verdicts)
         requires[name] = {needed for _, needs in verdicts for needed in needs}
     escaped = {name for name, safe in local.items() if safe}
@@ -169,6 +170,14 @@ def _names(parts: tuple[str, ...]) -> Iterator[str]:
 
 def _read(path: Path) -> str:
     return _text(path) or ""
+
+
+def _verdict(path: Path) -> tuple[bool, set[str]]:
+    """Whether one template file escapes all it prints, and what it needs: a file the
+    engine cannot read is not established to escape, like a template it cannot find."""
+
+    text = _text(path)
+    return (False, set()) if text is None else _inspect(text)
 
 
 def _text(path: Path) -> str | None:

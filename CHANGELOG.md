@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- A Django template file the analyzer cannot read, because of its permissions, no longer counts as escaping everything it renders: it read the file as empty text, and an empty template escapes. The flow through `render_to_string` stays `xss`, and a template extending or including the unreadable one is not established to escape either, as for a template the analyzer cannot find. An unreadable file was already listed among the templates the project names but the run could not read.
+
 ## 0.17.0 (2026-09-28)
 
 ### Plugins
