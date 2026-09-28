@@ -80,6 +80,7 @@ from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTa
 from coretrace_python.source import SourceSpan
 from coretrace_python.taint.models import (
     TEXT_KINDS,
+    BasePattern,
     EntryPoint,
     ModelTable,
     SecurityModelAnalysis,
@@ -780,9 +781,11 @@ def entry_point_of(
     symbols: SymbolTable,
     owner: nodes.Class | None = None,
     instances: Instances | None = None,
+    project: SummaryIndex | None = None,
 ) -> EntryPoint | None:
     """The entry-point model matching one of the function's decorators or, for a
-    method, one of the bases of ``owner``, if any."""
+    method, one of the bases of ``owner``, if any: by symbol, or by a base pattern when
+    the method is one the pattern covers (``project`` says what the base defines)."""
 
     scope = scopes.scope_for(function)
     enclosing = scope.parent if scope.parent is not None else scope.id
@@ -803,7 +806,22 @@ def entry_point_of(
             entry = models.entry_point(candidate)
             if entry is not None:
                 return entry
+            pattern = models.base_pattern(candidate) if id(expression) in enclosing_of else None
+            if pattern is not None and _covered(function, candidate, pattern, project):
+                return EntryPoint(candidate, pattern.label, pattern.kinds)
     return None
+
+
+def _covered(function: nodes.Function, base: SymbolId, pattern: BasePattern, project: SummaryIndex | None) -> bool:
+    """Whether a method of a class deriving from ``base`` is one ``pattern`` covers: it
+    takes the parameters the pattern lists and, when the project holds the base, the
+    base defines it; a utility method of the class is no entry point."""
+
+    if len(function.parameters) - 1 != len(pattern.parameters):
+        return False
+    if project is None or not project.defines(base):
+        return True
+    return project.summary(base.attribute(function.name)) is not None
 
 
 def function_entry_point(
@@ -814,6 +832,7 @@ def function_entry_point(
     symbols: SymbolTable,
     instances: Instances | None = None,
     routes: Routes | None = None,
+    project: SummaryIndex | None = None,
 ) -> EntryPoint | None:
     """The entry point ``function`` is: one of its decorators or, for a method, one of its
     class's bases matching an entry-point model, or a registration elsewhere (``routes``)."""
@@ -823,7 +842,7 @@ def function_entry_point(
     if enclosing_function is not None:
         # ``app = Flask(__name__)`` inside ``create_app``: routes defined there resolve.
         instances = {**(instances or {}), **local_instances(enclosing_function, scopes, symbols)}
-    entry = entry_point_of(function, models, scopes, symbols, owner, instances)
+    entry = entry_point_of(function, models, scopes, symbols, owner, instances, project)
     if entry is None and routes:
         qualified = function.name if owner is None else f"{owner.name}.{function.name}"
         entry = routes.get(project_symbol(module.name, qualified))
@@ -849,23 +868,29 @@ def parameter_sources(
     symbols: SymbolTable,
     instances: Instances | None = None,
     routes: Routes | None = None,
+    project: SummaryIndex | None = None,
 ) -> Mapping[int, Source]:
     """The attacker-controlled parameters of ``function``, by index: every parameter of an
     entry point (``self`` excepted for a method), including one registered elsewhere
     (``routes``), and every parameter annotated with a typed-parameter symbol. An entry
     point's parameter annotated with scalars is text: FastAPI validates it before the
     handler runs, and a scalar cannot hold a query operator. So are the URL parameters
-    a view receives after a request object."""
+    a view receives after a request object. A parameter a base pattern types with a
+    class is not input: the sources on that class say what it gives."""
 
     owner = _owner(module, function)
     sources: dict[int, Source] = {}
     scope = scopes.scope_for(function)
     enclosing = scope.parent if scope.parent is not None else scope.id
-    entry = function_entry_point(function, module, models, scopes, symbols, instances, routes)
+    entry = function_entry_point(function, module, models, scopes, symbols, instances, routes, project)
     if entry is not None:
         first = 1 if owner is not None else 0
         request = models.request_object(entry.symbol)
+        pattern = models.base_pattern(entry.symbol) if models.entry_point(entry.symbol) is None else None
+        roles = pattern.parameters if pattern is not None else ()
         for index in range(first, len(function.parameters)):
+            if index - first < len(roles) and roles[index - first] is not None:
+                continue
             annotation = function.parameters[index].annotation
             text = (request is not None and index > first) or (
                 annotation is not None and _scalar(annotation, symbols, enclosing)
@@ -1010,11 +1035,12 @@ class TaintAnalysis(FunctionAnalysis[TaintFacts]):
         graph = ctx.get(CallGraphAnalysis)
         models = ctx.get(SecurityModelAnalysis)
         scopes, symbols = ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)
-        instances = factory_instances(ctx.module, scopes, symbols, ctx.get(SummaryAnalysis), ctx.get(ProjectSummaries))
+        project = ctx.get(ProjectSummaries)
+        instances = factory_instances(ctx.module, scopes, symbols, ctx.get(SummaryAnalysis), project)
         routes = ctx.get(RegisteredRoutes)
 
         def sources_of(member: nodes.Function) -> Mapping[int, Source]:
-            return parameter_sources(member, ctx.module, models, scopes, symbols, instances, routes)
+            return parameter_sources(member, ctx.module, models, scopes, symbols, instances, routes, project)
 
         ssa = ctx.get(SSAAnalysis, function)
         heap = ctx.get(HeapAnalysis, function)
@@ -1068,9 +1094,10 @@ class EntryPointAnalysis(Analysis[tuple[ModuleFunction, ...]]):
         scopes, symbols = ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)
         instances = factory_instances(ctx.module, scopes, symbols, ctx.get(SummaryAnalysis), ctx.get(ProjectSummaries))
         routes = ctx.get(RegisteredRoutes)
+        project = ctx.get(ProjectSummaries)
         functions: list[ModuleFunction] = []
         for name, function in graph.definitions.items():
-            entry = function_entry_point(function, ctx.module, models, scopes, symbols, instances, routes)
+            entry = function_entry_point(function, ctx.module, models, scopes, symbols, instances, routes, project)
             functions.append(ModuleFunction(name, function.span, entry.label if entry is not None else None))
         return tuple(functions)
 

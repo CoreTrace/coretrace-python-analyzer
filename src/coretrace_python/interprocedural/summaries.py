@@ -363,6 +363,12 @@ class SummaryIndex:
     def summary(self, symbol: SymbolId) -> FunctionSummary | None:
         return self.summaries.get(symbol)
 
+    def defines(self, owner: SymbolId) -> bool:
+        """Whether the project defines a function of ``owner``, a class or a module."""
+
+        prefix = owner.canonical_name + "."
+        return any(s.canonical_name.startswith(prefix) for s in self.symbols)
+
     def __eq__(self, other: object) -> bool:
         return isinstance(other, SummaryIndex) and dict(self.summaries) == dict(other.summaries)
 

@@ -80,6 +80,7 @@ from coretrace_python.interprocedural import (
     ModuleFunction,
     ModuleGraph,
     ProjectSummaries,
+    SignaturesAnalysis,
     SummaryAnalysis,
     SummaryIndex,
     SymbolRead,
@@ -164,6 +165,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     EscapedTemplates,
     ClearingAnalysis,
     TemplateCallsAnalysis,
+    SignaturesAnalysis,
 )
 
 
@@ -205,6 +207,7 @@ class ResultsEvicted(TransformationPass):
             EscapedTemplates,
             ClearingAnalysis,
             TemplateCallsAnalysis,
+            SignaturesAnalysis,
         }
     )
 
@@ -268,6 +271,7 @@ def build_manager(
     table = (models or SecurityModelRegistry()).freeze()
     manager.provide(SecurityModelAnalysis, table)
     manager.provide(MembersAnalysis, table.members_by_class())
+    manager.provide(SignaturesAnalysis, table.signatures())
     manager.provide(ClearingAnalysis, table.clearing())
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
@@ -323,6 +327,7 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalys
     table = plugin_models(loaded.plugin for loaded in registry)
     manager.provide(SecurityModelAnalysis, table)
     manager.provide(MembersAnalysis, table.members_by_class())
+    manager.provide(SignaturesAnalysis, table.signatures())
     manager.provide(ClearingAnalysis, table.clearing())
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
@@ -418,6 +423,7 @@ def analyze_project(
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(MembersAnalysis, members)
+        manager.provide(SignaturesAnalysis, models.signatures())
         manager.provide(DependencyAnalysis, dependencies)
 
     imports: dict[str, ImportTable] = {}
@@ -730,6 +736,7 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(MembersAnalysis, members)
+        manager.provide(SignaturesAnalysis, models.signatures())
         manager.provide(DependencyAnalysis, dependencies)
         manager.provide(RegisteredRoutes, routes)
         manager.provide(EscapedTemplates, escaped)
