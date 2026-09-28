@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- A template block that renders `{{ block.super }}` keeps the parent block's content, so the filters the parent applies stay fed by the render context, with the parent template as the place of the call; a block without it still replaces the parent's whole block, and a chain of templates keeps exactly the parents each level renders. The parent's filters used to drop out of the exploitable flow as soon as a child defined the block (#185).
+
 ## 0.18.0 (2026-09-28)
 
 ### Precision

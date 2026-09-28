@@ -131,6 +131,8 @@ _BINDING = re.compile(r"(\w+)=")
 # the request context processor adds gives (``request.GET``).
 _VARIABLE = re.compile(r"([A-Za-z_]\w*)(?:\.(\w+))?")
 _LITERALS = frozenset({"True", "False", "None"})
+# The variable a block renders to keep the parent's content, as ``_chain`` reads it.
+_BLOCK_SUPER = "block.super"
 
 REQUEST_PROCESSOR = "django.template.context_processors.request"
 _DJANGO_ENGINE = "django.template.backends.django.DjangoTemplates"
@@ -365,11 +367,13 @@ class _Reference:
 
 @dataclass(frozen=True)
 class _Template:
-    """What one template file applies and references, and the ``blocks`` it defines."""
+    """What one template file applies and references, the ``blocks`` it defines, and
+    among them the ``extended`` ones, which render ``{{ block.super }}``."""
 
     applications: tuple[_Application, ...]
     references: tuple[_Reference, ...]
     blocks: frozenset[str]
+    extended: frozenset[str] = frozenset()
 
     def rendered(self, blocks: tuple[str, ...], overridden: frozenset[str]) -> bool:
         """Whether what stands in ``blocks`` renders when a template extending this one
@@ -378,6 +382,13 @@ class _Template:
 
         extends = any(reference.extends for reference in self.references)
         return not overridden.intersection(blocks) and (bool(blocks) or not extends)
+
+    @property
+    def replaced(self) -> frozenset[str]:
+        """The blocks this template replaces in what it extends: those it defines
+        without rendering ``{{ block.super }}``, which keeps the parent's content."""
+
+        return self.blocks - self.extended
 
 
 def project_templates(root: Path) -> ProjectTemplates:
@@ -444,7 +455,7 @@ def _reaching(
         if reference.name is None:
             continue
         if reference.extends:
-            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.blocks)
+            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced)
         elif template.rendered(reference.blocks, overridden):
             found = _reaching(reference.name, files, read, visiting | {name})
         else:
@@ -463,6 +474,7 @@ def _read_scopes(text: str, source: SourceId) -> _Template:
     references: list[_Reference] = []
     opened: list[str] = []
     defined: set[str] = set()
+    extended: set[str] = set()
     scopes: list[dict[str, frozenset[str]]] = [{}]
     blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
 
@@ -491,6 +503,8 @@ def _read_scopes(text: str, source: SourceId) -> _Template:
     for offset, expression, tag in _expressions(text):
         if not tag:
             head, chain = _chain(expression, offset)
+            if opened and _BLOCK_SUPER in head:
+                extended.add(opened[-1])
             printed = apply(free(head), chain)
             for _, collected in blocks:
                 collected |= printed
@@ -546,7 +560,7 @@ def _read_scopes(text: str, source: SourceId) -> _Template:
         elif "as" in words[1:-1]:
             target = words[words.index("as", 1) + 1]
             scopes[-1][target] = values.get(words[1], frozenset()) if name == "regroup" else frozenset()
-    return _Template(tuple(applications), tuple(references), frozenset(defined))
+    return _Template(tuple(applications), tuple(references), frozenset(defined), frozenset(extended))
 
 
 def _chain(expression: str, offset: int) -> tuple[frozenset[str], list[tuple[str, int, frozenset[str]]]]:
