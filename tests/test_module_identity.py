@@ -13,16 +13,43 @@ naming ``python.app.main`` applies to every definition of that symbol.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from coretrace_python import engine
 from coretrace_python.cache import ProjectCache
-from coretrace_python.findings import Finding
+from coretrace_python.dependency import Advisory, AdvisoryEntryPoint, dump_advisories, render_vex
+from coretrace_python.findings import Finding, Severity
 from coretrace_python.plugins import ProjectContext, ProjectPlugin
 from coretrace_python.reporters import render_json
 from coretrace_python.semantic.symbols import SymbolId
+
+NOW = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
+STRIP_TAGS = "python.django.utils.html.strip_tags"
+ADVISORY = Advisory(
+    "CVE-2099-5801",
+    "django",
+    "<4.2.17",
+    "strip_tags is quadratic in nested incomplete tags",
+    Severity.MEDIUM,
+    entry_points=(AdvisoryEntryPoint(SymbolId(STRIP_TAGS), "changed by the fix"),),
+)
+LOCK = """version = 1
+
+[[package]]
+name = "app"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [{ name = "django" }]
+
+[[package]]
+name = "django"
+version = "4.2.16"
+source = { registry = "https://pypi.org/simple" }
+"""
 
 MANIFEST = (
     'name = "declared-handlers"\nversion = "1.0.0"\nplugin_api = ">=1,<2"\nrequires = []\n'
@@ -316,6 +343,31 @@ def test_a_project_plugin_sees_both_files_with_their_entry_points(tmp_path: Path
     assert tuple(seen) == ("a.app", "z.app")
     assert seen["a.app"]["main"] == "event"
     assert seen["z.app"]["main"] == "event"
+
+
+def test_ambiguous_files_keep_an_unreached_advisory_under_investigation(tmp_path: Path) -> None:
+    """A file another may be confused with is not fully analysed to the VEX document:
+    what the project does not reach through the analysed code is not established."""
+
+    def statement(files: dict[str, str]) -> dict[str, Any]:
+        root = project(tmp_path, {"uv.lock": LOCK, **files})
+        (root / "advisories.json").write_text(dump_advisories((ADVISORY,)), encoding="utf-8")
+        analysis = check(tmp_path, root)
+        evidence = (*analysis.findings, *analysis.suppressed, *analysis.accepted)
+        document = render_vex(
+            analysis.dependencies, analysis.advisories, evidence, analysis.coverage, root, "coretrace", "0.18.0", NOW
+        )
+        return next(s for s in json.loads(document)["statements"] if s["vulnerability"]["name"] == ADVISORY.id)
+
+    assert statement({"a/app.py": CLEAN, "z/other.py": CLEAN})["status"] == "not_affected"
+
+    ambiguous = statement({"a/app.py": CLEAN, "z/app.py": CLEAN})
+
+    assert ambiguous["status"] == "under_investigation"
+    assert ambiguous["status_notes"] == (
+        f"No analysed code reaches the entry points of {ADVISORY.id} ({STRIP_TAGS}), but a/app.py, z/app.py "
+        "could not be fully analysed."
+    )
 
 
 def test_the_json_report_carries_the_ambiguous_status(tmp_path: Path) -> None:
