@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Plugins
+
+- An `EntryPoint` may name a project function or class by its own symbol, `python.app.handlers.main`, so an integration reading a deployment declaration, a SAM template or a `serverless.yml`, can make a bare Lambda handler an entry point; the engine itself infers nothing from a function's name. `EntryPoint.inputs` limits the parameters that are input to the given positions, after `self` for a method: the handler's event, not its context (#180).
+
 ## 0.17.0 (2026-09-28)
 
 ### Plugins

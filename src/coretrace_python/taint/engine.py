@@ -835,7 +835,8 @@ def function_entry_point(
     project: SummaryIndex | None = None,
 ) -> EntryPoint | None:
     """The entry point ``function`` is: one of its decorators or, for a method, one of its
-    class's bases matching an entry-point model, or a registration elsewhere (``routes``)."""
+    class's bases matching an entry-point model, a registration elsewhere (``routes``), or
+    a model naming the function, or its class, by its own project symbol."""
 
     owner = _owner(module, function)
     enclosing_function = _enclosing(module, function)
@@ -843,12 +844,20 @@ def function_entry_point(
         # ``app = Flask(__name__)`` inside ``create_app``: routes defined there resolve.
         instances = {**(instances or {}), **local_instances(enclosing_function, scopes, symbols)}
     entry = entry_point_of(function, models, scopes, symbols, owner, instances, project)
-    if entry is None and routes:
+    if entry is None:
         qualified = function.name if owner is None else f"{owner.name}.{function.name}"
-        entry = routes.get(project_symbol(module.name, qualified))
+        entry = _declared(project_symbol(module.name, qualified), models, routes)
         if entry is None and owner is not None:
-            entry = routes.get(project_symbol(module.name, owner.name))
+            entry = _declared(project_symbol(module.name, owner.name), models, routes)
     return entry
+
+
+def _declared(symbol: SymbolId, models: ModelTable, routes: Routes | None) -> EntryPoint | None:
+    """The entry point a project ``symbol`` is: registered as a handler, or named by a
+    model."""
+
+    registered = routes.get(symbol) if routes else None
+    return registered if registered is not None else models.entry_point(symbol)
 
 
 def _owner(module: nodes.Module, function: nodes.Function) -> nodes.Class | None:
@@ -890,6 +899,8 @@ def parameter_sources(
         roles = pattern.parameters if pattern is not None else ()
         for index in range(first, len(function.parameters)):
             if index - first < len(roles) and roles[index - first] is not None:
+                continue
+            if entry.inputs is not None and index - first not in entry.inputs:
                 continue
             annotation = function.parameters[index].annotation
             text = (request is not None and index > first) or (
