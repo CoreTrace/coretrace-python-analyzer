@@ -24,18 +24,30 @@ calls ``django.template.defaultfilters.striptags``. Every template found counts,
 or not a Python call names it, since a class-based view renders its ``template_name``
 inside Django. A template the engine cannot read may call any filter; the engine says
 where the project names one.
+
+A project tag library, a module of a ``templatetags`` directory, replaces a filter of
+that name in every template loading it before applying the filter, as Django's parser
+does: ``{% load custom %}{{ bio|striptags }}`` calls the project's ``striptags`` when
+``custom.py`` registers one, a later load overrides an earlier one, and
+``{% load striptags from custom %}`` selects. The engine reads what a library registers
+on its ``register`` with the semantic layers, and where it cannot tell — no such library,
+a file it cannot read or understand, several apps giving the name and disagreeing — the
+filter is neither the built-in nor certainly replaced: no call is claimed, and the load
+is listed among what the engine could not read. ``OPTIONS["builtins"]`` and
+``OPTIONS["libraries"]`` of the settings are not read.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Container, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext
+from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.interprocedural import (
@@ -44,11 +56,21 @@ from coretrace_python.interprocedural import (
     TemplateFilter,
     discover_files,
 )
-from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.source import SourceId, SourceSpan
+from coretrace_python.semantic.imports import ImportResolutionError, analyze_imports
+from coretrace_python.semantic.scopes import (
+    BindingKind,
+    ResolutionKind,
+    ScopeError,
+    ScopeId,
+    ScopeTable,
+    analyze_scopes,
+)
+from coretrace_python.semantic.symbols import SymbolId, analyze_symbols
+from coretrace_python.source import SourceId, SourceManager, SourceSpan
 from coretrace_python.taint.models import ModelTable
 
 TEMPLATES_DIRECTORY = "templates"
+TEMPLATETAGS_DIRECTORY = "templatetags"
 
 _OUTPUT, _TAG, _URL = "\x00", "\x01", "/u"
 _SYNTAX = re.compile(r"{{(.*?)}}|{%(.*?)%}|{#.*?#}", re.DOTALL)
@@ -102,6 +124,10 @@ FILTER_FUNCTIONS: Mapping[str, SymbolId] = MappingProxyType(
 # Every filter but ``safe`` and ``safeseq`` escapes its input, or returns it for
 # autoescaping to escape, when autoescaping is on.
 _FILTERS = frozenset(FILTER_FUNCTIONS) - {"safe", "safeseq"}
+# The class a project tag library binds ``register`` to, by either of its paths, and
+# its methods registering tags, which register no filter.
+_LIBRARY_CLASSES = frozenset(SymbolId(f"python.django.template.{p}") for p in ("Library", "library.Library"))
+_TAG_REGISTRARS = frozenset({"tag", "tag_function", "simple_tag", "simple_block_tag", "inclusion_tag"})
 
 _URL_ATTRIBUTES = frozenset(
     {
@@ -131,6 +157,8 @@ _BINDING = re.compile(r"(\w+)=")
 # the request context processor adds gives (``request.GET``).
 _VARIABLE = re.compile(r"([A-Za-z_]\w*)(?:\.(\w+))?")
 _LITERALS = frozenset({"True", "False", "None"})
+# The variable a block renders to keep the parent's content, as ``_chain`` reads it.
+_BLOCK_SUPER = "block.super"
 
 REQUEST_PROCESSOR = "django.template.context_processors.request"
 _DJANGO_ENGINE = "django.template.backends.django.DjangoTemplates"
@@ -314,10 +342,11 @@ class FilterCall:
 @dataclass(frozen=True)
 class ProjectTemplates:
     """The templates found under the project's ``templates`` directories: their
-    ``names``, as a render call names them; the filters they apply, as ``calls``; where
-    they name a template the engine cannot read, as ``unread``; and, by name, the filter
-    calls rendering each template makes with the context keys reaching them, as
-    ``filters``."""
+    ``names``, as a render call names them; the filters of Django's own libraries they
+    apply, as ``calls``, unless a project library they load replaces the filter; where
+    they name a template the engine cannot read, or load a library it cannot read while
+    applying a filter of that name, as ``unread``; and, by name, the filter calls
+    rendering each template makes with the context keys reaching them, as ``filters``."""
 
     names: frozenset[str] = frozenset()
     calls: tuple[FilterCall, ...] = ()
@@ -364,12 +393,43 @@ class _Reference:
 
 
 @dataclass(frozen=True)
+class _Load:
+    """A ``{% load %}`` of ``library`` at ``offset``, of the ``names`` it selects
+    (``{% load a b from lib %}``), None for the whole library."""
+
+    library: str
+    names: frozenset[str] | None
+    offset: int
+
+
+@dataclass(frozen=True)
+class _Library:
+    """What the project's tag library files of one name register: the filter names they
+    surely register, ``certain``, and those they may register, ``uncertain`` — None when
+    they may register anything, as a file the engine cannot read or understand may."""
+
+    certain: frozenset[str] = frozenset()
+    uncertain: frozenset[str] | None = None
+
+    def overrides(self, name: str) -> bool | None:
+        """Whether loading the library replaces the filter ``name``; None when it may."""
+
+        if name in self.certain:
+            return True
+        return None if self.uncertain is None or name in self.uncertain else False
+
+
+@dataclass(frozen=True)
 class _Template:
-    """What one template file applies and references, and the ``blocks`` it defines."""
+    """What one template file applies and references, the ``blocks`` it defines, and
+    among them the ``extended`` ones, which render ``{{ block.super }}``, and the loads
+    under which it applies a filter the engine could not resolve."""
 
     applications: tuple[_Application, ...]
     references: tuple[_Reference, ...]
     blocks: frozenset[str]
+    extended: frozenset[str] = frozenset()
+    unresolved: tuple[_Load, ...] = ()
 
     def rendered(self, blocks: tuple[str, ...], overridden: frozenset[str]) -> bool:
         """Whether what stands in ``blocks`` renders when a template extending this one
@@ -379,15 +439,25 @@ class _Template:
         extends = any(reference.extends for reference in self.references)
         return not overridden.intersection(blocks) and (bool(blocks) or not extends)
 
+    @property
+    def replaced(self) -> frozenset[str]:
+        """The blocks this template replaces in what it extends: those it defines
+        without rendering ``{{ block.super }}``, which keeps the parent's content."""
+
+        return self.blocks - self.extended
+
 
 def project_templates(root: Path) -> ProjectTemplates:
     """What the templates under ``root`` call, and the templates they include or extend
     that the engine cannot read: named by an expression, or by a name found under no
-    ``templates`` directory. A template file that cannot be read is unread too. A name
+    ``templates`` directory. A template file that cannot be read is unread too, and so
+    is a template loading a library the engine cannot read, or find, or finds in several
+    apps disagreeing, where it then applies a filter of that library's name. A name
     found in several files gives no ``filters``: which one renders depends on the
     loaders."""
 
     found = {path: tuple(_names(path.relative_to(root).parts)) for path in discover_files(root)}
+    libraries = _libraries(found)
     templates = sorted(path for path, names in found.items() if names)
     files: dict[str, list[Path]] = {}
     for path in templates:
@@ -401,13 +471,17 @@ def project_templates(root: Path) -> ProjectTemplates:
         if text is None:
             unread.append(f"{relative}, unreadable")
             continue
-        read[path] = _read_scopes(text, SourceId(str(path)))
+        read[path] = _read_scopes(text, SourceId(str(path)), libraries)
         for reference in read[path].references:
             where = f"{relative}:{_position(text, reference.offset)[0]}"
             if reference.name is None:
                 unread.append(f"{where} names a template by an expression")
             elif reference.name not in files:
                 unread.append(f"{where} names {reference.name!r}, not found")
+        for load in read[path].unresolved:
+            library = libraries.get(load.library)
+            reason = "not found" if library is None else "not read" if library.uncertain is None else "found in several files"
+            unread.append(f"{relative}:{_position(text, load.offset)[0]} loads {load.library!r}, {reason}")
     calls = tuple(FilterCall(a.symbol, a.span) for template in read.values() for a in template.applications)
     filters = {
         name: tuple(
@@ -444,7 +518,7 @@ def _reaching(
         if reference.name is None:
             continue
         if reference.extends:
-            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.blocks)
+            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced)
         elif template.rendered(reference.blocks, overridden):
             found = _reaching(reference.name, files, read, visiting | {name})
         else:
@@ -453,18 +527,23 @@ def _reaching(
             yield symbol, span, where, reference.maps(value), reference.maps(argument)
 
 
-def _read_scopes(text: str, source: SourceId) -> _Template:
+def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library]) -> _Template:
     """The filters a template applies and the templates it includes or extends, with the
     names free in it that reach each: through ``{% for %}``, ``{% with %}`` and the
     ``as`` of other tags, which bind a name until their block ends, the arguments of
-    earlier filters, and the output of ``{% filter %}`` blocks."""
+    earlier filters, and the output of ``{% filter %}`` blocks. A filter is the one of
+    Django's own libraries unless a project library, among ``libraries``, loaded before
+    it in the file replaces it, as Django's parser resolves filters."""
 
     applications: list[_Application] = []
     references: list[_Reference] = []
     opened: list[str] = []
     defined: set[str] = set()
+    extended: set[str] = set()
     scopes: list[dict[str, frozenset[str]]] = [{}]
     blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
+    loaded: list[_Load] = []
+    unresolved: dict[_Load, None] = {}
 
     def free(names: frozenset[str]) -> frozenset[str]:
         found: set[str] = set()
@@ -474,14 +553,36 @@ def _read_scopes(text: str, source: SourceId) -> _Template:
             found |= {name} if bound is None else _through(bound, name)
         return frozenset(found)
 
+    def behind(name: str) -> SymbolId | _Load | None:
+        """The function behind the filter ``name`` applied here: the one of Django's own
+        libraries, unless the latest load so far of a library registering ``name``
+        replaces it (None), or may (that load). Django's own libraries register no name
+        of another, so their loads change nothing."""
+
+        builtin = FILTER_FUNCTIONS.get(name)
+        if builtin is None:
+            return None
+        for load in reversed(loaded):
+            if (load.names is not None and name not in load.names) or load.library in _LIBRARIES:
+                continue
+            library = libraries.get(load.library)
+            verdict = library.overrides(name) if library is not None else None
+            if verdict is None:
+                return load
+            if verdict:
+                return None
+        return builtin
+
     def apply(head: frozenset[str], chain: list[tuple[str, int, frozenset[str]]]) -> frozenset[str]:
         """Record the filters of ``chain`` applied to a value the free names ``head``
         reach; the free names reaching the value of the whole expression."""
 
         value = head
         for name, offset, argument in chain:
-            symbol = FILTER_FUNCTIONS.get(name)
-            if symbol is not None:
+            symbol = behind(name)
+            if isinstance(symbol, _Load):
+                unresolved[symbol] = None
+            elif symbol is not None:
                 line, column = _position(text, offset)
                 span = SourceSpan(source, line, column)
                 applications.append(_Application(symbol, span, value, free(argument), tuple(opened)))
@@ -491,6 +592,8 @@ def _read_scopes(text: str, source: SourceId) -> _Template:
     for offset, expression, tag in _expressions(text):
         if not tag:
             head, chain = _chain(expression, offset)
+            if opened and _BLOCK_SUPER in head:
+                extended.add(opened[-1])
             printed = apply(free(head), chain)
             for _, collected in blocks:
                 collected |= printed
@@ -543,10 +646,145 @@ def _read_scopes(text: str, source: SourceId) -> _Template:
             else:
                 context = {k: v for scope in scopes for k, v in scope.items()}
                 references.append(_Reference(named, offset, bindings, "only" in words, context, tuple(opened)))
+        elif name == "load":
+            selected = frozenset(words[1 : words.index("from")]) if "from" in words else None
+            loaded.extend(_Load(library, selected, offset) for library in _loaded(words[1:]))
         elif "as" in words[1:-1]:
             target = words[words.index("as", 1) + 1]
             scopes[-1][target] = values.get(words[1], frozenset()) if name == "regroup" else frozenset()
-    return _Template(tuple(applications), tuple(references), frozenset(defined))
+    return _Template(
+        tuple(applications), tuple(references), frozenset(defined), frozenset(extended), tuple(unresolved)
+    )
+
+
+def _libraries(paths: Iterable[Path]) -> dict[str, _Library]:
+    """The project's tag libraries among ``paths``, by the name ``{% load %}`` gives
+    them: the modules of the ``templatetags`` directories. Of several files of one name,
+    in different apps, only what every file registers is certain, and one the engine
+    cannot read leaves everything uncertain."""
+
+    readings: dict[str, list[frozenset[str] | None]] = {}
+    for path in paths:
+        if path.suffix == ".py" and path.parent.name == TEMPLATETAGS_DIRECTORY and path.stem != "__init__":
+            readings.setdefault(path.stem, []).append(_registered_filters(path))
+    libraries: dict[str, _Library] = {}
+    for name, found in readings.items():
+        read = [names for names in found if names is not None]
+        if len(read) < len(found):
+            libraries[name] = _Library()
+        else:
+            certain = read[0].intersection(*read[1:])
+            libraries[name] = _Library(certain, read[0].union(*read[1:]) - certain)
+    return libraries
+
+
+def _registered_filters(path: Path) -> frozenset[str] | None:
+    """The names of the filters the tag library module ``path`` registers, or None when
+    the engine cannot tell them all: the file cannot be read or parsed, ``register`` is
+    not bound to a ``Library`` at module level, a registration's name is not written as
+    a constant, or the library is filled or passed around in a way the engine does not
+    read. The ``Library`` is known by its symbol, whatever the import spelling, and a
+    registration under ``if``, ``try`` or a function counts."""
+
+    try:
+        module = build_hir(SourceManager().load_file(path))
+        scopes = analyze_scopes(module)
+        symbols = analyze_symbols(scopes, analyze_imports(module, scopes), module)
+    except (OSError, UnicodeDecodeError, ParseError, HIRBuildError, ScopeError, ImportResolutionError):
+        return None
+    scope = scopes.module_scope.id
+    if symbols.resolve(scope, "register") not in _LIBRARY_CLASSES:
+        return None
+    functions = {name for name, bound in scopes.module_scope.bindings.items() if bound.kind is BindingKind.FUNCTION}
+    registered: set[str] = set()
+
+    def record(name: str | None) -> bool:
+        if name is not None:
+            registered.add(name)
+        return name is not None
+
+    def visit(node: Node) -> bool:
+        """Read the registrations under ``node``; False when one cannot be read."""
+
+        if isinstance(node, nodes.Function):
+            for decorator in node.decorators:
+                if _library_attribute(symbols.resolve_expression(scope, decorator)) == "filter":
+                    named = _decorated(decorator, node.name) if isinstance(decorator, nodes.Call) else node.name
+                    if not record(named):
+                        return False
+                elif not visit(decorator):
+                    return False
+            return all(map(visit, (*node.parameters, *node.body)))
+        if isinstance(node, nodes.Call) and isinstance(node.callee, nodes.Name | nodes.Attribute):
+            callee = symbols.resolve_expression(scope, node.callee)
+            if callee in _LIBRARY_CLASSES:
+                return not (node.arguments or node.keywords)  # ``Library(filters=...)`` fills it unseen
+            if _library_attribute(callee) == "filter":
+                return record(_registered(node, functions)) and all(map(visit, (*node.arguments, *node.keywords)))
+        if isinstance(node, nodes.Name | nodes.Attribute):
+            symbol = symbols.resolve_expression(scope, node)
+            if _library_attribute(symbol) in _TAG_REGISTRARS:
+                return True
+            if symbol in _LIBRARY_CLASSES or _library_attribute(symbol) is not None:
+                return False  # the library, or its filters, in hands the engine does not follow
+        if isinstance(node, nodes.Assign) and isinstance(node.target, nodes.Name):
+            return visit(node.value)
+        return all(map(visit, children(node)))
+
+    return frozenset(registered) if all(map(visit, module.body)) else None
+
+
+def _library_attribute(symbol: SymbolId | None) -> str | None:
+    """The attribute of a ``Library`` that ``symbol`` names, ``filter`` for
+    ``register.filter``; None for any other symbol."""
+
+    if symbol is None:
+        return None
+    owner, _, name = symbol.canonical_name.rpartition(".")
+    return name if "." in owner and SymbolId(owner) in _LIBRARY_CLASSES else None
+
+
+def _decorated(call: nodes.Call, function: str) -> str | None:
+    """What ``@register.filter(...)`` registers ``function`` as: the constant ``name`` it
+    gives, or ``function`` itself when it gives only flags; None when the engine cannot
+    tell."""
+
+    given = _arguments(call, "name")
+    if given is None:
+        return None
+    return function if given[0] is None else _string(given[0])
+
+
+def _registered(call: nodes.Call, functions: Container[str]) -> str | None:
+    """What ``register.filter(...)`` registers when called as a statement: the constant
+    name of ``register.filter("x", fn)`` and ``register.filter(name="x", filter_func=fn)``,
+    the function's own name for ``register.filter(fn)`` when the module defines
+    ``fn``; None when the engine cannot tell."""
+
+    given = _arguments(call, "name", "filter_func")
+    if given is None:
+        return None
+    name, function = given
+    if function is None:
+        return name.identifier if isinstance(name, nodes.Name) and name.identifier in functions else None
+    return _string(name)
+
+
+def _arguments(call: nodes.Call, *parameters: str) -> list[nodes.Expression | None] | None:
+    """The argument ``call`` gives each of ``parameters``, by position or keyword; None
+    when it unpacks any, which could give them too."""
+
+    if any(isinstance(a, nodes.Starred) for a in call.arguments) or any(k.name is None for k in call.keywords):
+        return None
+    keywords = {keyword.name: keyword.value for keyword in call.keywords}
+    return [
+        call.arguments[position] if position < len(call.arguments) else keywords.get(name)
+        for position, name in enumerate(parameters)
+    ]
+
+
+def _string(expression: nodes.Expression | None) -> str | None:
+    return expression.value if isinstance(expression, nodes.Constant) and isinstance(expression.value, str) else None
 
 
 def _chain(expression: str, offset: int) -> tuple[frozenset[str], list[tuple[str, int, frozenset[str]]]]:
@@ -578,27 +816,39 @@ def _through(bound: frozenset[str], name: str) -> frozenset[str]:
     return frozenset(".".join(f"{b}.{attribute}".split(".")[:2]) if attribute else b for b in bound)
 
 
-def request_processor(modules: Iterable[nodes.Module]) -> bool:
+def request_processor(modules: Iterable[tuple[nodes.Module, ScopeTable]]) -> bool:
     """Whether every Django template engine the project's settings configure runs the
-    ``request`` context processor, for certain: each assignment to ``TEMPLATES`` is a
-    literal list of literal engines, at least one of them ``DjangoTemplates``, and each
-    of those lists the processor in a literal ``context_processors``; no other code
-    names ``TEMPLATES``, which could change it. A mere mention of the processor proves
-    nothing."""
+    ``request`` context processor, for certain: each module-level assignment to
+    ``TEMPLATES`` is a literal list of literal engines, at least one of them
+    ``DjangoTemplates``, and each of those lists the processor in a literal
+    ``context_processors``; no other code names the module's ``TEMPLATES``, or a
+    ``TEMPLATES`` it does not bind (a star import), which could change it. A
+    ``TEMPLATES`` bound in a function or a class is another name, which configures
+    nothing and changes nothing. A mere mention of the processor proves nothing."""
 
     assignments = mentions = 0
-    for module in modules:
-        stack: list[Node] = list(module.body)
-        while stack:
-            node = stack.pop()
-            stack.extend(children(node))
+    for module, scopes in modules:
+        for node, scope in _scoped(module, scopes):
             if isinstance(node, nodes.Name) and node.identifier == _ENGINES_SETTING:
-                mentions += 1
-            elif isinstance(node, nodes.Assign) and _names_engines(node.target):
+                if scopes.resolve(scope, node.identifier).kind in (ResolutionKind.GLOBAL, ResolutionKind.UNBOUND):
+                    mentions += 1
+            elif isinstance(node, nodes.Assign) and _names_engines(node.target) and scope == scopes.module_scope.id:
                 if not _runs_request_processor(node.value):
                     return False
                 assignments += 1
     return assignments > 0 and mentions == assignments
+
+
+def _scoped(module: nodes.Module, scopes: ScopeTable) -> Iterator[tuple[Node, ScopeId]]:
+    """Every node of ``module`` with the scope it stands in."""
+
+    stack: list[tuple[Node, ScopeId]] = [(node, scopes.module_scope.id) for node in module.body]
+    while stack:
+        node, scope = stack.pop()
+        yield node, scope
+        if isinstance(node, nodes.Function | nodes.Lambda | nodes.Class | nodes.Comprehension):
+            scope = scopes.scope_for(node).id
+        stack.extend((child, scope) for child in children(node))
 
 
 def _names_engines(target: nodes.Expression) -> bool:

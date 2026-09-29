@@ -836,7 +836,9 @@ def function_entry_point(
 ) -> EntryPoint | None:
     """The entry point ``function`` is: one of its decorators or, for a method, one of its
     class's bases matching an entry-point model, a registration elsewhere (``routes``), or
-    a model naming the function, or its class, by its own project symbol."""
+    a model naming the function, or its class, by its own project symbol or by a
+    module-level alias of it (``main = actual`` names ``actual`` as ``main``). A model
+    naming the method wins over one naming its class, whichever name it uses."""
 
     owner = _owner(module, function)
     enclosing_function = _enclosing(module, function)
@@ -844,12 +846,16 @@ def function_entry_point(
         # ``app = Flask(__name__)`` inside ``create_app``: routes defined there resolve.
         instances = {**(instances or {}), **local_instances(enclosing_function, scopes, symbols)}
     entry = entry_point_of(function, models, scopes, symbols, owner, instances, project)
-    if entry is None:
-        qualified = function.name if owner is None else f"{owner.name}.{function.name}"
-        entry = _declared(project_symbol(module.name, qualified), models, routes)
-        if entry is None and owner is not None:
-            entry = _declared(project_symbol(module.name, owner.name), models, routes)
-    return entry
+    if entry is not None:
+        return entry
+    defined = function if owner is None else owner
+    names = (defined.name, *_aliases(module, defined.name))
+    qualified = names if owner is None else (*(f"{name}.{function.name}" for name in names), *names)
+    for name in qualified:
+        entry = _declared(project_symbol(module.name, name), models, routes)
+        if entry is not None:
+            return entry
+    return None
 
 
 def _declared(symbol: SymbolId, models: ModelTable, routes: Routes | None) -> EntryPoint | None:
@@ -858,6 +864,43 @@ def _declared(symbol: SymbolId, models: ModelTable, routes: Routes | None) -> En
 
     registered = routes.get(symbol) if routes else None
     return registered if registered is not None else models.entry_point(symbol)
+
+
+def _aliases(module: nodes.Module, name: str) -> Iterable[str]:
+    """The module-level names bound to ``name`` by assigning one name to another,
+    transitively and in source order: ``handler = actual`` then ``main = handler`` make
+    both aliases of ``actual``. A name bound inside a function or class, or to anything
+    but a name (a call, an import), is no alias."""
+
+    aliases: dict[str, list[str]] = {}
+    for statement in _module_level(module.body):
+        if isinstance(statement, nodes.Assign) and isinstance(statement.target, nodes.Name) and isinstance(statement.value, nodes.Name):
+            aliases.setdefault(statement.value.identifier, []).append(statement.target.identifier)
+    found = {name}
+    pending = [name]
+    while pending:
+        for alias in aliases.get(pending.pop(0), ()):
+            if alias not in found:
+                found.add(alias)
+                pending.append(alias)
+                yield alias
+
+
+def _module_level(body: Iterable[nodes.Statement]) -> Iterable[nodes.Statement]:
+    """The statements executed at module level: the body and what its compound
+    statements hold, not what a function or class defines."""
+
+    for statement in body:
+        if isinstance(statement, nodes.Function | nodes.Class):
+            continue
+        yield statement
+        for attribute in ("body", "orelse", "finalbody"):
+            nested = getattr(statement, attribute, None)
+            if isinstance(nested, tuple):
+                yield from _module_level(nested)
+        if isinstance(statement, nodes.Try):
+            for handler in statement.handlers:
+                yield from _module_level(handler.body)
 
 
 def _owner(module: nodes.Module, function: nodes.Function) -> nodes.Class | None:
