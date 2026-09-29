@@ -260,9 +260,11 @@ when the models make it one. `ctx.call_graph(module)` gives each function's call
 (`sites(function)`) and the symbols it reads, called or not (`reads(function)`: reading
 `request.form['name']` reads `python.flask.request.form`), each where it first reads it.
 `ctx.templates` gives the templates found under the project's `templates` directories:
-their `names`, the filters they apply as `calls` (each a `FilterCall(symbol, span)`, the
-function behind the filter and where the template applies it), and where they name a
-template the analyzer cannot read (`unread`).
+their `names`, the filters of Django's own libraries they apply as `calls` (each a
+`FilterCall(symbol, span)`, the function behind the filter and where the template
+applies it; a filter a project tag library the template loads replaces is no call),
+and where they name a template the analyzer cannot read, or load a library it cannot
+read while applying a filter of that library's name (`unread`).
 The shipped `vulnerable-dependency`, `reachable-vulnerability` and `dependency-policy`
 plugins are of this kind.
 

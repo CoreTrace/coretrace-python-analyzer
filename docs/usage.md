@@ -372,6 +372,28 @@ Django. Most filters are functions of the same name in `django.template.defaultf
 are `<name>_filter` there, and the filters of `i18n`, `l10n`, `tz` and `humanize` are in
 their library's module (`timezone` is `django.templatetags.tz.do_timezone`).
 
+A project tag library, a module of a `templatetags` directory, that registers a filter
+of that name replaces the built-in in every template loading it, as Django's parser
+does: `{% load custom %}{{ bio|striptags }}` calls the project's function when
+`custom.py` registers a `striptags` filter, which is no call to the built-in; the
+project's function is ordinary code, whose own calls are analysed as any other. A
+load affects only the filters applied after it in the file, a later load overrides an
+earlier one, `{% load striptags from custom %}` replaces only the filters it names, and
+Django's own libraries (`static`, `i18n`, `l10n`, `tz`, `cache`, `humanize`) change
+nothing. The analyzer reads the registrations on the library's `register`, a
+`django.template.Library` however it is imported: `@register.filter`,
+`@register.filter("name")`, `@register.filter(name="name", is_safe=True)`,
+`register.filter("name", function)` and `register.filter(function)`, at module level or
+under `if`, `try` or a function. Where it cannot tell what a library registers, the
+filter is neither the built-in nor certainly replaced: a library found in no
+`templatetags` directory (one an installed package ships, or that the settings'
+`OPTIONS["libraries"]` or `OPTIONS["builtins"]` name, which are not read), a file it
+cannot read or parse, a name given by a variable or unpacked arguments, `register`
+passed to another function, filled through `filters=` or `register.filters`, or bound
+to anything but a `Library`, or two apps giving the same library name and registering
+different filters. The analyzer then claims no call, and counts the template among those
+it could not read (below) when a filter of the library's name is applied under the load.
+
 Attacker input in the render context makes the filter exploitable at the render call:
 `render(request, "app/profile.html", {"bio": request.POST["bio"]})` with
 `{{ bio|striptags }}`. The analyzer links a context value to a filter only where it is
@@ -506,10 +528,14 @@ A template the analyzer cannot read may apply any filter. The project names one 
 `render`, `render_to_string`, `TemplateResponse`, an `{% include %}` or an `{% extends %}`
 names a template by an expression, or by a name found under no `templates` directory,
 including one an installed package ships; a template file that cannot be read counts
-too. An advisory whose entry points include a template filter then stays
-`under_investigation`, and the notes list where the project names each such template
-(`app.views:12 names a template by an expression`). A template named elsewhere, such as
-a class-based view's `template_name`, is not checked.
+too, and so does a template loading a tag library the analyzer cannot read, or find,
+or finds in several apps registering different filters, where it then applies a filter
+of a built-in's name, since the library may replace it. An advisory whose entry points
+include a template filter then stays `under_investigation`, and the notes list where
+the project names each such template (`app.views:12 names a template by an
+expression`, `app/templates/app/profile.html:1 loads 'crispy_forms_tags', not found`).
+A template named elsewhere, such as a class-based view's `template_name`, is not
+checked.
 
 `not_affected` needs the lock-file check because the analyzer reads the project's code,
 not the code of installed packages. A framework calling the vulnerable function on the
