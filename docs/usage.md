@@ -386,7 +386,8 @@ certain of it:
   arguments of the filters before it, or the output of a `{% filter %}` block. A name a
   tag binds shadows the context, and `{% include ... only %}` passes none of it.
 - The filter renders: a template extending another renders only its blocks, which
-  replace the blocks of that name in what it extends.
+  replace the blocks of that name in what it extends, unless the block renders
+  `{{ block.super }}`, which keeps the parent's content and the filters it applies.
 - One file has the template's name; of two files of the same name, which one renders
   depends on the loaders.
 
