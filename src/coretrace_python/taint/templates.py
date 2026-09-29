@@ -57,7 +57,14 @@ from coretrace_python.interprocedural import (
     discover_files,
 )
 from coretrace_python.semantic.imports import ImportResolutionError, analyze_imports
-from coretrace_python.semantic.scopes import BindingKind, ResolutionKind, ScopeError, ScopeId, ScopeTable, analyze_scopes
+from coretrace_python.semantic.scopes import (
+    BindingKind,
+    ResolutionKind,
+    ScopeError,
+    ScopeId,
+    ScopeTable,
+    analyze_scopes,
+)
 from coretrace_python.semantic.symbols import SymbolId, analyze_symbols
 from coretrace_python.source import SourceId, SourceManager, SourceSpan
 from coretrace_python.taint.models import ModelTable
