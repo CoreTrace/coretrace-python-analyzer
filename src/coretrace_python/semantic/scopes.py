@@ -113,8 +113,8 @@ class ScopeTable:
     def children(self, scope_id: ScopeId) -> tuple[Scope, ...]:
         return self._children[scope_id]
 
-    def scope_for(self, node: nodes.Function | nodes.Class | nodes.Comprehension) -> Scope:
-        """Return the scope introduced by a definition or comprehension node."""
+    def scope_for(self, node: nodes.Function | nodes.Class | nodes.Lambda | nodes.Comprehension) -> Scope:
+        """Return the scope introduced by a definition, lambda or comprehension node."""
 
         return self._scopes[self._spans[node.span]]
 

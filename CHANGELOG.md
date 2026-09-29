@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Precision
+
+- A `TEMPLATES` assigned inside a function or a class no longer counts as Django settings: only a module-level assignment can activate the `request` context processor, and only a mention of the module's `TEMPLATES` elsewhere leaves that activation uncertain. A function-local `TEMPLATES`, called or not, used to enable the implicit request source, upgrading a template filter finding to exploitable (#184).
+
 ## 0.18.0 (2026-09-28)
 
 ### Precision

@@ -447,7 +447,8 @@ def analyze_project(
     templates = project_templates(root)
     clearing = models.clearing(escaped)
     template_calls = models.template_calls(
-        templates.filters, request_processor(modules[name] for name in sorted(analysable))
+        templates.filters,
+        request_processor((modules[name], analysable[name].get(ScopeAnalysis)) for name in sorted(analysable)),
     )
     for manager in analysable.values():
         manager.provide(RegisteredRoutes, routes)
