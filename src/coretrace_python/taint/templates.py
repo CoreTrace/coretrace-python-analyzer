@@ -57,7 +57,7 @@ from coretrace_python.interprocedural import (
     discover_files,
 )
 from coretrace_python.semantic.imports import ImportResolutionError, analyze_imports
-from coretrace_python.semantic.scopes import BindingKind, ScopeError, analyze_scopes
+from coretrace_python.semantic.scopes import BindingKind, ResolutionKind, ScopeError, ScopeId, ScopeTable, analyze_scopes
 from coretrace_python.semantic.symbols import SymbolId, analyze_symbols
 from coretrace_python.source import SourceId, SourceManager, SourceSpan
 from coretrace_python.taint.models import ModelTable
@@ -150,6 +150,8 @@ _BINDING = re.compile(r"(\w+)=")
 # the request context processor adds gives (``request.GET``).
 _VARIABLE = re.compile(r"([A-Za-z_]\w*)(?:\.(\w+))?")
 _LITERALS = frozenset({"True", "False", "None"})
+# The variable a block renders to keep the parent's content, as ``_chain`` reads it.
+_BLOCK_SUPER = "block.super"
 
 REQUEST_PROCESSOR = "django.template.context_processors.request"
 _DJANGO_ENGINE = "django.template.backends.django.DjangoTemplates"
@@ -413,11 +415,13 @@ class _Library:
 @dataclass(frozen=True)
 class _Template:
     """What one template file applies and references, the ``blocks`` it defines, and
-    the loads under which it applies a filter the engine could not resolve."""
+    among them the ``extended`` ones, which render ``{{ block.super }}``, and the loads
+    under which it applies a filter the engine could not resolve."""
 
     applications: tuple[_Application, ...]
     references: tuple[_Reference, ...]
     blocks: frozenset[str]
+    extended: frozenset[str] = frozenset()
     unresolved: tuple[_Load, ...] = ()
 
     def rendered(self, blocks: tuple[str, ...], overridden: frozenset[str]) -> bool:
@@ -427,6 +431,13 @@ class _Template:
 
         extends = any(reference.extends for reference in self.references)
         return not overridden.intersection(blocks) and (bool(blocks) or not extends)
+
+    @property
+    def replaced(self) -> frozenset[str]:
+        """The blocks this template replaces in what it extends: those it defines
+        without rendering ``{{ block.super }}``, which keeps the parent's content."""
+
+        return self.blocks - self.extended
 
 
 def project_templates(root: Path) -> ProjectTemplates:
@@ -500,7 +511,7 @@ def _reaching(
         if reference.name is None:
             continue
         if reference.extends:
-            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.blocks)
+            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced)
         elif template.rendered(reference.blocks, overridden):
             found = _reaching(reference.name, files, read, visiting | {name})
         else:
@@ -521,6 +532,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
     references: list[_Reference] = []
     opened: list[str] = []
     defined: set[str] = set()
+    extended: set[str] = set()
     scopes: list[dict[str, frozenset[str]]] = [{}]
     blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
     loaded: list[_Load] = []
@@ -573,6 +585,8 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
     for offset, expression, tag in _expressions(text):
         if not tag:
             head, chain = _chain(expression, offset)
+            if opened and _BLOCK_SUPER in head:
+                extended.add(opened[-1])
             printed = apply(free(head), chain)
             for _, collected in blocks:
                 collected |= printed
@@ -631,7 +645,9 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
         elif "as" in words[1:-1]:
             target = words[words.index("as", 1) + 1]
             scopes[-1][target] = values.get(words[1], frozenset()) if name == "regroup" else frozenset()
-    return _Template(tuple(applications), tuple(references), frozenset(defined), tuple(unresolved))
+    return _Template(
+        tuple(applications), tuple(references), frozenset(defined), frozenset(extended), tuple(unresolved)
+    )
 
 
 def _libraries(paths: Iterable[Path]) -> dict[str, _Library]:
@@ -793,27 +809,39 @@ def _through(bound: frozenset[str], name: str) -> frozenset[str]:
     return frozenset(".".join(f"{b}.{attribute}".split(".")[:2]) if attribute else b for b in bound)
 
 
-def request_processor(modules: Iterable[nodes.Module]) -> bool:
+def request_processor(modules: Iterable[tuple[nodes.Module, ScopeTable]]) -> bool:
     """Whether every Django template engine the project's settings configure runs the
-    ``request`` context processor, for certain: each assignment to ``TEMPLATES`` is a
-    literal list of literal engines, at least one of them ``DjangoTemplates``, and each
-    of those lists the processor in a literal ``context_processors``; no other code
-    names ``TEMPLATES``, which could change it. A mere mention of the processor proves
-    nothing."""
+    ``request`` context processor, for certain: each module-level assignment to
+    ``TEMPLATES`` is a literal list of literal engines, at least one of them
+    ``DjangoTemplates``, and each of those lists the processor in a literal
+    ``context_processors``; no other code names the module's ``TEMPLATES``, or a
+    ``TEMPLATES`` it does not bind (a star import), which could change it. A
+    ``TEMPLATES`` bound in a function or a class is another name, which configures
+    nothing and changes nothing. A mere mention of the processor proves nothing."""
 
     assignments = mentions = 0
-    for module in modules:
-        stack: list[Node] = list(module.body)
-        while stack:
-            node = stack.pop()
-            stack.extend(children(node))
+    for module, scopes in modules:
+        for node, scope in _scoped(module, scopes):
             if isinstance(node, nodes.Name) and node.identifier == _ENGINES_SETTING:
-                mentions += 1
-            elif isinstance(node, nodes.Assign) and _names_engines(node.target):
+                if scopes.resolve(scope, node.identifier).kind in (ResolutionKind.GLOBAL, ResolutionKind.UNBOUND):
+                    mentions += 1
+            elif isinstance(node, nodes.Assign) and _names_engines(node.target) and scope == scopes.module_scope.id:
                 if not _runs_request_processor(node.value):
                     return False
                 assignments += 1
     return assignments > 0 and mentions == assignments
+
+
+def _scoped(module: nodes.Module, scopes: ScopeTable) -> Iterator[tuple[Node, ScopeId]]:
+    """Every node of ``module`` with the scope it stands in."""
+
+    stack: list[tuple[Node, ScopeId]] = [(node, scopes.module_scope.id) for node in module.body]
+    while stack:
+        node, scope = stack.pop()
+        yield node, scope
+        if isinstance(node, nodes.Function | nodes.Lambda | nodes.Class | nodes.Comprehension):
+            scope = scopes.scope_for(node).id
+        stack.extend((child, scope) for child in children(node))
 
 
 def _names_engines(target: nodes.Expression) -> bool:
