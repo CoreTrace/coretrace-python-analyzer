@@ -1,9 +1,9 @@
 {
   "coverage": {
-    "files": 132,
-    "files_analysed": 132,
-    "functions": 1305,
-    "functions_analysed": 1305
+    "files": 133,
+    "files_analysed": 131,
+    "functions": 1307,
+    "functions_analysed": 1307
   },
   "findings": [
     {
@@ -18,6 +18,18 @@
       "rule": "command-injection",
       "function": "<module>",
       "verdict": "vulnerability"
+    },
+    {
+      "file": "docs/contributors/generate.py",
+      "line": 1,
+      "rule": "ambiguous-module",
+      "function": null
+    },
+    {
+      "file": "docs/installation/generate.py",
+      "line": 1,
+      "rule": "ambiguous-module",
+      "function": null
     },
     {
       "file": "httpie/client.py",

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Analysis
+
+- Two files with the same Python module name, `a/app.py` and `z/app.py` outside any package, no longer overwrite each other: both are discovered, analysed and covered whatever the order they are found in. The engine tells them apart by their path from the root as a module name, `a.app` and `z.app`, in the module graph, the summary index, the cache keys and what project plugins see; a unique name stays what it was. An import of such a name resolves to the file in the importer's own root only, and one no root resolves is not followed. Each colliding file carries an `ambiguous-module` note and is covered as `ambiguous`, since a model or a route naming `python.app.main` applies to every definition of that symbol, and so does an importer whose import stayed unresolved; a VEX statement over such a project stays `under_investigation` (#182).
+
 ### Precision
 
 - A `TEMPLATES` assigned inside a function or a class no longer counts as Django settings: only a module-level assignment can activate the `request` context processor, and only a mention of the module's `TEMPLATES` elsewhere leaves that activation uncertain. A function-local `TEMPLATES`, called or not, used to enable the implicit request source, upgrading a template filter finding to exploitable (#184).

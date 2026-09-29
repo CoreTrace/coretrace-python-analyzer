@@ -65,7 +65,13 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 ## What is analysed
 
 Given a directory, every `.py` file below it is a module of one project, named after
-its package (`app/views.py` is `app.views`). Hidden directories, `node_modules`,
+its package (`app/views.py` is `app.views`). Two files that would share a name, `a/app.py`
+and `z/app.py` outside any package, are told apart by their path from the root, `a.app`
+and `z.app`, and reported: each carries an `ambiguous-module` note, since a symbol
+`python.app.main` may name a function of either and an import of `app` resolves only
+from the importer's own directory, and each is covered as `ambiguous` rather than
+analysed. An import of such a name that no file of the importer's own directory answers
+is noted where it is written and not followed. Hidden directories, `node_modules`,
 `__pycache__`, `build`, `dist` and any virtual environment, recognised by its
 `pyvenv.cfg` whatever its name, are skipped. Dependency files at the root
 (`requirements*.txt`, `pyproject.toml`, `poetry.lock`, `uv.lock`) are read into a
@@ -261,7 +267,9 @@ the directory of the checked file; a path outside it is printed as it is.
 }
 ```
 
-`root` is the directory the paths are relative to.
+`root` is the directory the paths are relative to. A file's `status` is `analysed`,
+`ambiguous` (analysed, but another file has its module name, see above), `syntax-error`
+or `unreadable`; only `analysed` files count in `files_analysed`.
 
 A directory check also lists, in `tool.components`, what the result was produced with
 besides the engine and the sources: each plugin it loaded, by manifest name and version,

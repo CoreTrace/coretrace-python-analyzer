@@ -53,7 +53,11 @@ resolved through imports and aliases, so `python.os.system` covers `os.system`,
 symbol, so a chain such as `sqlite3.connect(p).cursor().execute` is
 `python.sqlite3.connect.cursor.execute`, and `app = Flask(__name__)` gives `app.route` the
 symbol `python.flask.Flask.route`. Builtins are `python.builtins.<name>`. Symbols are
-`SymbolId` values from `coretrace_python.semantic.symbols`.
+`SymbolId` values from `coretrace_python.semantic.symbols`. A function of the project is
+`python.` followed by its module's import name and its qualified name,
+`python.app.handlers.main`; two files with the same import name, `a/app.py` and
+`z/app.py` outside any package, define the same symbols, so a model naming
+`python.app.main` names the function of each.
 
 ## Kinds of plugin
 
