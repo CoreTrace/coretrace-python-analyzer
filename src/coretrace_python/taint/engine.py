@@ -1152,7 +1152,9 @@ class EntryPointAnalysis(Analysis[tuple[ModuleFunction, ...]]):
         functions: list[ModuleFunction] = []
         for name, function in graph.definitions.items():
             entry = function_entry_point(function, ctx.module, models, scopes, symbols, instances, routes, project)
-            functions.append(ModuleFunction(name, function.span, entry.label if entry is not None else None))
+            label = entry.label if entry is not None else None
+            # A dotted name, a method's or a nested function's, is bound by no assignment.
+            functions.append(ModuleFunction(name, function.span, label, tuple(_aliases(ctx.module, name))))
         return tuple(functions)
 
 

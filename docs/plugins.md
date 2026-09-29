@@ -259,8 +259,11 @@ module graph, the dependency graph, every advisory the plugins and advisory file
 contributed, the policy, the project root, and each module's imports, call graph and
 functions. `ctx.functions(module)` gives every function as the call graph names it
 (`Admin.get`, `outer.inner`, `<module>`), with its span, so a finding can be placed in
-one, and the label of the entry point it is (`http` for a route, `argv` for a command)
-when the models make it one. `ctx.call_graph(module)` gives each function's call sites
+one, the label of the entry point it is (`http` for a route, `argv` for a command)
+when the models make it one, and its `aliases`, the module-level names bound to it by
+assigning one name to another (`main = actual`), transitively and in source order, so
+an integration declaring a handler by the name a module binds can tell a name the
+engine resolves to no function; a method or a nested function has none. `ctx.call_graph(module)` gives each function's call sites
 (`sites(function)`) and the symbols it reads, called or not (`reads(function)`: reading
 `request.form['name']` reads `python.flask.request.form`), each where it first reads it.
 `ctx.templates` gives the templates found under the project's `templates` directories:
