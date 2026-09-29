@@ -14,6 +14,7 @@
 
 ### Plugins
 
+- `ModuleFunction.aliases` gives a project plugin the module-level names bound to a function by assigning one name to another, transitively and in source order, so an integration declaring a handler by the name a module binds (`handlers.main`) can report a name the engine resolves to no function; a method or a nested function has none. The cache format changes.
 - An `EntryPoint` naming a project function or class applies through a module-level alias of it: `main = actual` makes `python.app.handlers.main` name `actual`, so a deployment declaring `handlers.main` reaches the function doing the work. An alias is an assignment of one name to another at module level, followed transitively and in source order, in a conditional or a `try` as well; a name bound inside a function or class, or to a call, an import or anything but a name, is no alias, and the engine still infers nothing from a name. A model naming a method wins over one naming its class, whichever name it uses.
 
 ## 0.18.0 (2026-09-28)
