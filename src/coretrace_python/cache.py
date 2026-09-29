@@ -42,7 +42,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 10
+CACHE_FORMAT = 11
 
 
 @dataclass(frozen=True)
@@ -134,7 +134,7 @@ class ProjectCache:
 def encode(module: CachedModule) -> dict[str, Any]:
     return {
         "format": CACHE_FORMAT,
-        "functions": [[f.name, _encode_span(f.span), f.entry_point] for f in module.functions],
+        "functions": [[f.name, _encode_span(f.span), f.entry_point, list(f.aliases)] for f in module.functions],
         "summaries": {name: _encode_summary(s) for name, s in module.summaries.items()},
         "sites": [_encode_site(site) for site in module.sites],
         "findings": [_encode_finding(finding) for finding in module.findings],
@@ -196,8 +196,13 @@ def _decode_span(data: Any) -> SourceSpan:
 
 
 def _decode_function(data: Any) -> ModuleFunction:
-    name, span, entry_point = data
-    return ModuleFunction(_string(name), _decode_span(span), None if entry_point is None else _string(entry_point))
+    name, span, entry_point, aliases = data
+    return ModuleFunction(
+        _string(name),
+        _decode_span(span),
+        None if entry_point is None else _string(entry_point),
+        tuple(_string(alias) for alias in aliases),
+    )
 
 
 def _decode_read(data: Any) -> SymbolRead:

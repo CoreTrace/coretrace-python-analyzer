@@ -132,12 +132,16 @@ class SignaturesAnalysis(Analysis[tuple[Signature, ...]]):
 @dataclass(frozen=True)
 class ModuleFunction:
     """One function of a module as a project plugin sees it: the name the call graph
-    gives it (``Class.method``, ``outer.inner``, ``<module>``), where it is, and the label
-    of the entry point it is (``http`` for a route, ``argv`` for a command), if any."""
+    gives it (``Class.method``, ``outer.inner``, ``<module>``), where it is, the label
+    of the entry point it is (``http`` for a route, ``argv`` for a command), if any, and
+    the module-level ``aliases`` bound to it by assigning one name to another
+    (``main = actual``), transitively and in source order; a method or a nested
+    function has none."""
 
     name: str
     span: SourceSpan
     entry_point: str | None = None
+    aliases: tuple[str, ...] = ()
 
 
 class CallGraph:
