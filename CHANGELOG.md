@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Precision
+
+- A `TEMPLATES` assigned inside a function or a class no longer counts as Django settings: only a module-level assignment can activate the `request` context processor, and only a mention of the module's `TEMPLATES` elsewhere leaves that activation uncertain. A function-local `TEMPLATES`, called or not, used to enable the implicit request source, upgrading a template filter finding to exploitable (#184).
+- A template block that renders `{{ block.super }}` keeps the parent block's content, so the filters the parent applies stay fed by the render context, with the parent template as the place of the call; a block without it still replaces the parent's whole block, and a chain of templates keeps exactly the parents each level renders. The parent's filters used to drop out of the exploitable flow as soon as a child defined the block (#185).
+
 ### Plugins
 
 - An `EntryPoint` naming a project function or class applies through a module-level alias of it: `main = actual` makes `python.app.handlers.main` name `actual`, so a deployment declaring `handlers.main` reaches the function doing the work. An alias is an assignment of one name to another at module level, followed transitively and in source order, in a conditional or a `try` as well; a name bound inside a function or class, or to a call, an import or anything but a name, is no alias, and the engine still infers nothing from a name. A model naming a method wins over one naming its class, whichever name it uses.

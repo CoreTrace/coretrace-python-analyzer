@@ -386,7 +386,8 @@ certain of it:
   arguments of the filters before it, or the output of a `{% filter %}` block. A name a
   tag binds shadows the context, and `{% include ... only %}` passes none of it.
 - The filter renders: a template extending another renders only its blocks, which
-  replace the blocks of that name in what it extends.
+  replace the blocks of that name in what it extends, unless the block renders
+  `{{ block.super }}`, which keeps the parent's content and the filters it applies.
 - One file has the template's name; of two files of the same name, which one renders
   depends on the loaders.
 
@@ -399,9 +400,12 @@ With the `django.template.context_processors.request` context processor, a templ
 rendered with the request reads it as `request`: `{{ request.GET.q|striptags }}` is
 exploitable at the render call too. The analyzer counts it only where all of these hold:
 
-- The project's settings assign `TEMPLATES` a literal list, every `DjangoTemplates`
-  engine of it lists the processor in a literal `context_processors`, and no other code
-  of the project names `TEMPLATES`. A mere mention of the processor proves nothing.
+- The project's settings assign `TEMPLATES` a literal list at module level, every
+  `DjangoTemplates` engine of it lists the processor in a literal `context_processors`,
+  and no other code of the project names the module's `TEMPLATES`, or a `TEMPLATES` it
+  does not bind, as a star import gives. A `TEMPLATES` bound in a function or a class
+  is another name: it configures nothing and changes nothing.
+  A mere mention of the processor proves nothing.
 - The render call passes the request: `render` and `TemplateResponse` always do,
   `render_to_string` when given `request`, `SimpleTemplateResponse` never.
 - The render's context is certain, absent or a dict literal as above, so it cannot hide
