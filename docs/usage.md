@@ -400,9 +400,12 @@ With the `django.template.context_processors.request` context processor, a templ
 rendered with the request reads it as `request`: `{{ request.GET.q|striptags }}` is
 exploitable at the render call too. The analyzer counts it only where all of these hold:
 
-- The project's settings assign `TEMPLATES` a literal list, every `DjangoTemplates`
-  engine of it lists the processor in a literal `context_processors`, and no other code
-  of the project names `TEMPLATES`. A mere mention of the processor proves nothing.
+- The project's settings assign `TEMPLATES` a literal list at module level, every
+  `DjangoTemplates` engine of it lists the processor in a literal `context_processors`,
+  and no other code of the project names the module's `TEMPLATES`, or a `TEMPLATES` it
+  does not bind, as a star import gives. A `TEMPLATES` bound in a function or a class
+  is another name: it configures nothing and changes nothing.
+  A mere mention of the processor proves nothing.
 - The render call passes the request: `render` and `TemplateResponse` always do,
   `render_to_string` when given `request`, `SimpleTemplateResponse` never.
 - The render's context is certain, absent or a dict literal as above, so it cannot hide

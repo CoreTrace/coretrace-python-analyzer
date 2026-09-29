@@ -44,6 +44,7 @@ from coretrace_python.interprocedural import (
     TemplateFilter,
     discover_files,
 )
+from coretrace_python.semantic.scopes import ResolutionKind, ScopeId, ScopeTable
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 from coretrace_python.taint.models import ModelTable
@@ -592,27 +593,39 @@ def _through(bound: frozenset[str], name: str) -> frozenset[str]:
     return frozenset(".".join(f"{b}.{attribute}".split(".")[:2]) if attribute else b for b in bound)
 
 
-def request_processor(modules: Iterable[nodes.Module]) -> bool:
+def request_processor(modules: Iterable[tuple[nodes.Module, ScopeTable]]) -> bool:
     """Whether every Django template engine the project's settings configure runs the
-    ``request`` context processor, for certain: each assignment to ``TEMPLATES`` is a
-    literal list of literal engines, at least one of them ``DjangoTemplates``, and each
-    of those lists the processor in a literal ``context_processors``; no other code
-    names ``TEMPLATES``, which could change it. A mere mention of the processor proves
-    nothing."""
+    ``request`` context processor, for certain: each module-level assignment to
+    ``TEMPLATES`` is a literal list of literal engines, at least one of them
+    ``DjangoTemplates``, and each of those lists the processor in a literal
+    ``context_processors``; no other code names the module's ``TEMPLATES``, or a
+    ``TEMPLATES`` it does not bind (a star import), which could change it. A
+    ``TEMPLATES`` bound in a function or a class is another name, which configures
+    nothing and changes nothing. A mere mention of the processor proves nothing."""
 
     assignments = mentions = 0
-    for module in modules:
-        stack: list[Node] = list(module.body)
-        while stack:
-            node = stack.pop()
-            stack.extend(children(node))
+    for module, scopes in modules:
+        for node, scope in _scoped(module, scopes):
             if isinstance(node, nodes.Name) and node.identifier == _ENGINES_SETTING:
-                mentions += 1
-            elif isinstance(node, nodes.Assign) and _names_engines(node.target):
+                if scopes.resolve(scope, node.identifier).kind in (ResolutionKind.GLOBAL, ResolutionKind.UNBOUND):
+                    mentions += 1
+            elif isinstance(node, nodes.Assign) and _names_engines(node.target) and scope == scopes.module_scope.id:
                 if not _runs_request_processor(node.value):
                     return False
                 assignments += 1
     return assignments > 0 and mentions == assignments
+
+
+def _scoped(module: nodes.Module, scopes: ScopeTable) -> Iterator[tuple[Node, ScopeId]]:
+    """Every node of ``module`` with the scope it stands in."""
+
+    stack: list[tuple[Node, ScopeId]] = [(node, scopes.module_scope.id) for node in module.body]
+    while stack:
+        node, scope = stack.pop()
+        yield node, scope
+        if isinstance(node, nodes.Function | nodes.Lambda | nodes.Class | nodes.Comprehension):
+            scope = scopes.scope_for(node).id
+        stack.extend((child, scope) for child in children(node))
 
 
 def _names_engines(target: nodes.Expression) -> bool:
