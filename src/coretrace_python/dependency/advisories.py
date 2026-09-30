@@ -191,6 +191,8 @@ def _condition_entry(condition: Condition) -> dict[str, Any]:
         entry["default"] = True
     if condition.present:
         entry["present"] = True
+    if condition.method is not None:
+        entry["method"] = condition.method
     return entry
 
 
@@ -277,6 +279,7 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
         position,
         default,
         present,
+        None if entry.get("method") is None else str(entry["method"]),
     )
     if condition.present and (
         condition.kind != "argument"
@@ -285,6 +288,12 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
         or condition.default
     ):
         raise ValueError("a present condition names the argument that must be passed, by keyword or position, and nothing else")
+    if condition.kind == "sequence" and not condition.method:
+        raise ValueError("a sequence condition names the method of the prior call")
+    if condition.kind == "sequence" and condition.values and condition.argument is None:
+        raise ValueError("the values of a sequence condition need the argument they constrain")
+    if condition.kind != "sequence" and condition.method is not None:
+        raise ValueError(f"only a sequence condition names a method, not {condition.kind!r}")
     if condition.kind == "host" and (
         (condition.argument is None and condition.position is None) or condition.values or condition.default
     ):

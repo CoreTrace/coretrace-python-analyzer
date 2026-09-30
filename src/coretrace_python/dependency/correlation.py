@@ -21,7 +21,7 @@ from coretrace_python.dependency.graph import (
 )
 from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import Status, Verdict, Verdicts
-from coretrace_python.interprocedural import Arguments, CallSite, ExternalSymbol
+from coretrace_python.interprocedural import Arguments, CallSite, ExternalSymbol, PriorCall
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import KEYWORD_NAMES, Sink, SuffixSink, TaintFlow, TaintKind
 from coretrace_python.taint.urls import UrlProof, redirects_disabled
@@ -117,6 +117,7 @@ def check_conditions(
     arguments: Arguments | None,
     url: UrlProof | None = None,
     passed_as: frozenset[tuple[int | None, str | None]] = frozenset(),
+    prior_calls: tuple[PriorCall, ...] | None = None,
 ) -> ConditionCheck:
     """Decide ``entry``'s conditions against what the call's ``arguments`` denote and, for
     a ``host`` condition, what ``url`` proves of the value the attacker's input is passed
@@ -127,7 +128,13 @@ def check_conditions(
     pending when the call expands a mapping whose keys are not established, and
     contradicted by a call writing every keyword name. An ``argument`` condition with
     ``present`` is met when the call gives the argument, whatever it denotes, and
-    contradicted when the call surely does not give it."""
+    contradicted when the call surely does not give it. A ``sequence`` condition is met
+    when one of the ``prior_calls`` on the call's receiver dominates it — surely executes
+    before it — matches the condition's method and passes what it requires; contradicted
+    when the receiver is followed whole and no matching call could do so, the call's own
+    ``arguments`` included, since across the iterations of a loop the call is its own
+    prior; pending otherwise — an unfollowed receiver (``prior_calls`` is None), an
+    undecided or non-dominating matching call, or an undecidable self-check."""
 
     if entry is None:
         return ConditionCheck()
@@ -153,6 +160,30 @@ def check_conditions(
                 text = f"the host is fixed by {origin!r}, but a redirect may lead to a host the attacker controls"
                 pending.append(replace(condition, text=text))
             continue
+        if condition.kind == "sequence":
+            candidates = [
+                p
+                for p in prior_calls or ()
+                if condition.method is not None and _named(p.symbol, condition.method)
+            ]
+            satisfied = [_first_call_satisfies(condition, p.arguments) for p in candidates]
+            hit = next(
+                (p for p, s in zip(candidates, satisfied, strict=True) if s is True and p.dominates), None
+            )
+            if hit is not None:
+                text = f"{condition.text} (prior {condition.method} at line {hit.location.start_line})"
+                met.append(replace(condition, text=text))
+            elif (
+                prior_calls is None
+                or condition.method is None
+                or None in satisfied
+                or True in satisfied
+                or _first_call_satisfies(condition, arguments) is not False
+            ):
+                pending.append(condition)
+            else:
+                return ConditionCheck(tuple(met), tuple(pending), condition, None)
+            continue
         given = arguments.given(condition.argument, condition.position) if condition.checkable and arguments is not None else None
         if given is None:
             pending.append(condition)
@@ -174,6 +205,32 @@ def check_conditions(
     return ConditionCheck(tuple(met), tuple(pending))
 
 
+def _named(symbol: SymbolId, method: str) -> bool:
+    """Whether ``symbol`` is the ``method`` a sequence condition names, by exact
+    canonical name or by ``.``-suffix (``Session.get``)."""
+
+    name = symbol.canonical_name
+    return name == method or name.endswith("." + method)
+
+
+def _first_call_satisfies(condition: Condition, arguments: Arguments | None) -> bool | None:
+    """Whether ``arguments`` carry what a sequence ``condition`` requires of the first
+    call: trivially when it names no argument, else as an argument condition reads
+    ``given()``; None when they cannot tell."""
+
+    if condition.argument is None and condition.position is None:
+        return True
+    if arguments is None:
+        return None
+    given = arguments.given(condition.argument, condition.position)
+    if given is None:
+        return None
+    explicit, value = given
+    if explicit and value is None:
+        return None
+    return value in condition.values if explicit else condition.default
+
+
 def _passed_in(condition: Condition, passed_as: frozenset[tuple[int | None, str | None]]) -> bool:
     """Whether a value passed as ``passed_as`` is the argument ``condition`` names."""
 
@@ -190,6 +247,11 @@ def ruled_out(module: str, site: CallSite, check: ConditionCheck) -> str:
 
     assert check.contradicted is not None and isinstance(site.target, ExternalSymbol)
     contradicted = check.contradicted
+    if contradicted.kind == "sequence":
+        return (
+            f"{module}:{site.location.start_line} {site.target.symbol}"
+            f"(no prior {contradicted.method} on the receiver)"
+        )
     argument = contradicted.argument or ("keywords" if contradicted.kind == "keyword_name" else f"#{contradicted.position}")
     passed = f"{argument} absent" if check.passed is None else f"{argument}={check.passed}"
     return f"{module}:{site.location.start_line} {site.target.symbol}({passed})"
@@ -231,9 +293,11 @@ def correlate(
     affected: Affected,
     urls: Mapping[TaintFlow, UrlProof] | None = None,
     suffixes: SuffixIndex | None = None,
+    prior: Mapping[TaintFlow, tuple[PriorCall, ...] | None] | None = None,
 ) -> tuple[Finding, ...]:
     """Exploitable-vulnerability findings for the non-refuted ADVISORY flows of a function,
-    one per advisory the sink is affected by; ``urls`` holds what each flow's URL proves."""
+    one per advisory the sink is affected by; ``urls`` holds what each flow's URL proves
+    and ``prior`` the other calls on each flow's receiver, for sequence conditions."""
 
     findings: list[Finding] = []
     for flow in flows:
@@ -246,7 +310,9 @@ def correlate(
         for advisory, entry in affected_entries(flow.sink.symbol, affected, suffixes):
             if entry is not None and not any(entry.exploitable_through(p, k) for p, k in flow.passed_as):
                 continue
-            check = check_conditions(entry, flow.sink_arguments, (urls or {}).get(flow), flow.passed_as)
+            check = check_conditions(
+                entry, flow.sink_arguments, (urls or {}).get(flow), flow.passed_as, (prior or {}).get(flow)
+            )
             if check.contradicted is None:
                 findings.append(_exploitable(function, flow, advisory, verdict, hotspot, check, entry))
     return tuple(findings)

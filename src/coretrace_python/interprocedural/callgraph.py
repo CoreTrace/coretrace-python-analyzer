@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
-from coretrace_python.cfg import CFGError
+from coretrace_python.cfg import BlockId, CFGError
+from coretrace_python.cfg.dominance import DominanceAnalysis, DominatorTree
 from coretrace_python.hir import nodes
 from coretrace_python.ir.defuse import DefUse, def_use
 from coretrace_python.ir.lowering import (
@@ -27,6 +28,7 @@ from coretrace_python.ir.lowering import (
 )
 from coretrace_python.ir.model import (
     Await,
+    BasicBlock,
     BuildDict,
     Call,
     Constant,
@@ -94,11 +96,25 @@ class Arguments:
 
 
 @dataclass(frozen=True)
+class PriorCall:
+    """Another call on the same receiver in this function; ``dominates`` says it surely
+    executes before this one."""
+
+    symbol: SymbolId
+    location: SourceSpan
+    arguments: Arguments
+    dominates: bool
+
+
+@dataclass(frozen=True)
 class CallSite:
     caller: str
     location: SourceSpan
     target: Target
     arguments: Arguments = field(default_factory=Arguments)
+    # None: no receiver, or one the engine cannot follow; a tuple is the complete set
+    # of other external calls on the receiver, in source order.
+    prior_calls: tuple[PriorCall, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -200,6 +216,13 @@ class CallGraph:
 
         site = self._at.get((caller, location))
         return site.arguments if site is not None else Arguments()
+
+    def prior_calls_at(self, caller: str, location: SourceSpan) -> tuple[PriorCall, ...] | None:
+        """The other calls on the receiver of the call at ``location`` in ``caller``;
+        None when there is no receiver, or one the engine cannot follow."""
+
+        site = self._at.get((caller, location))
+        return site.prior_calls if site is not None else None
 
     def callees(self, caller: str) -> frozenset[str]:
         return frozenset(
@@ -333,6 +356,105 @@ def _reads(name: str, function: FunctionIR, symbols: Mapping[Value, SymbolId]) -
 
 def _position(span: SourceSpan) -> tuple[int, int]:
     return span.start_line, span.start_column
+
+
+# A receiver carrying more calls than this is left unfollowed: the sibling pairing
+# stays bounded, and such code is generated, not a client bound and used twice.
+MAX_RECEIVER_CALLS = 12
+
+
+def _relate_receivers(
+    sites: list[CallSite],
+    calls: list[tuple[Call, BlockId, int]],
+    function: FunctionIR,
+    defs: Mapping[Value, Instruction],
+    uses: DefUse,
+    symbols: Mapping[Value, SymbolId],
+    tree: DominatorTree,
+) -> tuple[CallSite, ...]:
+    """The ``sites`` with ``prior_calls`` filled wherever the receiver's whole lifetime
+    is visible, so the set of its other calls is complete and program order is decided
+    by dominance; any other receiver leaves ``None``. ``calls`` gives each site's
+    instruction with its block and index, aligned with ``sites``."""
+
+    groups: dict[Value, list[int]] = {}
+    for index, (call, _, _) in enumerate(calls):
+        callee = defs.get(call.callee)
+        if isinstance(callee, GetAttr):
+            groups.setdefault(callee.object, []).append(index)
+    related = list(sites)
+    blocks = {block.id: block for block in function.blocks}
+    for receiver, group in groups.items():
+        if not _followed(receiver, group, sites, blocks, defs, uses, symbols):
+            continue
+        ordered = sorted(group, key=lambda member: _position(sites[member].location))
+        for index in group:
+            _, block, at = calls[index]
+            related[index] = replace(
+                sites[index],
+                prior_calls=tuple(
+                    PriorCall(
+                        target.symbol,
+                        sites[other].location,
+                        sites[other].arguments,
+                        _executes_before(calls[other], block, at, tree),
+                    )
+                    for other in ordered
+                    if other != index and isinstance(target := sites[other].target, ExternalSymbol)
+                ),
+            )
+    return tuple(related)
+
+
+def _followed(
+    receiver: Value,
+    group: list[int],
+    sites: list[CallSite],
+    blocks: Mapping[BlockId, BasicBlock],
+    defs: Mapping[Value, Instruction],
+    uses: DefUse,
+    symbols: Mapping[Value, SymbolId],
+) -> bool:
+    """Whether the receiver's whole lifetime is visible: bound once to the result of a
+    call or a ``with`` denoting a symbol, and read only to call external methods. Only
+    then is ``group`` complete enough to claim a prior call surely missing; a receiver
+    returned, passed to another call, mutated through an attribute or merged by a
+    ``Phi`` may be called elsewhere, and stays unfollowed."""
+
+    if len(group) > MAX_RECEIVER_CALLS or receiver not in symbols:
+        return False
+    if any(not isinstance(sites[index].target, ExternalSymbol) for index in group):
+        return False
+    made = defs.get(receiver)
+    while isinstance(made, Await):
+        made = defs.get(made.value)
+    if not isinstance(made, Call | WithEnter):
+        return False
+    for use in uses.uses(receiver):
+        if use.index is None:  # a terminator use, as a return, escapes
+            return False
+        read = blocks[use.block].instructions[use.index]
+        if not isinstance(read, GetAttr):
+            return False
+        for called in uses.uses(read.result):
+            if called.index is None:
+                return False
+            call = blocks[called.block].instructions[called.index]
+            if not isinstance(call, Call) or call.callee != read.result or read.result in call.argument_values():
+                return False
+    return True
+
+
+def _executes_before(
+    other: tuple[Call, BlockId, int], block: BlockId, index: int, tree: DominatorTree
+) -> bool:
+    """Whether ``other`` surely executes before the call at ``index`` in ``block``: it
+    comes earlier in the same block, or its block dominates this one."""
+
+    _, other_block, other_index = other
+    if other_block == block:
+        return other_index < index
+    return tree.dominates(other_block, block)
 
 
 def resolve_targets(
@@ -471,7 +593,7 @@ def _typed_with_module_classes(
 class CallGraphAnalysis(Analysis[CallGraph]):
     name: ClassVar[str] = "interprocedural.callgraph"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
-        {SSAAnalysis, ScopeAnalysis, SymbolAnalysis, SignaturesAnalysis}
+        {SSAAnalysis, ScopeAnalysis, SymbolAnalysis, SignaturesAnalysis, DominanceAnalysis}
     )
 
     @classmethod
@@ -537,8 +659,9 @@ class CallGraphAnalysis(Analysis[CallGraph]):
             defs = {i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None}
             uses = def_use(ssa)
             found: list[CallSite] = []
+            calls: list[tuple[Call, BlockId, int]] = []
             for block in ssa.blocks:
-                for instruction in block.instructions:
+                for index, instruction in enumerate(block.instructions):
                     if isinstance(instruction, Call):
                         found.append(
                             CallSite(
@@ -548,6 +671,9 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                                 _arguments(instruction, symbols[name], defs, uses),
                             )
                         )
-            sites[name] = tuple(found)
+                        calls.append((instruction, block.id, index))
+            sites[name] = _relate_receivers(
+                found, calls, ssa, defs, uses, symbols[name], ctx.get(DominanceAnalysis, function)
+            )
             reads[name] = _reads(name, ssa, symbols[name])
         return CallGraph(definitions, sites, frozenset(unsupported), symbols, reads)
