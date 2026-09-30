@@ -187,6 +187,8 @@ def _condition_entry(condition: Condition) -> dict[str, Any]:
         entry["position"] = condition.position
     if condition.default:
         entry["default"] = True
+    if condition.present:
+        entry["present"] = True
     return entry
 
 
@@ -251,6 +253,9 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
     default = entry.get("default", False)
     if not isinstance(default, bool):
         raise TypeError(f"condition default must be true or false, got {default!r}")
+    present = entry.get("present", False)
+    if not isinstance(present, bool):
+        raise TypeError(f"condition present must be true or false, got {present!r}")
     condition = Condition(
         str(entry["kind"]),
         str(entry["text"]),
@@ -258,7 +263,15 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
         tuple(str(v) for v in entry.get("values") or []),
         position,
         default,
+        present,
     )
+    if condition.present and (
+        condition.kind != "argument"
+        or (condition.argument is None and condition.position is None)
+        or condition.values
+        or condition.default
+    ):
+        raise ValueError("a present condition names the argument that must be passed, by keyword or position, and nothing else")
     if condition.kind == "host" and (
         (condition.argument is None and condition.position is None) or condition.values or condition.default
     ):
