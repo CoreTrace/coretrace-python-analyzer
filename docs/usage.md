@@ -514,6 +514,47 @@ Keys passed through a project wrapper stay pending, and `mapping.update(other)`,
 taint. A literal the function fills after building it (`m = {}; m[alias] = expr`)
 has keys the literal does not write, so the call is not ruled out.
 
+A `sequence` condition says the flaw spans two calls on one receiver: a first call
+leaves state on the object, and the entry point — the second call — reuses it, as
+`Session.get(url, verify=False)` disables certificate verification for the pooled
+connection a later `Session.get(other)` on the same session reuses (requests
+CVE-2024-35195). It names the `method` the first call must be, by canonical name or
+`.`-suffix, and, optionally, the argument that call must carry, read as an argument
+condition reads it:
+
+```json
+{
+  "kind": "sequence",
+  "text": "a prior call on the same session disabled certificate verification",
+  "method": "Session.get",
+  "argument": "verify",
+  "values": ["False"]
+}
+```
+
+The engine follows a receiver bound once in the analysed function to the result of a
+call or a `with` and used only to call its methods. The outcome has three cases:
+
+- A prior call on the same receiver, on every path to the entry call, matches the
+  method and carries a value in `values` (`default` for an absent argument): the
+  condition is met, and the evidence names that call's line.
+- The receiver's whole lifetime is visible and no such prior call can precede — one
+  call alone on the receiver, or the two calls on different receivers: the condition
+  is contradicted, the call is ruled out
+  (`app.fetch:6 python.requests.Session.get(no prior Session.get on the receiver)`)
+  and a project with only such calls stays `not_affected`.
+- Otherwise the condition stays pending review: a receiver the engine cannot follow —
+  a parameter, a module-level instance, one passed to another function or mutated
+  through an attribute such as `s.verify = False` — a prior call whose arguments a
+  `*`/`**` unpacking leaves undecided, or a flow reaching the entry point inside a
+  callee.
+
+Only a prior call on every path to the entry call counts as before it: a matching
+call in a branch that may not run, or a textually later one, leaves the condition
+pending, since a loop may bring it before the entry call. A call that itself carries
+what the condition requires of the first call is never ruled out either: across the
+iterations of a loop it is its own prior.
+
 Every dependency finding records the highest level of evidence established in its
 `level` metadata: `declared` (the requirement allows a vulnerable version), `imported`
 (a module of the package is imported somewhere), `reachable` (an entry point or affected
