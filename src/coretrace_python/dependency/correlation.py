@@ -75,7 +75,9 @@ def check_conditions(
     controls, and the condition stays pending with that uncertainty. A ``keyword_name``
     condition is met when the attacker's input is passed as the keys of a ``**`` mapping,
     pending when the call expands a mapping whose keys are not established, and
-    contradicted by a call writing every keyword name."""
+    contradicted by a call writing every keyword name. An ``argument`` condition with
+    ``present`` is met when the call gives the argument, whatever it denotes, and
+    contradicted when the call surely does not give it."""
 
     if entry is None:
         return ConditionCheck()
@@ -104,6 +106,12 @@ def check_conditions(
         given = arguments.given(condition.argument, condition.position) if condition.checkable and arguments is not None else None
         if given is None:
             pending.append(condition)
+            continue
+        if condition.present:
+            if given[0]:
+                met.append(condition)
+            else:
+                return ConditionCheck(tuple(met), tuple(pending), condition, None)
             continue
         explicit, value = given
         if explicit and value is None:

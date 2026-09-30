@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Advisories
+
+- An `argument` condition may carry `present: true`: the argument being passed at all, whatever its value, is the condition, as a `\r` in `web.Response(reason=…)` needs `reason` given, constant or not. It names the argument by keyword or position as today and excludes `values` and `default`. A call giving the argument — positionally, by keyword, or through a `**` literal with constant keys, folded into the keywords — meets it even when the value is unknown, so attacker input there makes the call exploitable; a call surely not giving it is ruled out (`app:5 python.aiohttp.web.Response(reason absent)`) and a project passing only such calls stays `not_affected`; a call unpacking `*args` or a `**mapping` whose keys are not written leaves it pending review (#195).
+
 ## 0.20.0 (2026-09-30)
 
 ### Advisories
