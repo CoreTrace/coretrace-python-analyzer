@@ -6,7 +6,7 @@ events into a version specifier; ``dump_advisories`` writes them as a small JSON
 that a project keeps at its root as ``advisories.json`` or passes with ``--advisories``.
 OSV records name no affected APIs, so imported advisories feed the requirement checks
 and the SBOM; a file completed by hand with ``affected_symbols``, ``entry_points`` and
-their ``conditions`` also feeds the reachability and correlation checks.
+their ``conditions`` and ``suffixes`` also feeds the reachability and correlation checks.
 """
 
 from __future__ import annotations
@@ -161,6 +161,8 @@ def _entry_point_entry(entry_point: AdvisoryEntryPoint) -> dict[str, Any]:
     }
     if entry_point.read:
         entry["read"] = True
+    if entry_point.suffixes:
+        entry["suffixes"] = list(entry_point.suffixes)
     if entry_point.attacker_arguments:
         entry["attacker_arguments"] = [_attacker_argument_entry(a) for a in entry_point.attacker_arguments]
     return entry
@@ -187,6 +189,8 @@ def _condition_entry(condition: Condition) -> dict[str, Any]:
         entry["position"] = condition.position
     if condition.default:
         entry["default"] = True
+    if condition.present:
+        entry["present"] = True
     if condition.method is not None:
         entry["method"] = condition.method
     return entry
@@ -228,7 +232,18 @@ def _entry_point(entry: Mapping[str, Any]) -> AdvisoryEntryPoint:
         tuple(_condition(c) for c in entry.get("conditions") or []),
         read,
         tuple(_attacker_argument(a) for a in entry.get("attacker_arguments") or []),
+        tuple(_suffix(s) for s in entry.get("suffixes") or []),
     )
+
+
+def _suffix(value: Any) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"an entry point suffix must be a string, got {value!r}")
+    parts = value.split(".")
+    # A single name (``annotate``) would match every project method of that name.
+    if len(parts) < 2 or not all(p.isidentifier() for p in parts):
+        raise ValueError(f"an entry point suffix is at least two dot-separated names, got {value!r}")
+    return value
 
 
 def _attacker_argument(entry: Mapping[str, Any]) -> AttackerArgument:
@@ -253,6 +268,9 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
     default = entry.get("default", False)
     if not isinstance(default, bool):
         raise TypeError(f"condition default must be true or false, got {default!r}")
+    present = entry.get("present", False)
+    if not isinstance(present, bool):
+        raise TypeError(f"condition present must be true or false, got {present!r}")
     condition = Condition(
         str(entry["kind"]),
         str(entry["text"]),
@@ -260,8 +278,16 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
         tuple(str(v) for v in entry.get("values") or []),
         position,
         default,
+        present,
         None if entry.get("method") is None else str(entry["method"]),
     )
+    if condition.present and (
+        condition.kind != "argument"
+        or (condition.argument is None and condition.position is None)
+        or condition.values
+        or condition.default
+    ):
+        raise ValueError("a present condition names the argument that must be passed, by keyword or position, and nothing else")
     if condition.kind == "sequence" and not condition.method:
         raise ValueError("a sequence condition names the method of the prior call")
     if condition.kind == "sequence" and condition.values and condition.argument is None:

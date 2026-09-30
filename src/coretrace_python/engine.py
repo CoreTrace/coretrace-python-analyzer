@@ -53,9 +53,12 @@ from coretrace_python.dependency import (
 )
 from coretrace_python.dependency.correlation import (
     Affected,
+    SuffixIndex,
     advisory_sinks,
+    advisory_suffix_sinks,
     affected_symbols,
     correlate,
+    suffix_index,
 )
 from coretrace_python.findings import (
     ADVISORIES,
@@ -424,7 +427,9 @@ def analyze_project(
     components = _components(registry, root, (path for path, _ in file_advisories))
     advisories, origins = _merge_advisories(_contributions(registry, plugins, root, file_advisories))
     affected = affected_symbols(dependencies, advisories)
-    models = plugin_models(all_plugins, root).extended(*advisory_sinks(affected))
+    models = plugin_models(all_plugins, root).extended(
+        *advisory_sinks(affected), suffixes=advisory_suffix_sinks(affected)
+    )
     members = models.members_by_class()
     for manager in managers.values():
         manager.provide(SecurityModelAnalysis, models)
@@ -480,6 +485,7 @@ def analyze_project(
     reused = tuple(sorted(results))
 
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
+    suffixes = suffix_index(affected, analysable)
     pool = None
     if jobs > 1:
         pool = concurrent.futures.ProcessPoolExecutor(
@@ -492,7 +498,9 @@ def analyze_project(
             if pool is None:
                 for component in pending:
                     batch = {name: analysable[name] for name in sorted(component)}
-                    computed.update(_analyse_managers(batch, _seed(results, graph, component), module_plugins, affected))
+                    computed.update(
+                        _analyse_managers(batch, _seed(results, graph, component), module_plugins, affected, suffixes)
+                    )
                     for manager in batch.values():
                         manager.run(ResultsEvicted)
             else:
@@ -509,6 +517,7 @@ def analyze_project(
                             _encode_routes(routes),
                             tuple(sorted(escaped)),
                             template_calls,
+                            project=tuple(sorted(analysable)),
                         ),
                     )
                     for component in pending
@@ -734,6 +743,7 @@ def _analyse_managers(
     seed: SummaryIndex,
     plugins: tuple[Plugin, ...],
     affected: Affected,
+    suffixes: SuffixIndex,
 ) -> dict[str, CachedModule]:
     """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
     then extract what the rest of the run needs from each module. Each member registers
@@ -762,7 +772,7 @@ def _analyse_managers(
         for manager in managers.values():
             manager.run(ProjectSummariesUpdated)
             manager.provide(ProjectSummaries, index)
-    return {name: _analyse_module(manager, plugins, affected) for name, manager in managers.items()}
+    return {name: _analyse_module(manager, plugins, affected, suffixes) for name, manager in managers.items()}
 
 
 @dataclass(frozen=True)
@@ -780,6 +790,9 @@ class _Batch:
     routes: tuple[tuple[str, str, str, int], ...] = ()
     escaped: tuple[str, ...] = ()
     template_calls: TemplateCalls = field(default_factory=TemplateCalls)
+    # Every analysable module of the project, not only the component's: a curated
+    # entry-point suffix matches derived symbols of any project module.
+    project: tuple[str, ...] = ()
 
 
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
@@ -796,7 +809,9 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
             continue
     advisories, _ = _merge_advisories(_contributions(registry, batch.plugins, batch.root, file_advisories))
     affected = affected_symbols(dependencies, advisories)
-    models = plugin_models(all_plugins, batch.root).extended(*advisory_sinks(affected))
+    models = plugin_models(all_plugins, batch.root).extended(
+        *advisory_sinks(affected), suffixes=advisory_suffix_sinks(affected)
+    )
     routes = _decode_routes(batch.routes)
     escaped = frozenset(batch.escaped)
     members = models.members_by_class()
@@ -810,7 +825,8 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
         manager.provide(ClearingAnalysis, models.clearing(escaped))
         manager.provide(TemplateCallsAnalysis, batch.template_calls)
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
-    results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected)
+    suffixes = suffix_index(affected, batch.project)
+    results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected, suffixes)
     return {name: encode(entry) for name, entry in results.items()}
 
 
@@ -860,7 +876,7 @@ def _configuration_key(
 
 
 def _analyse_module(
-    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Affected
+    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Affected, suffixes: SuffixIndex
 ) -> CachedModule:
     """One module's findings, summaries, call sites and symbol reads: what the cache
     keeps (§11)."""
@@ -883,7 +899,9 @@ def _analyse_module(
                 if flow.kinds & TaintKind.ADVISORY and flow.through is None
             }
             correlated.extend(
-                correlate(name, flows, manager.get(RefutationAnalysis, function), affected, urls, prior)
+                correlate(
+                    name, flows, manager.get(RefutationAnalysis, function), affected, urls, suffixes, prior
+                )
             )
     return CachedModule(
         manager.get(EntryPointAnalysis),

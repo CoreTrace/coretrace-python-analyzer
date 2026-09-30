@@ -23,7 +23,7 @@ from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import Status, Verdict, Verdicts
 from coretrace_python.interprocedural import Arguments, CallSite, ExternalSymbol, PriorCall
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import KEYWORD_NAMES, Sink, TaintFlow, TaintKind
+from coretrace_python.taint import KEYWORD_NAMES, Sink, SuffixSink, TaintFlow, TaintKind
 from coretrace_python.taint.urls import UrlProof, redirects_disabled
 
 Affected = Mapping[SymbolId, tuple[Advisory, ...]]
@@ -47,6 +47,56 @@ def affected_symbols(dependencies: DependencyGraph, advisories: Iterable[Advisor
 
 def advisory_sinks(affected: Affected) -> tuple[Sink, ...]:
     return tuple(Sink(symbol, TaintKind.ADVISORY) for symbol in affected)
+
+
+@dataclass(frozen=True)
+class SuffixIndex:
+    """The curated entry-point suffixes of the matching advisories, and the project's
+    module prefixes: a derived symbol matches a suffix on a dot boundary, as a
+    ``SuffixSink`` does, and only when it belongs to a project module — another
+    package's ``objects.annotate`` stays out."""
+
+    entries: tuple[tuple[str, Advisory, AdvisoryEntryPoint], ...] = ()
+    prefixes: tuple[str, ...] = ()
+
+    def matches(self, symbol: SymbolId) -> tuple[tuple[Advisory, AdvisoryEntryPoint], ...]:
+        name = symbol.canonical_name
+        found = tuple((a, e) for tail, a, e in self.entries if name.endswith(tail))
+        return found if found and name.startswith(self.prefixes) else ()
+
+
+def suffix_index(affected: Affected, modules: Iterable[str]) -> SuffixIndex:
+    advisories = {a: None for found in affected.values() for a in found}
+    entries = tuple((f".{s}", a, e) for a in advisories for e in a.entry_points for s in e.suffixes)
+    return SuffixIndex(entries, tuple(f"python.{m}." for m in sorted(set(modules))))
+
+
+def affected_entries(
+    symbol: SymbolId, affected: Affected, suffixes: SuffixIndex | None = None
+) -> tuple[tuple[Advisory, AdvisoryEntryPoint | None], ...]:
+    """The advisories reached through ``symbol``, each with the entry point it is reached
+    by: the advisories affecting the exact symbol, then those a suffix matches."""
+
+    found: list[tuple[Advisory, AdvisoryEntryPoint | None]] = [
+        (a, a.entry_point(symbol)) for a in affected.get(symbol, ())
+    ]
+    if suffixes is not None:
+        seen = {(a.id, a.package, None if e is None else e.symbol) for a, e in found}
+        for advisory, entry in suffixes.matches(symbol):
+            key = (advisory.id, advisory.package, entry.symbol)
+            if key not in seen:
+                seen.add(key)
+                found.append((advisory, entry))
+    return tuple(found)
+
+
+def advisory_suffix_sinks(affected: Affected) -> tuple[SuffixSink, ...]:
+    """A suffix sink per curated entry-point suffix, so the taint engine tracks flows
+    into the derived symbols; ``correlate`` then keeps only the project's."""
+
+    advisories = {a: None for found in affected.values() for a in found}
+    suffixes = {s: None for a in advisories for e in a.entry_points for s in e.suffixes}
+    return tuple(SuffixSink(s, TaintKind.ADVISORY) for s in suffixes)
 
 
 @dataclass(frozen=True)
@@ -76,7 +126,9 @@ def check_conditions(
     controls, and the condition stays pending with that uncertainty. A ``keyword_name``
     condition is met when the attacker's input is passed as the keys of a ``**`` mapping,
     pending when the call expands a mapping whose keys are not established, and
-    contradicted by a call writing every keyword name. A ``sequence`` condition is met
+    contradicted by a call writing every keyword name. An ``argument`` condition with
+    ``present`` is met when the call gives the argument, whatever it denotes, and
+    contradicted when the call surely does not give it. A ``sequence`` condition is met
     when one of the ``prior_calls`` on the call's receiver dominates it — surely executes
     before it — matches the condition's method and passes what it requires; contradicted
     when the receiver is followed whole and no matching call could do so, the call's own
@@ -135,6 +187,12 @@ def check_conditions(
         given = arguments.given(condition.argument, condition.position) if condition.checkable and arguments is not None else None
         if given is None:
             pending.append(condition)
+            continue
+        if condition.present:
+            if given[0]:
+                met.append(condition)
+            else:
+                return ConditionCheck(tuple(met), tuple(pending), condition, None)
             continue
         explicit, value = given
         if explicit and value is None:
@@ -199,13 +257,21 @@ def ruled_out(module: str, site: CallSite, check: ConditionCheck) -> str:
     return f"{module}:{site.location.start_line} {site.target.symbol}({passed})"
 
 
-def evidence(advisory: Advisory, symbol: SymbolId, level: str, check: ConditionCheck) -> dict[str, str]:
+def evidence(
+    advisory: Advisory,
+    symbol: SymbolId,
+    level: str,
+    check: ConditionCheck,
+    entry: AdvisoryEntryPoint | None = None,
+) -> dict[str, str]:
     """What a finding keeps of the advisory for ``symbol``: the level of evidence
     established, how the symbol relates to the vulnerability, and its conditions — those
-    the call meets and those left to review."""
+    the call meets and those left to review. ``entry`` names the entry point ``symbol``
+    was matched by when it is not the advisory's own symbol, as a suffix match derives
+    it from the project; the metadata then keeps both."""
 
     metadata = {"advisory": advisory.id, "package": advisory.package, "symbol": str(symbol), "level": level}
-    entry = advisory.entry_point(symbol)
+    entry = entry if entry is not None else advisory.entry_point(symbol)
     if entry is None:
         metadata["justification"] = DIRECT
         return metadata
@@ -226,6 +292,7 @@ def correlate(
     verdicts: Verdicts | None,
     affected: Affected,
     urls: Mapping[TaintFlow, UrlProof] | None = None,
+    suffixes: SuffixIndex | None = None,
     prior: Mapping[TaintFlow, tuple[PriorCall, ...] | None] | None = None,
 ) -> tuple[Finding, ...]:
     """Exploitable-vulnerability findings for the non-refuted ADVISORY flows of a function,
@@ -240,27 +307,32 @@ def correlate(
         if verdict is not None and verdict.status is Status.REFUTED:
             continue
         hotspot = verdict is not None and verdict.status is Status.HOTSPOT
-        for advisory in affected.get(flow.sink.symbol, ()):
-            entry = advisory.entry_point(flow.sink.symbol)
+        for advisory, entry in affected_entries(flow.sink.symbol, affected, suffixes):
             if entry is not None and not any(entry.exploitable_through(p, k) for p, k in flow.passed_as):
                 continue
             check = check_conditions(
                 entry, flow.sink_arguments, (urls or {}).get(flow), flow.passed_as, (prior or {}).get(flow)
             )
             if check.contradicted is None:
-                findings.append(_exploitable(function, flow, advisory, verdict, hotspot, check))
+                findings.append(_exploitable(function, flow, advisory, verdict, hotspot, check, entry))
     return tuple(findings)
 
 
 def _exploitable(
-    function: str, flow: TaintFlow, advisory: Advisory, verdict: Verdict | None, hotspot: bool, check: ConditionCheck
+    function: str,
+    flow: TaintFlow,
+    advisory: Advisory,
+    verdict: Verdict | None,
+    hotspot: bool,
+    check: ConditionCheck,
+    entry: AdvisoryEntryPoint | None,
 ) -> Finding:
     message = (
         f"{advisory.id}: {flow.source.label} input reaches {flow.sink.symbol}, affected in "
         f"the required {advisory.package} {advisory.vulnerable}: {advisory.summary}"
     )
     metadata = {
-        **evidence(advisory, flow.sink.symbol, "exploitable", check),
+        **evidence(advisory, flow.sink.symbol, "exploitable", check, entry),
         "source": str(flow.source.symbol),
         "source_label": flow.source.label,
         "verdict": "hotspot" if hotspot else "vulnerability",

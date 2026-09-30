@@ -151,7 +151,9 @@ class Condition:
     ``argument`` condition names the argument by keyword, and by ``position`` when it may
     be passed positionally, and lists the ``values`` that satisfy it — symbols
     (``python.yaml.FullLoader``) or constants as Python writes them (``True``);
-    ``default`` says an absent argument means a vulnerable value. A ``host`` condition
+    ``default`` says an absent argument means a vulnerable value; ``present`` says the
+    argument being passed at all, whatever its value, is the condition, so it excludes
+    ``values`` and ``default``. A ``host`` condition
     says the attacker must choose the host of the URL passed as ``argument`` (or at
     ``position``); the engine decides it from what the URL's constant text proves. A
     ``keyword_name`` condition says the attacker must choose a keyword name of the call,
@@ -171,6 +173,7 @@ class Condition:
     values: tuple[str, ...] = ()
     position: int | None = None
     default: bool = False
+    present: bool = False
     method: str | None = None
 
     @property
@@ -211,13 +214,19 @@ class AdvisoryEntryPoint:
     An entry point is reached by a call, or — when ``read`` is set, for an attribute whose
     getter runs the affected code, such as a lazily parsed request body — by any read of
     it or of an attribute of it. When it names ``attacker_arguments``, attacker input
-    exploits it only through one of them; otherwise through any argument."""
+    exploits it only through one of them; otherwise through any argument.
+
+    A suffix names the tail of a derived project symbol through which the entry point is
+    reached when the engine cannot type the receiver: ``Item.objects.annotate`` derives
+    ``python.app.models.Item.objects.annotate``, which ``objects.annotate`` matches.
+    Suffixes match on dot boundaries, and only symbols of the project's own modules."""
 
     symbol: SymbolId
     justification: str
     conditions: tuple[Condition, ...] = ()
     read: bool = False
     attacker_arguments: tuple[AttackerArgument, ...] = ()
+    suffixes: tuple[str, ...] = ()
 
     def exploitable_through(self, position: int | None, keyword: str | None) -> bool:
         """Whether attacker input in the argument at ``position`` or ``keyword`` can
