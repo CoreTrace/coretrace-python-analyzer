@@ -8,6 +8,7 @@ from coretrace_python.abstract.constants import (
 from coretrace_python.abstract.heap import (
     ATTRIBUTES,
     ELEMENTS,
+    KEYS,
     MUTATORS,
     AbstractObject,
     AliasSet,
@@ -24,6 +25,7 @@ from coretrace_python.abstract.values import AbstractValue, Truth
 __all__ = [
     "ATTRIBUTES",
     "ELEMENTS",
+    "KEYS",
     "MUTATORS",
     "AbstractObject",
     "AbstractValue",

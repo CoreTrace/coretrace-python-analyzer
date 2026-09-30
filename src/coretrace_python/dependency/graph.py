@@ -154,7 +154,10 @@ class Condition:
     ``default`` says an absent argument means a vulnerable value. A ``host`` condition
     says the attacker must choose the host of the URL passed as ``argument`` (or at
     ``position``); the engine decides it from what the URL's constant text proves. A
-    ``semantic`` condition cannot be checked and is reported as pending review."""
+    ``keyword_name`` condition says the attacker must choose a keyword name of the call,
+    as an ORM alias expanded from a mapping; the engine decides it from the keys of what
+    the call expands with ``**``. A ``semantic`` condition cannot be checked and is
+    reported as pending review."""
 
     kind: str
     text: str

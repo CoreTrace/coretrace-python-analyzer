@@ -6,7 +6,8 @@ globals and imported symbols by name, and the fields loaded from an object by fi
 Each value points to an ``AliasSet`` of objects, computed by a flow-insensitive
 points-to fixpoint over the SSA form; each object has two ``HeapLocation`` fields,
 ``elements`` for its items and ``attributes`` for its attributes, field-insensitive
-within each. Taint and dependence analyses key their states by these locations, so a
+within each, and a third, ``keys``, for the keys of a mapping, which only the taint
+engine fills. Taint and dependence analyses key their states by these locations, so a
 store, a mutating method call or a load on any alias reads and writes the same place.
 """
 
@@ -47,6 +48,8 @@ from coretrace_python.source import SourceSpan
 
 ELEMENTS = "elements"
 ATTRIBUTES = "attributes"
+# The keys of a mapping, stored by the taint engine; the points-to solver never fills it.
+KEYS = "keys"
 
 # Method names that store their arguments into the receiver's elements.
 MUTATORS = frozenset(

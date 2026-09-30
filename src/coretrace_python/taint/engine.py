@@ -18,6 +18,7 @@ from typing import ClassVar
 from coretrace_python.abstract import (
     ATTRIBUTES,
     ELEMENTS,
+    KEYS,
     HeapAnalysis,
     HeapFacts,
     HeapLocation,
@@ -130,11 +131,17 @@ class TaintFlow:
     # What the arguments of the sink call denote, to decide the conditions on them.
     sink_arguments: Arguments | None = None
     # How the tainted value is passed to the sink call: at a position, by a keyword, or
-    # (None, None) unpacked with ``*`` or ``**``; ``f(x, key=x)`` passes it twice.
+    # (None, None) unpacked with ``*`` or ``**``; ``f(x, key=x)`` passes it twice. The
+    # keyword ``KEYWORD_NAMES`` says the value's keys are the keyword names of the call.
     passed_as: frozenset[tuple[int | None, str | None]] = frozenset()
 
 
 Key = Value | HeapLocation
+
+# The ``keyword`` of a ``passed_as`` way whose value's keys become the keyword names of
+# the call: ``f(**m)`` passes the keys of ``m`` as ``(None, KEYWORD_NAMES)``.
+KEYWORD_NAMES = "**"
+_DICT = SymbolId("python.builtins.dict")
 
 
 class TaintFacts:
@@ -217,6 +224,14 @@ class _TaintProblem(DataflowProblem[State]):
             taint = taint.join(state.get(location, Taint.none()))
         return taint
 
+    def keyed(self, value: Value, state: Mapping[Key, Taint]) -> Taint:
+        """The taint of the keys of the mappings ``value`` points to."""
+
+        taint = Taint.none()
+        for location in self.heap.locations(value, KEYS):
+            taint = taint.join(state.get(location, Taint.none()))
+        return taint
+
     def initial(self) -> State:
         state: dict[Key, Taint] = {
             self.function.parameters[index]: Taint(source.kinds, frozenset({source}))
@@ -246,6 +261,17 @@ class _TaintProblem(DataflowProblem[State]):
                 self.store(state, instruction.object, ATTRIBUTES, state.get(instruction.value, Taint.none()))
             elif isinstance(instruction, SetItem):
                 self.store(state, instruction.object, ELEMENTS, state.get(instruction.value, Taint.none()))
+                key = state.get(instruction.key, Taint.none())
+                if key:
+                    self.store(state, instruction.object, KEYS, key)
+            elif isinstance(instruction, BuildDict):
+                keys = Taint.none()
+                for item_key, _ in instruction.items:
+                    keys = keys.join(state.get(item_key, Taint.none()))
+                for unpacked in instruction.unpacked:  # ``{**d}`` copies d's keys
+                    keys = keys.join(self.keyed(unpacked, state))
+                if keys:
+                    self.store(state, instruction.result, KEYS, keys)
             if instruction.result is None:
                 continue
             if isinstance(instruction, Phi):
@@ -352,6 +378,10 @@ class _TaintProblem(DataflowProblem[State]):
                     project, through, arguments, keywords, everything, call, flows, state, (), bound
                 )
                 return self.declared_clean(target.symbol, result)
+            if target.symbol == _DICT:
+                keys = self.constructed_keys(call, state)
+                if keys:
+                    self.store(state, call.result, KEYS, keys)
             symbol = target.symbol
             if not self.modelled(symbol):
                 # ``get_conn().execute`` derived ``app.database.get_conn.execute``; what
@@ -375,6 +405,23 @@ class _TaintProblem(DataflowProblem[State]):
         if returned is not None:
             return self.external(returned, everything, call, state, flows)
         return everything.join(state.get(call.callee, Taint.none()))
+
+    def constructed_keys(self, call: Call, state: Mapping[Key, Taint]) -> Taint:
+        """What the keys of ``dict(...)`` carry: the keys of the mapping it copies
+        (``dict(m)``, ``dict(**m)``) and the first element of each pair of a sequence
+        literal (``dict([(k, v)])``); a keyword is a constant key, and an iterable built
+        elsewhere (``zip(...)``, a parameter) gives keys the engine cannot establish."""
+
+        taint = Taint.none()
+        for value in (*call.arguments[:1], *(v for name, v in call.keywords if name is None)):
+            taint = taint.join(self.keyed(value, state))
+            made = self.defs.get(value)
+            if isinstance(made, BuildList | BuildTuple | BuildSet) and not made.unpacked:
+                for element in made.elements:
+                    pair = self.defs.get(element)
+                    if isinstance(pair, BuildTuple | BuildList) and pair.elements:
+                        taint = taint.join(state.get(pair.elements[0], Taint.none()))
+        return taint
 
     def nonlocal_result(self, instruction: NonlocalResult, state: dict[Key, Taint]) -> Taint:
         """The taint a nested callee left in its nonlocal ``name``, in the caller's terms."""
@@ -455,6 +502,11 @@ class _TaintProblem(DataflowProblem[State]):
                 self.report(
                     flows, sink, self.rendered(argument, state), argument, call, None, None, None, given, keyword=name
                 )
+                if name is None:
+                    # The keys of a ``**mapping`` are keyword names of the call: only an
+                    # advisory asks who chooses a name, no other sink reads one.
+                    keys = self.keyed(argument, state).without(~TaintKind.ADVISORY)
+                    self.report(flows, sink, keys, argument, call, None, None, None, given, keyword=KEYWORD_NAMES)
         self.template_filters(symbol, call, given, state, flows)
         cleared = self.clearing.clears(symbol, given)
         if cleared:
