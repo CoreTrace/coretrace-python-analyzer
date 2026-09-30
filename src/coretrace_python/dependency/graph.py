@@ -207,13 +207,19 @@ class AdvisoryEntryPoint:
     An entry point is reached by a call, or — when ``read`` is set, for an attribute whose
     getter runs the affected code, such as a lazily parsed request body — by any read of
     it or of an attribute of it. When it names ``attacker_arguments``, attacker input
-    exploits it only through one of them; otherwise through any argument."""
+    exploits it only through one of them; otherwise through any argument.
+
+    A suffix names the tail of a derived project symbol through which the entry point is
+    reached when the engine cannot type the receiver: ``Item.objects.annotate`` derives
+    ``python.app.models.Item.objects.annotate``, which ``objects.annotate`` matches.
+    Suffixes match on dot boundaries, and only symbols of the project's own modules."""
 
     symbol: SymbolId
     justification: str
     conditions: tuple[Condition, ...] = ()
     read: bool = False
     attacker_arguments: tuple[AttackerArgument, ...] = ()
+    suffixes: tuple[str, ...] = ()
 
     def exploitable_through(self, position: int | None, keyword: str | None) -> bool:
         """Whether attacker input in the argument at ``position`` or ``keyword`` can

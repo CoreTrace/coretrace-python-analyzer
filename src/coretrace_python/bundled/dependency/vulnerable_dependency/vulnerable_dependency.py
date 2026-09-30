@@ -7,7 +7,13 @@ from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
 from coretrace_python.dependency import DependencyAnalysis
-from coretrace_python.dependency.correlation import affected_symbols, check_conditions, ruled_out
+from coretrace_python.dependency.correlation import (
+    affected_entries,
+    affected_symbols,
+    check_conditions,
+    ruled_out,
+    suffix_index,
+)
 from coretrace_python.findings import Confidence, Finding
 from coretrace_python.interprocedural import CallGraphAnalysis, ExternalSymbol
 from coretrace_python.plugins import ProjectContext, ProjectPlugin
@@ -57,6 +63,7 @@ def _ruled_out(ctx: ProjectContext) -> dict[str, list[str]]:
     conditions: the evidence that the requirement, imported, is not reached there."""
 
     affected = affected_symbols(ctx.dependencies, ctx.advisories)
+    suffixes = suffix_index(affected, ctx.modules)
     excluded: dict[str, list[str]] = {}
     for module in sorted(ctx.modules):
         graph = ctx.call_graph(module)
@@ -64,8 +71,8 @@ def _ruled_out(ctx: ProjectContext) -> dict[str, list[str]]:
             for site in graph.sites(function):
                 if not isinstance(site.target, ExternalSymbol):
                     continue
-                for advisory in affected.get(site.target.symbol, ()):
-                    check = check_conditions(advisory.entry_point(site.target.symbol), site.arguments)
+                for advisory, entry in affected_entries(site.target.symbol, affected, suffixes):
+                    check = check_conditions(entry, site.arguments)
                     if check.contradicted is not None:
                         excluded.setdefault(advisory.id, []).append(ruled_out(module, site, check))
     return excluded
