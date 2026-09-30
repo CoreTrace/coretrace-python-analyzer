@@ -471,6 +471,16 @@ a call passing a variable, or unpacking `*args` or `**kwargs`, leaves the condit
 pending review. A `semantic` condition — the document's tags, the platform, the
 template's origin — cannot be decided and is always pending review, never dropped.
 
+An `argument` condition with `"present": true` says the argument being passed at all,
+whatever its value, is the condition, as a `\r` in `web.Response(reason=…)` needs
+`reason` given, constant or not: `{"kind": "argument", "text": "…", "argument":
+"reason", "position": 1, "present": true}`, exclusive with `values` and `default`. A
+call giving the argument — positionally, by keyword, or through a `**` literal with
+constant keys, which is folded into the keywords — meets it even when the value is
+unknown; a call surely not giving it does not reach the vulnerability and is ruled out
+(`(reason absent)`); a call unpacking `*args` or a `**mapping` whose keys the engine
+cannot read leaves it pending review.
+
 A `host` condition says the attacker must choose the host of the URL passed as
 `argument` (or at `position`), as credentials leaking to the host of a crafted URL
 need: `{"kind": "host", "text": "…", "argument": "url", "position": 0}`. It is
