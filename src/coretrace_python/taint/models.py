@@ -356,20 +356,23 @@ class ModelTable:
         return None
 
     def sink(self, symbol: SymbolId) -> Sink | None:
+        # An exact sink and the matching suffix sinks compose: an advisory sink on a
+        # derived symbol must not shadow ``objects.extra``'s SQL kind, nor conversely.
         found = self._by_symbol[Sink].get(symbol)
-        if isinstance(found, Sink):
-            return found
+        merged = found if isinstance(found, Sink) else None
         for suffix in self.suffix_sinks:
             if symbol.canonical_name.endswith(f".{suffix.suffix}"):
-                return Sink(symbol, suffix.kinds, suffix.positions)
-        return None
+                matched = Sink(symbol, suffix.kinds, suffix.positions)
+                merged = matched if merged is None else merged.merged(matched)
+        return merged
 
     def route_registrar(self, symbol: SymbolId) -> RouteRegistrar | None:
         found = self._by_symbol[RouteRegistrar].get(symbol)
         return found if isinstance(found, RouteRegistrar) else None
 
-    def extended(self, *sinks: Sink) -> ModelTable:
-        """A table with extra sinks; a sink already present gains the new kinds."""
+    def extended(self, *sinks: Sink, suffixes: tuple[SuffixSink, ...] = ()) -> ModelTable:
+        """A table with extra sinks and suffix sinks; a sink already present gains the
+        new kinds, a suffix sink already present is kept once."""
 
         merged = {sink.symbol: sink for sink in self.sinks}
         for sink in sinks:
@@ -385,7 +388,7 @@ class ModelTable:
             self.authorizations,
             self.named_parameters,
             self.route_registrars,
-            self.suffix_sinks,
+            self.suffix_sinks + tuple(s for s in suffixes if s not in self.suffix_sinks),
             self.safe_arguments,
             self.template_renders,
             self.members,

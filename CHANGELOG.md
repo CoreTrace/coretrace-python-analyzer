@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Advisories
+
+- A curated entry point may declare `suffixes`, for receivers the engine cannot type: `Item.objects.annotate(...)` derives the project's own `python.app.models.Item.objects.annotate`, which the canonical `python.django.db.models.QuerySet.annotate` entry point never matches. A suffix matches any symbol of the project's own modules ending with a dot plus the suffix, on dot boundaries as a `SuffixSink` matches, never another package's symbol; a queryset chain is declared explicitly (`objects.filter.annotate`), and a suffix is at least two dot-separated names. The finding keeps the advisory's symbol as `entry_point` and the derived one as `symbol`; conditions, `attacker_arguments` and the ruled-out evidence of contradicted calls apply through a suffix as through the exact symbol. An exact advisory sink whose symbol a bundled suffix sink also matches (`objects.extra`) now composes its kinds with the suffix sink's instead of shadowing them (#197).
+
 ## 0.20.0 (2026-09-30)
 
 ### Advisories

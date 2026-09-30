@@ -6,7 +6,7 @@ events into a version specifier; ``dump_advisories`` writes them as a small JSON
 that a project keeps at its root as ``advisories.json`` or passes with ``--advisories``.
 OSV records name no affected APIs, so imported advisories feed the requirement checks
 and the SBOM; a file completed by hand with ``affected_symbols``, ``entry_points`` and
-their ``conditions`` also feeds the reachability and correlation checks.
+their ``conditions`` and ``suffixes`` also feeds the reachability and correlation checks.
 """
 
 from __future__ import annotations
@@ -161,6 +161,8 @@ def _entry_point_entry(entry_point: AdvisoryEntryPoint) -> dict[str, Any]:
     }
     if entry_point.read:
         entry["read"] = True
+    if entry_point.suffixes:
+        entry["suffixes"] = list(entry_point.suffixes)
     if entry_point.attacker_arguments:
         entry["attacker_arguments"] = [_attacker_argument_entry(a) for a in entry_point.attacker_arguments]
     return entry
@@ -226,7 +228,18 @@ def _entry_point(entry: Mapping[str, Any]) -> AdvisoryEntryPoint:
         tuple(_condition(c) for c in entry.get("conditions") or []),
         read,
         tuple(_attacker_argument(a) for a in entry.get("attacker_arguments") or []),
+        tuple(_suffix(s) for s in entry.get("suffixes") or []),
     )
+
+
+def _suffix(value: Any) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"an entry point suffix must be a string, got {value!r}")
+    parts = value.split(".")
+    # A single name (``annotate``) would match every project method of that name.
+    if len(parts) < 2 or not all(p.isidentifier() for p in parts):
+        raise ValueError(f"an entry point suffix is at least two dot-separated names, got {value!r}")
+    return value
 
 
 def _attacker_argument(entry: Mapping[str, Any]) -> AttackerArgument:
