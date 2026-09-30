@@ -370,6 +370,29 @@ it is reachable, called or not — `request.form['name']`, `for key in request.f
 `request.form.get('name')` all read it. A function reading it several times is reported
 once, where it first reads it.
 
+An entry point may declare `suffixes`, for receivers the engine cannot type. A project
+reaches `python.django.db.models.QuerySet.annotate` through a manager on its own model,
+`Item.objects.annotate(...)`, whose call derives the project's own symbol
+`python.app.models.Item.objects.annotate` — `Item` is a project class, `objects` an
+attribute the engine does not type — so the canonical entry point never matches. A
+suffix matches any symbol of the project's own modules ending with a dot plus the
+suffix:
+
+```json
+{"symbol": "python.django.db.models.QuerySet.annotate", "justification": "…",
+ "suffixes": ["objects.annotate", "objects.filter.annotate"]}
+```
+
+A queryset chain is declared explicitly: `Item.objects.filter(...).annotate(...)`
+derives `…objects.filter.annotate`, which only the second suffix matches. A suffix is
+at least two dot-separated names, so a bare method name, matching every project method
+of that name, cannot be declared; another package's symbol, such as
+`other_lib.objects.annotate`, never matches. The finding names the advisory's symbol as
+`entry_point` and the derived one as `symbol`, and the entry point's conditions and
+`attacker_arguments` apply through a suffix as through the exact symbol. A project
+attribute chain genuinely ending with a declared suffix matches too — the vulnerable
+version range and the conditions still gate what is reported.
+
 A filter of Django's own libraries that a project template applies is a call to the
 function behind it, placed at the template's line: `{{ bio|striptags }}` calls
 `python.django.template.defaultfilters.striptags`, and so do filters in tag arguments
