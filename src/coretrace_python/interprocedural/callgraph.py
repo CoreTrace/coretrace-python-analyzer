@@ -18,6 +18,7 @@ from typing import ClassVar
 from coretrace_python.analysis import Analysis, AnalysisContext, AnyAnalysis
 from coretrace_python.cfg import CFGError
 from coretrace_python.hir import nodes
+from coretrace_python.ir.defuse import DefUse, def_use
 from coretrace_python.ir.lowering import (
     MODULE_BODY,
     LoweringError,
@@ -26,6 +27,7 @@ from coretrace_python.ir.lowering import (
 )
 from coretrace_python.ir.model import (
     Await,
+    BuildDict,
     Call,
     Constant,
     FunctionIR,
@@ -68,11 +70,15 @@ class Arguments:
     (``python.yaml.FullLoader``), a constant as Python writes it (``True``, ``'/static'``),
     or None for anything else (a parameter, an expression). ``unpacked`` says the call
     unpacks ``*args`` or ``**kwargs``, so an argument it does not give explicitly may
-    still be given; after ``*args`` no position is known, and ``positional`` is empty."""
+    still be given; after ``*args`` no position is known, and ``positional`` is empty.
+    ``keyword_unpacked`` says the call expands a ``**mapping`` whose keys it does not
+    write, so a keyword name may be anything; a literal with constant keys is written out
+    as its keywords, and ``unpacked`` stays true for it only when ``*args`` is also given."""
 
     positional: tuple[str | None, ...] = ()
     keywords: tuple[tuple[str, str | None], ...] = ()
     unpacked: bool = False
+    keyword_unpacked: bool = False
 
     def given(self, keyword: str | None, position: int | None = None) -> tuple[bool, str | None] | None:
         """Whether the call gives an argument, by ``keyword`` or at ``position``, and what it
@@ -245,8 +251,45 @@ def derive_symbols(
 # passed as an argument is not recorded, so call sites stay small in the cache.
 MAX_CONSTANT_LENGTH = 64
 
+_DICT = SymbolId("python.builtins.dict")
 
-def _arguments(call: Call, symbols: Mapping[Value, SymbolId], defs: Mapping[Value, Instruction]) -> Arguments:
+
+def _keyword_entries(
+    value: Value, symbols: Mapping[Value, SymbolId], defs: Mapping[Value, Instruction], uses: DefUse
+) -> tuple[tuple[str, Value], ...] | None:
+    """The keywords a ``**value`` gives when every name is established: the string keys
+    of a dict literal, the keywords of ``dict(...)``, through what they unpack in turn;
+    None when a key is computed, the mapping is built elsewhere, or anything but the
+    call uses it, since a store or a mutating call may add a key the literal does not
+    write."""
+
+    if len(uses.uses(value)) != 1:
+        return None
+    made = defs.get(value)
+    entries: list[tuple[str, Value]] = []
+    if isinstance(made, BuildDict):
+        for key, item in made.items:
+            constant = defs.get(key)
+            if not isinstance(constant, Constant) or not isinstance(constant.value, str):
+                return None
+            entries.append((constant.value, item))
+        nested = made.unpacked
+    elif isinstance(made, Call) and symbols.get(made.callee) == _DICT and not made.arguments and not made.starred:
+        nested = tuple(v for name, v in made.keywords if name is None)
+        entries.extend((name, v) for name, v in made.keywords if name is not None)
+    else:
+        return None
+    for inner in nested:
+        found = _keyword_entries(inner, symbols, defs, uses)
+        if found is None:
+            return None
+        entries.extend(found)
+    return tuple(entries)
+
+
+def _arguments(
+    call: Call, symbols: Mapping[Value, SymbolId], defs: Mapping[Value, Instruction], uses: DefUse
+) -> Arguments:
     def denoted(value: Value) -> str | None:
         symbol = symbols.get(value)
         if symbol is not None:
@@ -257,10 +300,22 @@ def _arguments(call: Call, symbols: Mapping[Value, SymbolId], defs: Mapping[Valu
         written = repr(made.value)
         return written if len(written) <= MAX_CONSTANT_LENGTH else None
 
+    keywords: list[tuple[str, str | None]] = []
+    keyword_unpacked = False
+    for name, value in call.keywords:
+        if name is not None:
+            keywords.append((name, denoted(value)))
+            continue
+        entries = _keyword_entries(value, symbols, defs, uses)
+        if entries is None:
+            keyword_unpacked = True
+        else:
+            keywords.extend((key, denoted(item)) for key, item in entries)
     return Arguments(
         () if call.starred else tuple(denoted(value) for value in call.arguments),
-        tuple((name, denoted(value)) for name, value in call.keywords if name is not None),
-        bool(call.starred) or any(name is None for name, _ in call.keywords),
+        tuple(keywords),
+        bool(call.starred) or keyword_unpacked,
+        keyword_unpacked,
     )
 
 
@@ -480,6 +535,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                 table=table,
             )
             defs = {i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None}
+            uses = def_use(ssa)
             found: list[CallSite] = []
             for block in ssa.blocks:
                 for instruction in block.instructions:
@@ -489,7 +545,7 @@ class CallGraphAnalysis(Analysis[CallGraph]):
                                 name,
                                 instruction.location,
                                 targets.get(instruction.callee, UnknownTarget()),
-                                _arguments(instruction, symbols[name], defs),
+                                _arguments(instruction, symbols[name], defs, uses),
                             )
                         )
             sites[name] = tuple(found)

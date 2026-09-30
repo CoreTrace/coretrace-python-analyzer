@@ -42,7 +42,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 11
+CACHE_FORMAT = 12
 
 
 @dataclass(frozen=True)
@@ -368,6 +368,7 @@ def _encode_arguments(arguments: Arguments) -> dict[str, Any]:
         "positional": list(arguments.positional),
         "keywords": [[name, value] for name, value in arguments.keywords],
         "unpacked": arguments.unpacked,
+        "keyword_unpacked": arguments.keyword_unpacked,
     }
 
 
@@ -375,11 +376,12 @@ def _decode_arguments(data: Mapping[str, Any]) -> Arguments:
     def denoted(value: Any) -> str | None:
         return None if value is None else _string(value)
 
-    unpacked = data["unpacked"]
-    if not isinstance(unpacked, bool):
-        raise TypeError(f"expected a boolean, got {unpacked!r}")
+    unpacked, keyword_unpacked = data["unpacked"], data["keyword_unpacked"]
+    if not isinstance(unpacked, bool) or not isinstance(keyword_unpacked, bool):
+        raise TypeError(f"expected booleans, got {unpacked!r} and {keyword_unpacked!r}")
     return Arguments(
         tuple(denoted(value) for value in data["positional"]),
         tuple((_string(name), denoted(value)) for name, value in data["keywords"]),
         unpacked,
+        keyword_unpacked,
     )

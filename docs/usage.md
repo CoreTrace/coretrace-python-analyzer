@@ -488,6 +488,32 @@ attacker's input is passed in that argument. The outcome has three cases:
 
 The other conditions, the environment included, stay pending as before.
 
+A `keyword_name` condition says the attacker must choose a keyword name of the call,
+as Django's ORM takes column aliases and lookups (`annotate(**{alias: expr})`):
+`{"kind": "keyword_name", "text": "…"}`, and nothing else. The engine decides it from
+the keys of what the call expands with `**`; the values of the mapping do not decide
+it. The outcome has three cases:
+
+- Keys carrying attacker input meet it, and the call is exploitable. Key taint is
+  carried, apart from value taint, for a dict literal `{alias: expr}`,
+  `dict([(alias, expr)])`, a comprehension `{k: expr for k in request.GET}` and a
+  subscript assignment `mapping[alias] = expr`, and copied by `{**mapping}` and
+  `dict(mapping)`.
+- Constant keys — a dict literal with string keys, `dict(total=…)`, plain keywords —
+  contradict it, whatever the values carry: the call is ruled out
+  (`app.views:12 python.app.models.Item.objects.annotate(keywords=total)`, or
+  `(keywords absent)` for a call passing no keyword), and a project passing only those
+  stays `not_affected`.
+- Keys the engine cannot establish — a `**extra` parameter, a mapping built elsewhere
+  or returned by a function, `dict(zip(...))`, `**request.GET` — leave it pending
+  review, as any unknown argument does: the call is reachable, and exploitable when the
+  mapping's values carry attacker input.
+
+Keys passed through a project wrapper stay pending, and `mapping.update(other)`,
+`mapping.setdefault(k, v)`, `for k in mapping` and `mapping.keys()` carry no key
+taint. A literal the function fills after building it (`m = {}; m[alias] = expr`)
+has keys the literal does not write, so the call is not ruled out.
+
 Every dependency finding records the highest level of evidence established in its
 `level` metadata: `declared` (the requirement allows a vulnerable version), `imported`
 (a module of the package is imported somewhere), `reachable` (an entry point or affected

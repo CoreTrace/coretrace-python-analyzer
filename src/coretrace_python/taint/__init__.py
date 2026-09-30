@@ -2,6 +2,7 @@
 
 from coretrace_python.semantic.symbols import Members
 from coretrace_python.taint.engine import (
+    KEYWORD_NAMES,
     EntryPointAnalysis,
     Taint,
     TaintAnalysis,
@@ -46,6 +47,7 @@ from coretrace_python.taint.templates import (
 
 __all__ = [
     "FILTER_FUNCTIONS",
+    "KEYWORD_NAMES",
     "TEXT_KINDS",
     "AuthorizationGuard",
     "BasePattern",

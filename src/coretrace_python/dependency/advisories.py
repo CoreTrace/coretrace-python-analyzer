@@ -263,4 +263,8 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
         (condition.argument is None and condition.position is None) or condition.values or condition.default
     ):
         raise ValueError("a host condition names the URL argument, by keyword or position, and nothing else")
+    if condition.kind == "keyword_name" and (
+        condition.argument is not None or condition.position is not None or condition.values or condition.default
+    ):
+        raise ValueError("a keyword_name condition carries its text and nothing else")
     return condition

@@ -23,7 +23,7 @@ from coretrace_python.findings import Confidence, Finding, Severity
 from coretrace_python.findings.refutation import Status, Verdict, Verdicts
 from coretrace_python.interprocedural import Arguments, CallSite, ExternalSymbol
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.taint import Sink, TaintFlow, TaintKind
+from coretrace_python.taint import KEYWORD_NAMES, Sink, TaintFlow, TaintKind
 from coretrace_python.taint.urls import UrlProof, redirects_disabled
 
 Affected = Mapping[SymbolId, tuple[Advisory, ...]]
@@ -72,13 +72,25 @@ def check_conditions(
     a ``host`` condition, what ``url`` proves of the value the attacker's input is passed
     in (``passed_as``). A host the URL's constant text fixes rules the call out when the
     call disables redirects; otherwise a redirect may still lead to a host the attacker
-    controls, and the condition stays pending with that uncertainty."""
+    controls, and the condition stays pending with that uncertainty. A ``keyword_name``
+    condition is met when the attacker's input is passed as the keys of a ``**`` mapping,
+    pending when the call expands a mapping whose keys are not established, and
+    contradicted by a call writing every keyword name."""
 
     if entry is None:
         return ConditionCheck()
     met: list[Condition] = []
     pending: list[Condition] = []
     for condition in entry.conditions:
+        if condition.kind == "keyword_name":
+            if any(keyword == KEYWORD_NAMES for _, keyword in passed_as):
+                met.append(condition)
+            elif arguments is None or arguments.keyword_unpacked:
+                pending.append(condition)
+            else:
+                names = ", ".join(sorted({name for name, _ in arguments.keywords}))
+                return ConditionCheck(tuple(met), tuple(pending), condition, names or None)
+            continue
         if condition.kind == "host":
             origin = url.origin if url is not None and _passed_in(condition, passed_as) else None
             if origin is None:
@@ -119,7 +131,8 @@ def ruled_out(module: str, site: CallSite, check: ConditionCheck) -> str:
     python.yaml.load(Loader=python.yaml.SafeLoader)``."""
 
     assert check.contradicted is not None and isinstance(site.target, ExternalSymbol)
-    argument = check.contradicted.argument or f"#{check.contradicted.position}"
+    contradicted = check.contradicted
+    argument = contradicted.argument or ("keywords" if contradicted.kind == "keyword_name" else f"#{contradicted.position}")
     passed = f"{argument} absent" if check.passed is None else f"{argument}={check.passed}"
     return f"{module}:{site.location.start_line} {site.target.symbol}({passed})"
 

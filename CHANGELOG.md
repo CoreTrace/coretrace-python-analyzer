@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Advisories
+
+- An advisory condition of kind `keyword_name` says the attacker must choose a keyword name of the call, as Django's ORM takes column aliases and lookups (`annotate(**{alias: expr})`); it carries its text and nothing else. The engine decides it from the keys of what the call expands with `**`, apart from the mapping's values: keys carrying attacker input meet it and the call is exploitable; constant keys, a dict literal with string keys, `dict(total=...)` or plain keywords, contradict it whatever the values carry, so the call is ruled out (`app.views:12 python.app.models.Item.objects.annotate(keywords=total)`, `(keywords absent)` for a call passing no keyword) and a project passing only those stays `not_affected`; keys the engine cannot establish, a `**extra` parameter, a mapping built elsewhere, `dict(zip(...))`, leave it pending review, so the call is reachable, and exploitable when the mapping's values carry input (#193).
+
+### Analysis
+
+- The keys of a mapping carry taint of their own, apart from its values: a dict literal `{alias: expr}`, `dict([(alias, expr)])`, a comprehension `{k: expr for k in input}` and a subscript assignment `mapping[alias] = expr` taint the `keys` location of the mapping's abstract object, which `{**mapping}`, `dict(mapping)` and `dict(**mapping)` copy; the value taint of a literal is what it was. A call expanding such a mapping with `**` passes its keys as the keyword names of the call, a way of passing only an advisory sink reads. Keys through a project wrapper are not followed; `mapping.update(other)`, `mapping.setdefault(k, v)`, `for k in mapping` and `mapping.keys()` carry no key taint; a mapping bound by a `Phi` is unknown (#193).
+
+### Plugins
+
+- `Arguments.keyword_unpacked` says a call expands a `**mapping` whose keys it does not write; a `**` literal with constant keys that nothing else uses is recorded as its keywords, so `given()` decides safe arguments and argument conditions for it. The cache format changes.
+
 ## 0.19.0 (2026-09-29)
 
 ### Analysis
