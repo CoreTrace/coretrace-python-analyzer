@@ -195,7 +195,8 @@ A model plugin may also carry `advisories`, a tuple of `Advisory` values
 symbols, as the shipped `sample-advisories` plugin does. Requirements matching them are
 reported, calls to the affected symbols become reachable vulnerabilities and tainted
 calls become exploitable ones. An advisory's entry points carry `conditions`, of kind
-`argument`, `host`, `semantic` or `keyword_name`, and `attacker_arguments`, decided as
+`argument` (on the value, or with `present` on the argument being passed at all),
+`host`, `semantic` or `keyword_name`, and `attacker_arguments`, decided as
 the [usage guide](usage.md) describes. An entry point may also declare `suffixes`,
 matched against the tail of a derived symbol of the project's own modules on dot
 boundaries, as a `SuffixSink` matches, for receivers the engine cannot type (see the
