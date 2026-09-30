@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Advisories
+
+- An advisory condition of kind `sequence` says the flaw spans two calls on one receiver: the first call leaves state on the object the entry point — the second call — reuses. It names the `method` the first call must be, by canonical name or `.`-suffix, and, optionally, the argument that call must carry (`{"kind": "sequence", "method": "Session.get", "argument": "verify", "values": ["False"], ...}`), so `s = requests.Session(); s.get(url, verify=False); s.get(other)` marks the second `get` reachable with the prior call as evidence (requests CVE-2024-35195). A receiver followed whole — bound once to the result of a call or a `with` and used only to call its methods — with no matching call on every path to the entry call rules it out (`app.fetch:6 python.requests.Session.get(no prior Session.get on the receiver)`), and a project with only such calls stays `not_affected`. A receiver the engine cannot follow (a parameter, a module-level instance, one passed to another function or mutated through an attribute), a matching call only in a branch or textually later, an unpacking that leaves the first call's arguments undecided, or an entry call that itself carries the named argument — its own prior across the iterations of a loop — leaves the condition pending review (#194).
+
+### Plugins
+
+- `CallSite.prior_calls` records, for a receiver the engine follows whole, the other external calls on the same receiver (`PriorCall`: symbol, location, arguments, and whether it surely executes before this one), in source order; `CallGraph.prior_calls_at` reads it by location, and `check_conditions` takes it to decide `sequence` conditions. The cache format changes.
+
 ## 0.20.0 (2026-09-30)
 
 ### Advisories

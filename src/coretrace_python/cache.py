@@ -34,6 +34,7 @@ from coretrace_python.interprocedural import (
     ModuleGraph,
     Mutation,
     NonlocalWrite,
+    PriorCall,
     SummaryIndex,
     SymbolRead,
     Target,
@@ -42,7 +43,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceId, SourceSpan
 
-CACHE_FORMAT = 12
+CACHE_FORMAT = 13
 
 
 @dataclass(frozen=True)
@@ -351,16 +352,31 @@ def _encode_site(site: CallSite) -> dict[str, Any]:
         "location": _encode_span(site.location),
         "target": _encode_target(site.target),
         "arguments": _encode_arguments(site.arguments),
+        "prior": None
+        if site.prior_calls is None
+        else [
+            [str(p.symbol), _encode_span(p.location), _encode_arguments(p.arguments), p.dominates]
+            for p in site.prior_calls
+        ],
     }
 
 
 def _decode_site(data: Mapping[str, Any]) -> CallSite:
+    prior = data["prior"]
     return CallSite(
         _string(data["caller"]),
         _decode_span(data["location"]),
         _decode_target(data["target"]),
         _decode_arguments(data["arguments"]),
+        None if prior is None else tuple(_decode_prior(entry) for entry in prior),
     )
+
+
+def _decode_prior(data: Any) -> PriorCall:
+    symbol, span, arguments, dominates = data
+    if not isinstance(dominates, bool):
+        raise TypeError(f"expected a boolean, got {dominates!r}")
+    return PriorCall(SymbolId(_string(symbol)), _decode_span(span), _decode_arguments(arguments), dominates)
 
 
 def _encode_arguments(arguments: Arguments) -> dict[str, Any]:

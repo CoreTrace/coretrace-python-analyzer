@@ -187,6 +187,8 @@ def _condition_entry(condition: Condition) -> dict[str, Any]:
         entry["position"] = condition.position
     if condition.default:
         entry["default"] = True
+    if condition.method is not None:
+        entry["method"] = condition.method
     return entry
 
 
@@ -258,7 +260,14 @@ def _condition(entry: Mapping[str, Any]) -> Condition:
         tuple(str(v) for v in entry.get("values") or []),
         position,
         default,
+        None if entry.get("method") is None else str(entry["method"]),
     )
+    if condition.kind == "sequence" and not condition.method:
+        raise ValueError("a sequence condition names the method of the prior call")
+    if condition.kind == "sequence" and condition.values and condition.argument is None:
+        raise ValueError("the values of a sequence condition need the argument they constrain")
+    if condition.kind != "sequence" and condition.method is not None:
+        raise ValueError(f"only a sequence condition names a method, not {condition.kind!r}")
     if condition.kind == "host" and (
         (condition.argument is None and condition.position is None) or condition.values or condition.default
     ):

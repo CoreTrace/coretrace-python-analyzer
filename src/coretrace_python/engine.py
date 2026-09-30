@@ -875,8 +875,15 @@ def _analyse_module(
             ssa = manager.get(SSAAnalysis, function)
             defs = {i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None}
             urls = {flow: flow_url(flow, defs, strings) for flow in flows if flow.kinds & TaintKind.ADVISORY}
+            name = graph.name_of(function)
+            # A flow through a callee reaches the sink at another call: no receiver here.
+            prior = {
+                flow: graph.prior_calls_at(name, flow.location)
+                for flow in flows
+                if flow.kinds & TaintKind.ADVISORY and flow.through is None
+            }
             correlated.extend(
-                correlate(graph.name_of(function), flows, manager.get(RefutationAnalysis, function), affected, urls)
+                correlate(name, flows, manager.get(RefutationAnalysis, function), affected, urls, prior)
             )
     return CachedModule(
         manager.get(EntryPointAnalysis),

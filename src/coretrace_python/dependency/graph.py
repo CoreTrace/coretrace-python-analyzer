@@ -156,8 +156,14 @@ class Condition:
     ``position``); the engine decides it from what the URL's constant text proves. A
     ``keyword_name`` condition says the attacker must choose a keyword name of the call,
     as an ORM alias expanded from a mapping; the engine decides it from the keys of what
-    the call expands with ``**``. A ``semantic`` condition cannot be checked and is
-    reported as pending review."""
+    the call expands with ``**``. A ``sequence`` condition says the flaw needs a prior
+    call on the same receiver: it names the ``method`` that call must be, by canonical
+    name or ``.``-suffix, and, when ``argument`` is named, what it must pass, as an
+    argument condition does. It is met when such a call dominates the entry call —
+    surely executes before it — matches ``method`` and passes a value in ``values``
+    (``default`` for an absent argument); contradicted when the receiver is fully
+    followed and no such prior call can precede; pending otherwise. A ``semantic``
+    condition cannot be checked and is reported as pending review."""
 
     kind: str
     text: str
@@ -165,6 +171,7 @@ class Condition:
     values: tuple[str, ...] = ()
     position: int | None = None
     default: bool = False
+    method: str | None = None
 
     @property
     def checkable(self) -> bool:

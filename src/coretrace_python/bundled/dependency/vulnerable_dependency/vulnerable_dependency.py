@@ -65,7 +65,9 @@ def _ruled_out(ctx: ProjectContext) -> dict[str, list[str]]:
                 if not isinstance(site.target, ExternalSymbol):
                     continue
                 for advisory in affected.get(site.target.symbol, ()):
-                    check = check_conditions(advisory.entry_point(site.target.symbol), site.arguments)
+                    check = check_conditions(
+                        advisory.entry_point(site.target.symbol), site.arguments, prior_calls=site.prior_calls
+                    )
                     if check.contradicted is not None:
                         excluded.setdefault(advisory.id, []).append(ruled_out(module, site, check))
     return excluded
