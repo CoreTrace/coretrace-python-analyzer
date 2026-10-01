@@ -23,6 +23,15 @@ semantic resolution of imports and scopes, lowering to a small intermediate
 representation (PyIR), control-flow graphs, SSA, data-flow and abstract interpretation,
 interprocedural summaries, taint and refutation, then plugins and reporters.
 
+## Repository documents
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [AUTHORS.md](AUTHORS.md)
+- [CHANGELOG.md](CHANGELOG.md)
+- [LICENSE](LICENSE)
+- [SECURITY.md](SECURITY.md)
+
 ## Development
 
 ```bash
