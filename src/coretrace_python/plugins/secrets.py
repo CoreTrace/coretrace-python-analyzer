@@ -47,17 +47,31 @@ _DIGEST_WORDS = ("hash", "digest", "sha", "md5", "checksum", "commit", "etag", "
 # Subresource integrity, as in lock files: ``sha512-<base64>``.
 _INTEGRITY = re.compile(r"^(md5|sha1|sha256|sha384|sha512)-[A-Za-z0-9+/=]+$", re.IGNORECASE)
 _ALPHABET_WORDS = ("alphabet", "charset", "characters", "letters", "digits")
-# PHC strings and modular crypt strings open with their algorithm: argon2, bcrypt,
-# SHA-crypt, PBKDF2 and scrypt.
-_PASSWORD_HASH = re.compile(r"^\$(argon2(i|d|id)|2[abxy]|5|6|pbkdf2(-sha(1|256|512))?|scrypt)\$")
+# A password hash names its algorithm, then its parameters, salt and digest, each in a
+# hash alphabet: modular crypt and PHC strings (``$6$salt$digest``, ``$argon2id$v=19$...``;
+# bcrypt has a fixed shape), Werkzeug's ``method:parameters$salt$hex digest`` and
+# Django's ``algorithm$...$digest``. An algorithm identifier alone is an incomplete hash.
+_HASH_FIELD = r"[A-Za-z0-9./+=,-]"
+_CRYPT_ALGORITHMS = r"1|5|6|7|y|apr1|argon2(?:i|d|id)|pbkdf2(?:-sha(?:1|256|512))?|scrypt"
+_PASSWORD_HASHES = tuple(
+    re.compile(regex)
+    for regex in (
+        r"^\$2[abxy]\$\d\d\$[./A-Za-z0-9]{53}$",
+        rf"^\$(?:{_CRYPT_ALGORITHMS}|2[abxy])\$$",
+        rf"^\$(?:{_CRYPT_ALGORITHMS})(?:\${_HASH_FIELD}+){{2,}}$",
+        r"^(?:scrypt|pbkdf2):[a-z0-9:]+\$[^$\s]+\$[0-9a-f]+$",
+        rf"^(?:pbkdf2_sha(?:1|256)|argon2|bcrypt(?:_sha256)?|scrypt|md5|sha1)(?:\${_HASH_FIELD}*){{2,}}$",
+    )
+)
 
 
 def is_password_hash(value: str) -> bool:
-    """A password hash in PHC or modular crypt format, recognised by its algorithm
-    identifier: what an application stores instead of the password, which it does not
-    reveal, even when the rest of the hash is incomplete."""
+    """A password hash of a known format, which an application stores instead of the
+    password and which does not reveal it: the algorithm identifier followed by fields
+    of that format's shape, or the identifier alone. An identifier followed by anything
+    else (``$2y$Summer2024!``) is a plaintext password."""
 
-    return _PASSWORD_HASH.match(value) is not None
+    return any(pattern.match(value) is not None for pattern in _PASSWORD_HASHES)
 
 
 def looks_like_digest(value: str, name: str | None) -> bool:
