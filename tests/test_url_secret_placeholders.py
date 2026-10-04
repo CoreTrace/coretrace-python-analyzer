@@ -38,7 +38,8 @@ def url_secrets(value: str) -> list[Finding]:
         "https://host.example/api?password=password",
         "https://user:<password>@db.example/app",
         "reverse:udp://127.0.0.1:1234@127.0.0.1:0",
-        "reverse:tcp://example.com:8080@0.0.0.0:80",
+        "reverse:http://localhost:8080@0.0.0.0:80",
+        "(the ?token=...)",
     ],
 )
 def test_placeholders_and_addresses_are_not_url_secrets(value: str) -> None:
@@ -54,6 +55,9 @@ def test_placeholders_and_addresses_are_not_url_secrets(value: str) -> None:
         "https://host.example/api?token=a1b2c3d4e5f6",
         "see ?token=... then https://host.example/api?api_key=a1b2c3d4e5f6",
         "call `https://host.example/api?token=a1b2c3d4e5f6` to sync",
+        "mongodb://admin:P@ssw0rd123@mongo:27017/app",
+        "https://john.doe:123456@example.com/",
+        "postgres://postgres.abcdefghij:20240917@aws-0-eu-west-1.pooler.supabase.com:6543/postgres",
     ],
 )
 def test_real_credentials_in_urls_are_still_reported(value: str) -> None:
