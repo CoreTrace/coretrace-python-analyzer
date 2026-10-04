@@ -1,0 +1,88 @@
+id,rule,severity_raw,path,line_raw,line_verified,verdict,triage_confidence,reason
+F001,ambiguous-module,info,docs/build.py,1,1,Diagnostic,élevée,"docs/build.py is the module 'build' like release/build.py: a symbol python.build.* may name a function of either, and an import of 'build' resolves only from its own root"
+F002,ambiguous-module,info,examples/addons/shutdown.py,1,1,Diagnostic,élevée,"examples/addons/shutdown.py is the module 'shutdown' like test/mitmproxy/data/addonscripts/shutdown.py: a symbol python.shutdown.* may name a function of either, and an import of 'shutdown' resolves only from its own root"
+F003,missing-timeout,low,examples/contrib/jsondump.py,192,192,VP,élevée,Appel requests sans timeout ; robustesse de l’extension optionnelle.
+F004,hardcoded-credential,high,examples/contrib/test_jsondump.py,65,65,FP,élevée,Valeur explicitement utilisée par un test d’authentification/export ; aucune configuration de production.
+F005,missing-timeout,low,examples/contrib/xss_scanner.py,141,141,VP,élevée,Appel requests sans timeout ; robustesse de l’extension optionnelle.
+F006,missing-timeout,low,examples/contrib/xss_scanner.py,152,152,VP,élevée,Appel requests sans timeout ; robustesse de l’extension optionnelle.
+F007,missing-timeout,low,examples/contrib/xss_scanner.py,165,165,VP,élevée,Appel requests sans timeout ; robustesse de l’extension optionnelle.
+F008,missing-timeout,low,examples/contrib/xss_scanner.py,185,185,VP,élevée,Appel requests sans timeout ; robustesse de l’extension optionnelle.
+F009,reachable-vulnerability,medium,mitmproxy/addons/maplocal.py,47,47,VP technique / FP exploitabilité,élevée,Appel réel à safe_join 3.1.5 ; Path(untrusted).parts neutralise le scénario de périphérique Windows testé. Pas de DoS natif reproduit.
+F010,syntax-error,info,mitmproxy/contentviews/_api.py,1,1,Diagnostic,élevée,mitmproxy/contentviews/_api.py:20:1: unsupported syntax: TypeAlias
+F011,syntax-error,info,mitmproxy/contentviews/_utils.py,1,1,Diagnostic,élevée,mitmproxy/contentviews/_utils.py:19:1: unsupported syntax: TypeAlias
+F012,syntax-error,info,mitmproxy/contentviews/_view_image/image_parser.py,1,1,Diagnostic,élevée,mitmproxy/contentviews/_view_image/image_parser.py:10:1: unsupported syntax: TypeAlias
+F013,unsafe-xml,medium,mitmproxy/contrib/wbxml/ASWBXML.py,819,819,FP,moyenne,loadXml sans appel direct trouvé ; le visualiseur utilise loadBytes/getXml. Appels dynamiques externes non exclus.
+F014,syntax-error,info,mitmproxy/net/dns/https_records.py,1,1,Diagnostic,élevée,mitmproxy/net/dns/https_records.py:35:1: unsupported syntax: TypeAlias
+F015,missing-timeout,low,mitmproxy/utils/emoji.py,1870,1870,VP,élevée,"VP de robustesse du générateur lancé explicitement ; appel sous __main__, absent au simple import."
+F016,weak-crypto,medium,mitmproxy/utils/htpasswd.py,77,77,VP,élevée,SHA-1 non salé pour mots de passe uniquement si un htpasswd {SHA} est choisi ; bcrypt est déjà supporté.
+F017,weak-crypto,medium,mitmproxy/utils/magisk.py,90,90,FP,élevée,"MD5 utilisé pour le nom Android/OpenSSL subject_hash_old, pas pour une décision de confiance."
+F018,ambiguous-module,info,release/build.py,1,1,Diagnostic,élevée,"release/build.py is the module 'build' like docs/build.py: a symbol python.build.* may name a function of either, and an import of 'build' resolves only from its own root"
+F019,command-injection,high,release/build.py,178,178,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F020,command-injection,high,release/build.py,200,200,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F021,command-injection,high,release/release.py,104,104,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F022,command-injection,high,release/release.py,108,108,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F023,command-injection,high,release/release.py,132,132,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F024,command-injection,high,release/release.py,132,132,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F025,command-injection,high,release/release.py,137,137,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F026,command-injection,high,release/release.py,153,153,FP,élevée,"Exécutable fixe, liste d’arguments sans shell ; entrée opérateur ou sortie locale Git, aucun interpréteur de commandes démontré."
+F027,hardcoded-secret,high,test/helper_tools/gen_sample_flows.py,2,2,FP,élevée,"Texte d’aide/docstring contenant ?token=... comme placeholder, pas un vrai token."
+F028,hardcoded-secret,high,test/helper_tools/gen_sample_flows.py,271,271,FP,élevée,"Texte d’aide/docstring contenant ?token=... comme placeholder, pas un vrai token."
+F029,high-entropy-string,medium,test/mitmproxy/addons/test_next_layer.py,40,40,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F030,high-entropy-string,medium,test/mitmproxy/addons/test_next_layer.py,65,65,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F031,high-entropy-string,medium,test/mitmproxy/addons/test_next_layer.py,97,97,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F032,high-entropy-string,medium,test/mitmproxy/addons/test_next_layer.py,128,128,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F033,high-entropy-string,medium,test/mitmproxy/addons/test_next_layer.py,976,976,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F034,ambiguous-module,info,test/mitmproxy/data/addonscripts/addon.py,1,1,Diagnostic,élevée,"test/mitmproxy/data/addonscripts/addon.py is the module 'addon' like test/mitmproxy/data/addonscripts/same_filename/addon.py: a symbol python.addon.* may name a function of either, and an import of 'addon' resolves only from its own root"
+F035,ambiguous-module,info,test/mitmproxy/data/addonscripts/same_filename/addon.py,1,1,Diagnostic,élevée,"test/mitmproxy/data/addonscripts/same_filename/addon.py is the module 'addon' like test/mitmproxy/data/addonscripts/addon.py: a symbol python.addon.* may name a function of either, and an import of 'addon' resolves only from its own root"
+F036,ambiguous-module,info,test/mitmproxy/data/addonscripts/shutdown.py,1,1,Diagnostic,élevée,"test/mitmproxy/data/addonscripts/shutdown.py is the module 'shutdown' like examples/addons/shutdown.py: a symbol python.shutdown.* may name a function of either, and an import of 'shutdown' resolves only from its own root"
+F037,ambiguous-module,info,test/mitmproxy/data/servercert/generate.py,1,1,Diagnostic,élevée,"test/mitmproxy/data/servercert/generate.py is the module 'generate' like test/mitmproxy/net/data/verificationcerts/generate.py: a symbol python.generate.* may name a function of either, and an import of 'generate' resolves only from its own root"
+F038,ambiguous-module,info,test/mitmproxy/net/data/verificationcerts/generate.py,1,1,Diagnostic,élevée,"test/mitmproxy/net/data/verificationcerts/generate.py is the module 'generate' like test/mitmproxy/data/servercert/generate.py: a symbol python.generate.* may name a function of either, and an import of 'generate' resolves only from its own root"
+F039,high-entropy-string,medium,test/mitmproxy/net/http/test_cookies.py,21,21,FP,élevée,"Fixture de parsing de cookies, utilisée comme donnée attendue ; pas de credential de production établi."
+F040,high-entropy-string,medium,test/mitmproxy/net/test_encoding.py,79,79,FP,élevée,"Buffer compressé hexadécimal dans un test de décodage, pas un secret."
+F041,high-entropy-string,medium,test/mitmproxy/net/test_encoding.py,85,85,FP,élevée,"Buffer compressé hexadécimal dans un test de décodage, pas un secret."
+F042,high-entropy-string,medium,test/mitmproxy/proxy/layers/quic/test__stream_layers.py,114,114,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F043,high-entropy-string,medium,test/mitmproxy/proxy/layers/quic/test__stream_layers.py,147,147,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F044,high-entropy-string,medium,test/mitmproxy/proxy/layers/quic/test__stream_layers.py,179,179,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F045,high-entropy-string,medium,test/mitmproxy/proxy/layers/test_tls.py,46,46,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F046,hardcoded-secret,high,test/mitmproxy/proxy/test_mode_servers.py,352,352,FP,élevée,"La syntaxe reverse:udp://destination@écoute contient des adresses locales de test, pas des identifiants URL."
+F047,hardcoded-secret,high,test/mitmproxy/proxy/test_mode_servers.py,356,356,FP,élevée,"La syntaxe reverse:udp://destination@écoute contient des adresses locales de test, pas des identifiants URL."
+F048,high-entropy-string,medium,test/mitmproxy/test_tls.py,4,4,FP,élevée,"Trame TLS/QUIC hexadécimale utilisée dans les tests protocolaires, pas un secret."
+F049,hardcoded-credential,high,test/mitmproxy/tools/web/test_webaddons.py,26,26,FP,élevée,Valeur explicitement utilisée par un test d’authentification/export ; aucune configuration de production.
+F050,hardcoded-credential,high,test/mitmproxy/tools/web/test_webaddons.py,37,37,FP,élevée,Valeur explicitement utilisée par un test d’authentification/export ; aucune configuration de production.
+F051,hardcoded-credential,high,test/mitmproxy/tools/web/test_webaddons.py,48,48,FP,élevée,Valeur explicitement utilisée par un test d’authentification/export ; aucune configuration de production.
+F052,high-entropy-string,medium,test/mitmproxy/data/har_files/charles.json,57,128,FP,élevée,"En-tête X-Amz-Cf-Id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F053,high-entropy-string,medium,test/mitmproxy/data/har_files/chrome.json,57,188,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F054,high-entropy-string,medium,test/mitmproxy/data/har_files/chrome.json,57,498,FP,élevée,"En-tête x-client-data : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F055,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,176,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F056,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,847,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F057,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,1023,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F058,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,1199,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F059,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,1386,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F060,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,1573,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F061,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,1708,FP,élevée,"En-tête x-amz-id-2 : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F062,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,1919,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F063,high-entropy-string,medium,test/mitmproxy/data/har_files/firefox.json,57,2099,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F064,high-entropy-string,medium,test/mitmproxy/data/har_files/head-content-length.json,57,100,FP,élevée,"En-tête x-amz-id-2 : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F065,high-entropy-string,medium,test/mitmproxy/data/har_files/insomnia.json,54,129,FP,élevée,"En-tête X-Amz-Cf-Id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F066,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,132,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F067,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,260,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F068,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,392,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F069,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,520,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F070,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,648,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F071,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,776,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F072,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,900,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F073,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1028,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F074,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1156,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F075,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1296,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F076,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1436,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F077,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1576,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F078,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1716,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F079,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1848,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F080,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,1976,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F081,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,2104,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F082,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,2228,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F083,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,2399,FP,élevée,"En-tête x-amz-id-2 : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F084,high-entropy-string,medium,test/mitmproxy/data/har_files/safari.json,57,2538,FP,élevée,"En-tête x-amz-cf-id : identifiant de requête/métadonnée publique, pas une clé d’authentification."
+F085,vulnerable-dependency,medium,uv.lock,620,1998,VP,élevée,"Werkzeug 3.1.5 verrouillé ; CVE-2026-27199 au niveau inventaire, même CVE que F009. Version déployée non mesurée."
+F086,hardcoded-credential,high,web/package-lock.json,71,71,FP,élevée,"js-tokens est un nom de dépendance npm ; valeur = contrainte de version, pas un secret."
+F087,hardcoded-credential,high,web/package-lock.json,71,9468,FP,élevée,"js-tokens est un nom de dépendance npm ; valeur = contrainte de version, pas un secret."

@@ -1,0 +1,33 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://openvex.dev/docs/public/vex-7511cf99650ed4d7aad825450a632ac63afaa1710f1f1d66746aa1d928dd1a49",
+  "author": "Unknown Author",
+  "timestamp": "2026-10-02T12:38:51Z",
+  "version": 1,
+  "tooling": "coretrace-python-analyzer 0.21.0; dependency-policy 1.0.0 (sha256:64108a692266b69ec97bccc9301116b718fbfff19596556a69473daff42182d5); reachable-vulnerability 1.0.0 (sha256:a934ad18a4c225a0b85e0f54e7d02d6e044b0f37e238aa1dcabd969df2055fd8); sample-advisories 1.0.0 (sha256:0d70ce268e90561f9a07eda73728c2aefc8984fc71b9406b9744f0d19a0c94b7); vulnerable-dependency 1.0.0 (sha256:b528af35294646c5dabdd8e9d1977007543ca665b1ceabb75fae2d1cddd5dcb4); aiohttp-models 1.0.0 (sha256:1fb9fc998a1828174de89efe2e63520e982d8b2952fc03da057fb2e35b6a8e2c); bottle-models 1.0.0 (sha256:a419b5911ab7736602d006a51d198199f4b9446264ad05b2c08a8ec16ba58b3c); cli-models 1.0.0 (sha256:2c7ea65765a0f27cdc62aa1aeb1d63a8a4fa1a1e6907c1650018daf741852ba5); credential-models 1.0.0 (sha256:35254a07aee5800506f32d3af2b716fd2fd57eadf64d2cb962ff69e8acaeead8); db-driver-models 1.0.0 (sha256:35ff485fc04801b3404bfe58b998c3901f14a55a5c1f1e80b8b37e388eb4dde0); django-models 1.0.0 (sha256:900ef18837883e3ec7f46ff23280505ddc61e3606838c5a1574e2bb3d6dbe754); fastapi-models 1.0.0 (sha256:ecf4ab97f3b91e75a38420f6577c1e214e007dcb214bb33b466a47a055de3772); flask-models 1.0.0 (sha256:86276bc1e6be85913a2161af269ad84b4cd19571abf8fa4dc22417afa1ea95ff); http-client-models 1.0.0 (sha256:5e4f46304dbc02f8c960215468bd87416e921064e7dfe9dc342e6a4f431001ce); python-stdlib-models 1.0.0 (sha256:2b237d794970e72d41fcc13bf0506c2fe43ef24333ab76804e9bb51e05f5595b); sqlalchemy-models 1.0.0 (sha256:f68f77a847d23dd85d049c9428cbd802633dc85a5351532cc963f186ab5b5acf); tornado-models 1.0.0 (sha256:69b2ef24e7cb3b93fe4859fd98e475c126448f0034136cbf97d24e1298c21b27); config-secrets 1.0.0 (sha256:7e7fb490705c5e5de981a2fbef129f1458ad1aaeb259e56eb49cc8ab1cdaffd5); hardcoded-secrets 1.0.0 (sha256:9629e9c37fd168250f7286d2e8a3b2f62267425f8100dcc5f56c2bd31eddf7dd); code-injection 1.0.0 (sha256:b97fb5ac23bcd251fa0408c16a95e2a23be2496252e3f78596bd339d5f7335dd); command-injection 1.0.0 (sha256:a79f25466752e1a0cf5105b6194d99ad4bcdc16834598d7bf86a167a0c5fd3e0); insecure-deserialization 1.0.0 (sha256:197001f660f3286f015baf9f2ee7fe0e9c376d98f5fd45886b9ebf51261c93e6); nosql-injection 1.0.0 (sha256:24a28107a44322339da20f519b49506f73b772b1961f1c4acb19180bcc36f3f9); open-redirect 1.0.0 (sha256:e0d5ee69073fb54e13158651f801c80250056276f9a4eb59e3356fd8c4cef043); path-traversal 1.0.0 (sha256:26446a23fea57e6a2ff582b6c905d84b7cd04df19e1020c31a888b038b0b82f9); plaintext-credentials 1.0.0 (sha256:281eb1d021a92333ea35541a4a8dddd1e61e60cb48741f3f8bbac7311318fef5); sql-injection 1.0.0 (sha256:7c6202503365c70289c3d35dae63a4a9510d7d47d1c0a4e85aaf6e72c7dab699); ssrf 1.0.0 (sha256:4354049a2ad1487fbf8688901fe40528024f4ec58caa35bbee2c13452884d369); xss 1.0.0 (sha256:9c6a3f3c7f68fe2441f3bcd3f4be2f3dbcaa837f541e3a8c0944fc940c0f30d1); dangerous-eval 1.0.0 (sha256:0be6472598d8ec6357f4dc2c8b20f97a26f011e6edcfb40d613a7560151ddd0a); flask-debug 1.0.0 (sha256:667f4e76bee3c1dd3b70d19cbc4587611240de469a35e3e6214b8cdbb14d600d); insecure-temp-file 1.0.0 (sha256:51395d5b1518f754d663a8d09695f0b5b2da55255b2f5e699daaaec2d47ea8b3); insecure-tls 1.0.0 (sha256:97fe6370d985b93eb2fddef6ec9b8f255904c19d98ccedd5fd1b5afc932c9740); missing-timeout 1.0.0 (sha256:8ef60c32d47d632685ef001691360f93c83e127eebbbe252ab4fcb0fe76ed4db); unsafe-archive-extraction 1.0.0 (sha256:4109a4eb18c45e6c50004fd8f770c055cbb4154a713dd14664870dd1e03dfda4); unsafe-xml 1.0.0 (sha256:416083cda0ba7ab89581c0471606a806efa2a2049262f2d75201247209eb49ed); weak-crypto 1.0.0 (sha256:1236fdfb5a1b6583cec47d8c1e8183a4284d283413581ebd232873b19e50ce2a); weak-random 1.0.0 (sha256:0f6287a58ec2daafb13b7b011b68e81d00bc4e1e29b6c5dac9bf114c7ab21fa9); architecture-rules 1.0.0 (sha256:912f10abeb0dc954cab6ce0fd9e09c7d75ce64f20f916b3f143538317ffe0578); curated-advisories 2026.09.27 (sha256:445a0bd33b7905052cfaa8a945a3c1eb30df95507cc3325da995b60bfd321cb7); enterprise-validators 1.0.0 (sha256:bddec63ed9fb4b9d37308ff27c9732bd7827394e0bfba917c3ad1974e77bba83); exposure-prioritization 1.0.0 (sha256:c7d14dafb655bfbabd0f007a50b0e061a186e4817067938bd0c2582345551447); frameworks-models 1.0.0 (sha256:1479b437640ec047234a5273a30283fd45432f2b1d0338898aa559cc8ebf1f1d); orm-n-plus-one 1.0.0 (sha256:32f043bb2a27a81d9c8d1a4be455ed4227ac494acdc292f3316d0c2034b5823d); serverless-declarations 1.0.0 (sha256:ad06322d7173cefffb6b2a171aaa829b5b028c7e0bff989f70c3973c468d37db)",
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-27199",
+        "description": "safe_join() accepts a Windows device name in a later segment of a multi-segment path (reports/NUL), so reading the path never ends",
+        "aliases": [
+          "GHSA-29vq-49wr-vm6x",
+          "PYSEC-2026-2320"
+        ]
+      },
+      "products": [
+        {
+          "@id": "pkg:generic/mitmproxy",
+          "subcomponents": [
+            {
+              "@id": "pkg:pypi/werkzeug@3.1.5"
+            }
+          ]
+        }
+      ],
+      "status": "affected",
+      "action_statement": "Update werkzeug to a version outside the vulnerable range <3.1.6.",
+      "status_notes": "Reached by the project's code at mitmproxy/addons/maplocal.py:47 python.werkzeug.security.safe_join (reachable)."
+    }
+  ]
+}
