@@ -1,0 +1,13 @@
+Werkzeug wheel: werkzeug-3.1.5-py3-none-any.whl
+SHA256: 5111e36e91086ece91f93268bb39b4a35c1e6f1feac762c9c822ded0a4e322dc
+'reports/NUL' : direct safe_join = 'C:/mapped/reports/NUL' ; mitmproxy wrapper = REJECTED
+'reports/CON' : direct safe_join = 'C:/mapped/reports/CON' ; mitmproxy wrapper = REJECTED
+'reports/CON.txt.html' : direct safe_join = 'C:/mapped/reports/CON.txt.html' ; mitmproxy wrapper = REJECTED
+'reports/NUL ' : direct safe_join = 'C:/mapped/reports/NUL ' ; mitmproxy wrapper = REJECTED
+'reports/COM1' : direct safe_join = 'C:/mapped/reports/COM1' ; mitmproxy wrapper = REJECTED
+'reports\\NUL' : direct safe_join = None ; mitmproxy wrapper = REJECTED
+Normal path accepted: PASS
+Windows path semantics simulated; no Windows device opened and no native Windows DoS attempted.
+AST search: no direct .loadXml() call in repository; dynamic calls cannot be excluded by this check.
+No mitmproxy source or test file changed; no release scripts executed.
+Downloaded Werkzeug wheel SHA256 matches the wheel recorded in mitmproxy uv.lock: PASS

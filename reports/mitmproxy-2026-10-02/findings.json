@@ -1,0 +1,5470 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "coretrace-python-analyzer",
+    "version": "0.21.0",
+    "components": [
+      {
+        "kind": "plugin",
+        "name": "dependency-policy",
+        "version": "1.0.0",
+        "digest": "sha256:64108a692266b69ec97bccc9301116b718fbfff19596556a69473daff42182d5"
+      },
+      {
+        "kind": "plugin",
+        "name": "reachable-vulnerability",
+        "version": "1.0.0",
+        "digest": "sha256:a934ad18a4c225a0b85e0f54e7d02d6e044b0f37e238aa1dcabd969df2055fd8"
+      },
+      {
+        "kind": "plugin",
+        "name": "sample-advisories",
+        "version": "1.0.0",
+        "digest": "sha256:0d70ce268e90561f9a07eda73728c2aefc8984fc71b9406b9744f0d19a0c94b7"
+      },
+      {
+        "kind": "plugin",
+        "name": "vulnerable-dependency",
+        "version": "1.0.0",
+        "digest": "sha256:b528af35294646c5dabdd8e9d1977007543ca665b1ceabb75fae2d1cddd5dcb4"
+      },
+      {
+        "kind": "plugin",
+        "name": "aiohttp-models",
+        "version": "1.0.0",
+        "digest": "sha256:1fb9fc998a1828174de89efe2e63520e982d8b2952fc03da057fb2e35b6a8e2c"
+      },
+      {
+        "kind": "plugin",
+        "name": "bottle-models",
+        "version": "1.0.0",
+        "digest": "sha256:a419b5911ab7736602d006a51d198199f4b9446264ad05b2c08a8ec16ba58b3c"
+      },
+      {
+        "kind": "plugin",
+        "name": "cli-models",
+        "version": "1.0.0",
+        "digest": "sha256:2c7ea65765a0f27cdc62aa1aeb1d63a8a4fa1a1e6907c1650018daf741852ba5"
+      },
+      {
+        "kind": "plugin",
+        "name": "credential-models",
+        "version": "1.0.0",
+        "digest": "sha256:35254a07aee5800506f32d3af2b716fd2fd57eadf64d2cb962ff69e8acaeead8"
+      },
+      {
+        "kind": "plugin",
+        "name": "db-driver-models",
+        "version": "1.0.0",
+        "digest": "sha256:35ff485fc04801b3404bfe58b998c3901f14a55a5c1f1e80b8b37e388eb4dde0"
+      },
+      {
+        "kind": "plugin",
+        "name": "django-models",
+        "version": "1.0.0",
+        "digest": "sha256:900ef18837883e3ec7f46ff23280505ddc61e3606838c5a1574e2bb3d6dbe754"
+      },
+      {
+        "kind": "plugin",
+        "name": "fastapi-models",
+        "version": "1.0.0",
+        "digest": "sha256:ecf4ab97f3b91e75a38420f6577c1e214e007dcb214bb33b466a47a055de3772"
+      },
+      {
+        "kind": "plugin",
+        "name": "flask-models",
+        "version": "1.0.0",
+        "digest": "sha256:86276bc1e6be85913a2161af269ad84b4cd19571abf8fa4dc22417afa1ea95ff"
+      },
+      {
+        "kind": "plugin",
+        "name": "http-client-models",
+        "version": "1.0.0",
+        "digest": "sha256:5e4f46304dbc02f8c960215468bd87416e921064e7dfe9dc342e6a4f431001ce"
+      },
+      {
+        "kind": "plugin",
+        "name": "python-stdlib-models",
+        "version": "1.0.0",
+        "digest": "sha256:2b237d794970e72d41fcc13bf0506c2fe43ef24333ab76804e9bb51e05f5595b"
+      },
+      {
+        "kind": "plugin",
+        "name": "sqlalchemy-models",
+        "version": "1.0.0",
+        "digest": "sha256:f68f77a847d23dd85d049c9428cbd802633dc85a5351532cc963f186ab5b5acf"
+      },
+      {
+        "kind": "plugin",
+        "name": "tornado-models",
+        "version": "1.0.0",
+        "digest": "sha256:69b2ef24e7cb3b93fe4859fd98e475c126448f0034136cbf97d24e1298c21b27"
+      },
+      {
+        "kind": "plugin",
+        "name": "config-secrets",
+        "version": "1.0.0",
+        "digest": "sha256:7e7fb490705c5e5de981a2fbef129f1458ad1aaeb259e56eb49cc8ab1cdaffd5"
+      },
+      {
+        "kind": "plugin",
+        "name": "hardcoded-secrets",
+        "version": "1.0.0",
+        "digest": "sha256:9629e9c37fd168250f7286d2e8a3b2f62267425f8100dcc5f56c2bd31eddf7dd"
+      },
+      {
+        "kind": "plugin",
+        "name": "code-injection",
+        "version": "1.0.0",
+        "digest": "sha256:b97fb5ac23bcd251fa0408c16a95e2a23be2496252e3f78596bd339d5f7335dd"
+      },
+      {
+        "kind": "plugin",
+        "name": "command-injection",
+        "version": "1.0.0",
+        "digest": "sha256:a79f25466752e1a0cf5105b6194d99ad4bcdc16834598d7bf86a167a0c5fd3e0"
+      },
+      {
+        "kind": "plugin",
+        "name": "insecure-deserialization",
+        "version": "1.0.0",
+        "digest": "sha256:197001f660f3286f015baf9f2ee7fe0e9c376d98f5fd45886b9ebf51261c93e6"
+      },
+      {
+        "kind": "plugin",
+        "name": "nosql-injection",
+        "version": "1.0.0",
+        "digest": "sha256:24a28107a44322339da20f519b49506f73b772b1961f1c4acb19180bcc36f3f9"
+      },
+      {
+        "kind": "plugin",
+        "name": "open-redirect",
+        "version": "1.0.0",
+        "digest": "sha256:e0d5ee69073fb54e13158651f801c80250056276f9a4eb59e3356fd8c4cef043"
+      },
+      {
+        "kind": "plugin",
+        "name": "path-traversal",
+        "version": "1.0.0",
+        "digest": "sha256:26446a23fea57e6a2ff582b6c905d84b7cd04df19e1020c31a888b038b0b82f9"
+      },
+      {
+        "kind": "plugin",
+        "name": "plaintext-credentials",
+        "version": "1.0.0",
+        "digest": "sha256:281eb1d021a92333ea35541a4a8dddd1e61e60cb48741f3f8bbac7311318fef5"
+      },
+      {
+        "kind": "plugin",
+        "name": "sql-injection",
+        "version": "1.0.0",
+        "digest": "sha256:7c6202503365c70289c3d35dae63a4a9510d7d47d1c0a4e85aaf6e72c7dab699"
+      },
+      {
+        "kind": "plugin",
+        "name": "ssrf",
+        "version": "1.0.0",
+        "digest": "sha256:4354049a2ad1487fbf8688901fe40528024f4ec58caa35bbee2c13452884d369"
+      },
+      {
+        "kind": "plugin",
+        "name": "xss",
+        "version": "1.0.0",
+        "digest": "sha256:9c6a3f3c7f68fe2441f3bcd3f4be2f3dbcaa837f541e3a8c0944fc940c0f30d1"
+      },
+      {
+        "kind": "plugin",
+        "name": "dangerous-eval",
+        "version": "1.0.0",
+        "digest": "sha256:0be6472598d8ec6357f4dc2c8b20f97a26f011e6edcfb40d613a7560151ddd0a"
+      },
+      {
+        "kind": "plugin",
+        "name": "flask-debug",
+        "version": "1.0.0",
+        "digest": "sha256:667f4e76bee3c1dd3b70d19cbc4587611240de469a35e3e6214b8cdbb14d600d"
+      },
+      {
+        "kind": "plugin",
+        "name": "insecure-temp-file",
+        "version": "1.0.0",
+        "digest": "sha256:51395d5b1518f754d663a8d09695f0b5b2da55255b2f5e699daaaec2d47ea8b3"
+      },
+      {
+        "kind": "plugin",
+        "name": "insecure-tls",
+        "version": "1.0.0",
+        "digest": "sha256:97fe6370d985b93eb2fddef6ec9b8f255904c19d98ccedd5fd1b5afc932c9740"
+      },
+      {
+        "kind": "plugin",
+        "name": "missing-timeout",
+        "version": "1.0.0",
+        "digest": "sha256:8ef60c32d47d632685ef001691360f93c83e127eebbbe252ab4fcb0fe76ed4db"
+      },
+      {
+        "kind": "plugin",
+        "name": "unsafe-archive-extraction",
+        "version": "1.0.0",
+        "digest": "sha256:4109a4eb18c45e6c50004fd8f770c055cbb4154a713dd14664870dd1e03dfda4"
+      },
+      {
+        "kind": "plugin",
+        "name": "unsafe-xml",
+        "version": "1.0.0",
+        "digest": "sha256:416083cda0ba7ab89581c0471606a806efa2a2049262f2d75201247209eb49ed"
+      },
+      {
+        "kind": "plugin",
+        "name": "weak-crypto",
+        "version": "1.0.0",
+        "digest": "sha256:1236fdfb5a1b6583cec47d8c1e8183a4284d283413581ebd232873b19e50ce2a"
+      },
+      {
+        "kind": "plugin",
+        "name": "weak-random",
+        "version": "1.0.0",
+        "digest": "sha256:0f6287a58ec2daafb13b7b011b68e81d00bc4e1e29b6c5dac9bf114c7ab21fa9"
+      },
+      {
+        "kind": "plugin",
+        "name": "architecture-rules",
+        "version": "1.0.0",
+        "digest": "sha256:912f10abeb0dc954cab6ce0fd9e09c7d75ce64f20f916b3f143538317ffe0578"
+      },
+      {
+        "kind": "plugin",
+        "name": "curated-advisories",
+        "version": "2026.09.27",
+        "digest": "sha256:445a0bd33b7905052cfaa8a945a3c1eb30df95507cc3325da995b60bfd321cb7"
+      },
+      {
+        "kind": "plugin",
+        "name": "enterprise-validators",
+        "version": "1.0.0",
+        "digest": "sha256:bddec63ed9fb4b9d37308ff27c9732bd7827394e0bfba917c3ad1974e77bba83"
+      },
+      {
+        "kind": "plugin",
+        "name": "exposure-prioritization",
+        "version": "1.0.0",
+        "digest": "sha256:c7d14dafb655bfbabd0f007a50b0e061a186e4817067938bd0c2582345551447"
+      },
+      {
+        "kind": "plugin",
+        "name": "frameworks-models",
+        "version": "1.0.0",
+        "digest": "sha256:1479b437640ec047234a5273a30283fd45432f2b1d0338898aa559cc8ebf1f1d"
+      },
+      {
+        "kind": "plugin",
+        "name": "orm-n-plus-one",
+        "version": "1.0.0",
+        "digest": "sha256:32f043bb2a27a81d9c8d1a4be455ed4227ac494acdc292f3316d0c2034b5823d"
+      },
+      {
+        "kind": "plugin",
+        "name": "serverless-declarations",
+        "version": "1.0.0",
+        "digest": "sha256:ad06322d7173cefffb6b2a171aaa829b5b028c7e0bff989f70c3973c468d37db"
+      }
+    ]
+  },
+  "root": "/Users/hugopayet/Desktop/coretrace-python-dir/coretrace-python-analyzer/tests-project/mitmproxy",
+  "findings": [
+    {
+      "rule_id": "ambiguous-module",
+      "message": "docs/build.py is the module 'build' like release/build.py: a symbol python.build.* may name a function of either, and an import of 'build' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "docs/build.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "ambiguous-module",
+      "message": "examples/addons/shutdown.py is the module 'shutdown' like test/mitmproxy/data/addonscripts/shutdown.py: a symbol python.shutdown.* may name a function of either, and an import of 'shutdown' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "examples/addons/shutdown.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "exposure": "local",
+        "exposed_by": "examples.addons.shutdown.<module>"
+      }
+    },
+    {
+      "rule_id": "missing-timeout",
+      "message": "python.requests.post is called without a timeout; a slow or silent peer blocks this code indefinitely",
+      "severity": "low",
+      "confidence": "high",
+      "location": {
+        "path": "examples/contrib/jsondump.py",
+        "line": 192,
+        "column": 13,
+        "end_line": 192,
+        "end_column": 74
+      },
+      "function": "dump",
+      "metadata": {
+        "symbol": "python.requests.post",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "hardcoded-credential",
+      "message": "Hardcoded credential in dump_password: p\u2026 (4 characters)",
+      "severity": "high",
+      "confidence": "low",
+      "location": {
+        "path": "examples/contrib/test_jsondump.py",
+        "line": 65,
+        "column": 35,
+        "end_line": 65,
+        "end_column": 41
+      },
+      "function": "test_http",
+      "metadata": {
+        "name": "dump_password",
+        "length": "4",
+        "context": "test",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "missing-timeout",
+      "message": "python.requests.get is called without a timeout; a slow or silent peer blocks this code indefinitely",
+      "severity": "low",
+      "confidence": "high",
+      "location": {
+        "path": "examples/contrib/xss_scanner.py",
+        "line": 141,
+        "column": 12,
+        "end_line": 141,
+        "end_column": 46
+      },
+      "function": "test_end_of_URL_injection",
+      "metadata": {
+        "symbol": "python.requests.get",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "missing-timeout",
+      "message": "python.requests.get is called without a timeout; a slow or silent peer blocks this code indefinitely",
+      "severity": "low",
+      "confidence": "high",
+      "location": {
+        "path": "examples/contrib/xss_scanner.py",
+        "line": 152,
+        "column": 12,
+        "end_line": 154,
+        "end_column": 6
+      },
+      "function": "test_referer_injection",
+      "metadata": {
+        "symbol": "python.requests.get",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "missing-timeout",
+      "message": "python.requests.get is called without a timeout; a slow or silent peer blocks this code indefinitely",
+      "severity": "low",
+      "confidence": "high",
+      "location": {
+        "path": "examples/contrib/xss_scanner.py",
+        "line": 165,
+        "column": 12,
+        "end_line": 167,
+        "end_column": 6
+      },
+      "function": "test_user_agent_injection",
+      "metadata": {
+        "symbol": "python.requests.get",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "missing-timeout",
+      "message": "python.requests.get is called without a timeout; a slow or silent peer blocks this code indefinitely",
+      "severity": "low",
+      "confidence": "high",
+      "location": {
+        "path": "examples/contrib/xss_scanner.py",
+        "line": 185,
+        "column": 12,
+        "end_line": 185,
+        "end_column": 50
+      },
+      "function": "test_query_injection",
+      "metadata": {
+        "symbol": "python.requests.get",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "reachable-vulnerability",
+      "message": "CVE-2026-27199: python.werkzeug.security.safe_join is affected in the required werkzeug <3.1.6: safe_join() accepts a Windows device name in a later segment of a multi-segment path (reports/NUL), so reading the path never ends",
+      "severity": "medium",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/addons/maplocal.py",
+        "line": 47,
+        "column": 14,
+        "end_line": 47,
+        "end_column": 58
+      },
+      "function": "_safe_path_join",
+      "metadata": {
+        "advisory": "CVE-2026-27199",
+        "package": "werkzeug",
+        "symbol": "python.werkzeug.security.safe_join",
+        "level": "reachable",
+        "entry_point": "python.werkzeug.security.safe_join",
+        "justification": "changed by commit f407712fdc60 (3.1.6): the device check applies to every '/'-separated segment of each part",
+        "conditions": "runs on Windows, where reports/NUL still names a device and reading it never ends",
+        "conditions_pending_review": "runs on Windows, where reports/NUL still names a device and reading it never ends",
+        "exposure": "unreached",
+        "advisory_source": "curated-advisories@2026.09.27"
+      }
+    },
+    {
+      "rule_id": "syntax-error",
+      "message": "/Users/hugopayet/Desktop/coretrace-python-dir/coretrace-python-analyzer/tests-project/mitmproxy/mitmproxy/contentviews/_api.py:20:1: unsupported syntax: TypeAlias",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/contentviews/_api.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "syntax-error",
+      "message": "/Users/hugopayet/Desktop/coretrace-python-dir/coretrace-python-analyzer/tests-project/mitmproxy/mitmproxy/contentviews/_utils.py:19:1: unsupported syntax: TypeAlias",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/contentviews/_utils.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "syntax-error",
+      "message": "/Users/hugopayet/Desktop/coretrace-python-dir/coretrace-python-analyzer/tests-project/mitmproxy/mitmproxy/contentviews/_view_image/image_parser.py:10:1: unsupported syntax: TypeAlias",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/contentviews/_view_image/image_parser.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "unsafe-xml",
+      "message": "call to python.xml.dom.minidom.parseString parses XML with entity expansion enabled; use defusedxml",
+      "severity": "medium",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/contrib/wbxml/ASWBXML.py",
+        "line": 819,
+        "column": 17,
+        "end_line": 819,
+        "end_column": 52
+      },
+      "function": "loadXml",
+      "metadata": {
+        "symbol": "python.xml.dom.minidom.parseString",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "syntax-error",
+      "message": "/Users/hugopayet/Desktop/coretrace-python-dir/coretrace-python-analyzer/tests-project/mitmproxy/mitmproxy/net/dns/https_records.py:35:1: unsupported syntax: TypeAlias",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/net/dns/https_records.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "missing-timeout",
+      "message": "python.requests.get is called without a timeout; a slow or silent peer blocks this code indefinitely",
+      "severity": "low",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/utils/emoji.py",
+        "line": 1870,
+        "column": 9,
+        "end_line": 1870,
+        "end_column": 54
+      },
+      "function": "<module>",
+      "metadata": {
+        "symbol": "python.requests.get",
+        "exposure": "local",
+        "exposed_by": "mitmproxy.utils.emoji.<module>"
+      }
+    },
+    {
+      "rule_id": "weak-crypto",
+      "message": "call to python.hashlib.sha1 uses a broken hash algorithm",
+      "severity": "medium",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/utils/htpasswd.py",
+        "line": 77,
+        "column": 22,
+        "end_line": 77,
+        "end_column": 60
+      },
+      "function": "check_password",
+      "metadata": {
+        "symbol": "python.hashlib.sha1",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "weak-crypto",
+      "message": "call to python.hashlib.md5 uses a broken hash algorithm",
+      "severity": "medium",
+      "confidence": "high",
+      "location": {
+        "path": "mitmproxy/utils/magisk.py",
+        "line": 90,
+        "column": 17,
+        "end_line": 90,
+        "end_column": 55
+      },
+      "function": "subject_hash_old",
+      "metadata": {
+        "symbol": "python.hashlib.md5",
+        "exposure": "exposed",
+        "exposed_by": "mitmproxy.addons.onboardingapp.magisk"
+      }
+    },
+    {
+      "rule_id": "ambiguous-module",
+      "message": "release/build.py is the module 'build' like docs/build.py: a symbol python.build.* may name a function of either, and an import of 'build' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "release/build.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: argv input reaches python.subprocess.check_call",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "release/build.py",
+        "line": 178,
+        "column": 9,
+        "end_line": 189,
+        "end_column": 10
+      },
+      "function": "macos_app",
+      "metadata": {
+        "source": "python.click.group.command",
+        "source_label": "argv",
+        "sink": "python.subprocess.check_call",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
+        "exposure": "local",
+        "exposed_by": "release.build.macos_app"
+      }
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: argv input reaches python.subprocess.check_call",
+      "severity": "high",
+      "confidence": "medium",
+      "location": {
+        "path": "release/build.py",
+        "line": 200,
+        "column": 9,
+        "end_line": 210,
+        "end_column": 10
+      },
+      "function": "macos_app",
+      "metadata": {
+        "source": "python.click.group.command",
+        "source_label": "argv",
+        "sink": "python.subprocess.check_call",
+        "verdict": "hotspot",
+        "evidence": "guard at line 173 does not prove the value safe",
+        "exposure": "local",
+        "exposed_by": "release.build.macos_app"
+      }
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: argv input reaches python.subprocess.run",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "release/release.py",
+        "line": 104,
+        "column": 5,
+        "end_line": 106,
+        "end_column": 6
+      },
+      "function": "<module>",
+      "metadata": {
+        "source": "python.sys.argv",
+        "source_label": "argv",
+        "sink": "python.subprocess.run",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
+        "exposure": "local",
+        "exposed_by": "release.<module>"
+      }
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: argv input reaches python.subprocess.run",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "release/release.py",
+        "line": 108,
+        "column": 5,
+        "end_line": 108,
+        "end_column": 67
+      },
+      "function": "<module>",
+      "metadata": {
+        "source": "python.sys.argv",
+        "source_label": "argv",
+        "sink": "python.subprocess.run",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
+        "exposure": "local",
+        "exposed_by": "release.<module>"
+      }
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: process-output input reaches python.subprocess.run",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "release/release.py",
+        "line": 132,
+        "column": 5,
+        "end_line": 134,
+        "end_column": 6
+      },
+      "function": "<module>",
+      "metadata": {
+        "source": "python.subprocess.run.stdout",
+        "source_label": "process-output",
+        "sink": "python.subprocess.run",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
+        "exposure": "local",
+        "exposed_by": "release.<module>"
+      }
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: argv input reaches python.subprocess.run",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "release/release.py",
+        "line": 132,
+        "column": 5,
+        "end_line": 134,
+        "end_column": 6
+      },
+      "function": "<module>",
+      "metadata": {
+        "source": "python.sys.argv",
+        "source_label": "argv",
+        "sink": "python.subprocess.run",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
+        "exposure": "local",
+        "exposed_by": "release.<module>"
+      }
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: argv input reaches python.subprocess.run",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "release/release.py",
+        "line": 137,
+        "column": 5,
+        "end_line": 150,
+        "end_column": 6
+      },
+      "function": "<module>",
+      "metadata": {
+        "source": "python.sys.argv",
+        "source_label": "argv",
+        "sink": "python.subprocess.run",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
+        "exposure": "local",
+        "exposed_by": "release.<module>"
+      }
+    },
+    {
+      "rule_id": "command-injection",
+      "message": "Command injection: argv input reaches python.subprocess.run",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "release/release.py",
+        "line": 153,
+        "column": 5,
+        "end_line": 155,
+        "end_column": 6
+      },
+      "function": "<module>",
+      "metadata": {
+        "source": "python.sys.argv",
+        "source_label": "argv",
+        "sink": "python.subprocess.run",
+        "verdict": "vulnerability",
+        "evidence": "no guard on the path to the sink",
+        "exposure": "local",
+        "exposed_by": "release.<module>"
+      }
+    },
+    {
+      "rule_id": "hardcoded-secret",
+      "message": "Hardcoded url secret in a string literal: Gene\u2026 (481 characters)",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "test/helper_tools/gen_sample_flows.py",
+        "line": 2,
+        "column": 1,
+        "end_line": 12,
+        "end_column": 4
+      },
+      "function": null,
+      "metadata": {
+        "provider": "url",
+        "name": "",
+        "length": "481",
+        "exposure": "local",
+        "exposed_by": "gen_sample_flows.<module>"
+      }
+    },
+    {
+      "rule_id": "hardcoded-secret",
+      "message": "Hardcoded url secret in a string literal: --up\u2026 (65 characters)",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "test/helper_tools/gen_sample_flows.py",
+        "line": 271,
+        "column": 18,
+        "end_line": 271,
+        "end_column": 85
+      },
+      "function": "main",
+      "metadata": {
+        "provider": "url",
+        "name": "",
+        "length": "65",
+        "exposure": "local",
+        "exposed_by": "gen_sample_flows.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: 1603\u2026 (212 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/addons/test_next_layer.py",
+        "line": 40,
+        "column": 5,
+        "end_line": 44,
+        "end_column": 21
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "212",
+        "entropy": "3.54",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.addons.test_next_layer.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: ca00\u2026 (2560 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/addons/test_next_layer.py",
+        "line": 65,
+        "column": 5,
+        "end_line": 93,
+        "end_column": 47
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "2560",
+        "entropy": "4.00",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.addons.test_next_layer.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: c200\u2026 (2460 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/addons/test_next_layer.py",
+        "line": 97,
+        "column": 5,
+        "end_line": 124,
+        "end_column": 37
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "2460",
+        "entropy": "4.00",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.addons.test_next_layer.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: 52e2\u2026 (360 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/addons/test_next_layer.py",
+        "line": 128,
+        "column": 5,
+        "end_line": 131,
+        "end_column": 97
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "360",
+        "entropy": "3.97",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.addons.test_next_layer.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: ca0a\u2026 (90 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/addons/test_next_layer.py",
+        "line": 976,
+        "column": 9,
+        "end_line": 976,
+        "end_column": 101
+      },
+      "function": "test_starts_like_quic",
+      "metadata": {
+        "name": "",
+        "length": "90",
+        "entropy": "3.86",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "ambiguous-module",
+      "message": "test/mitmproxy/data/addonscripts/addon.py is the module 'addon' like test/mitmproxy/data/addonscripts/same_filename/addon.py: a symbol python.addon.* may name a function of either, and an import of 'addon' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "test/mitmproxy/data/addonscripts/addon.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.data.addonscripts.addon.<module>"
+      }
+    },
+    {
+      "rule_id": "ambiguous-module",
+      "message": "test/mitmproxy/data/addonscripts/same_filename/addon.py is the module 'addon' like test/mitmproxy/data/addonscripts/addon.py: a symbol python.addon.* may name a function of either, and an import of 'addon' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "test/mitmproxy/data/addonscripts/same_filename/addon.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.data.addonscripts.same_filename.addon.<module>"
+      }
+    },
+    {
+      "rule_id": "ambiguous-module",
+      "message": "test/mitmproxy/data/addonscripts/shutdown.py is the module 'shutdown' like examples/addons/shutdown.py: a symbol python.shutdown.* may name a function of either, and an import of 'shutdown' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "test/mitmproxy/data/addonscripts/shutdown.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.data.addonscripts.shutdown.<module>"
+      }
+    },
+    {
+      "rule_id": "ambiguous-module",
+      "message": "test/mitmproxy/data/servercert/generate.py is the module 'generate' like test/mitmproxy/net/data/verificationcerts/generate.py: a symbol python.generate.* may name a function of either, and an import of 'generate' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "test/mitmproxy/data/servercert/generate.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.data.servercert.generate.<module>"
+      }
+    },
+    {
+      "rule_id": "ambiguous-module",
+      "message": "test/mitmproxy/net/data/verificationcerts/generate.py is the module 'generate' like test/mitmproxy/data/servercert/generate.py: a symbol python.generate.* may name a function of either, and an import of 'generate' resolves only from its own root",
+      "severity": "info",
+      "confidence": "high",
+      "location": {
+        "path": "test/mitmproxy/net/data/verificationcerts/generate.py",
+        "line": 1,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.net.data.verificationcerts.generate.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: zHai\u2026 (39 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/net/http/test_cookies.py",
+        "line": 21,
+        "column": 23,
+        "end_line": 21,
+        "end_column": 64
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "39",
+        "entropy": "4.93",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.net.http.test_cookies.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: 789c\u2026 (34 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/net/test_encoding.py",
+        "line": 79,
+        "column": 30,
+        "end_line": 79,
+        "end_column": 66
+      },
+      "function": "test_zlib",
+      "metadata": {
+        "name": "",
+        "length": "34",
+        "entropy": "3.55",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: 1f8b\u2026 (134 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/net/test_encoding.py",
+        "line": 85,
+        "column": 13,
+        "end_line": 86,
+        "end_column": 83
+      },
+      "function": "test_truncated",
+      "metadata": {
+        "name": "",
+        "length": "134",
+        "entropy": "3.81",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: ca00\u2026 (2560 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/proxy/layers/quic/test__stream_layers.py",
+        "line": 114,
+        "column": 5,
+        "end_line": 142,
+        "end_column": 47
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "2560",
+        "entropy": "4.00",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.proxy.layers.quic.test__stream_layers.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: c200\u2026 (2460 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/proxy/layers/quic/test__stream_layers.py",
+        "line": 147,
+        "column": 5,
+        "end_line": 174,
+        "end_column": 37
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "2460",
+        "entropy": "4.00",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.proxy.layers.quic.test__stream_layers.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: cd00\u2026 (2460 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/proxy/layers/quic/test__stream_layers.py",
+        "line": 179,
+        "column": 5,
+        "end_line": 206,
+        "end_column": 37
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "2460",
+        "entropy": "4.00",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.proxy.layers.quic.test__stream_layers.<module>"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: 0100\u2026 (202 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/proxy/layers/test_tls.py",
+        "line": 46,
+        "column": 5,
+        "end_line": 48,
+        "end_column": 21
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "202",
+        "entropy": "3.57",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.proxy.layers.test_tls.<module>"
+      }
+    },
+    {
+      "rule_id": "hardcoded-secret",
+      "message": "Hardcoded url secret in a string literal: reve\u2026 (40 characters)",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "test/mitmproxy/proxy/test_mode_servers.py",
+        "line": 352,
+        "column": 36,
+        "end_line": 352,
+        "end_column": 78
+      },
+      "function": "test_udp_start_error",
+      "metadata": {
+        "provider": "url",
+        "name": "",
+        "length": "40",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "hardcoded-secret",
+      "message": "Hardcoded url secret in a string literal: reve\u2026 (39 characters)",
+      "severity": "high",
+      "confidence": "high",
+      "location": {
+        "path": "test/mitmproxy/proxy/test_mode_servers.py",
+        "line": 356,
+        "column": 15,
+        "end_line": 356,
+        "end_column": 54
+      },
+      "function": "test_udp_start_error",
+      "metadata": {
+        "provider": "url",
+        "name": "",
+        "length": "39",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in a string literal: 0301\u2026 (194 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/test_tls.py",
+        "line": 4,
+        "column": 5,
+        "end_line": 6,
+        "end_column": 21
+      },
+      "function": null,
+      "metadata": {
+        "name": "",
+        "length": "194",
+        "entropy": "3.61",
+        "exposure": "local",
+        "exposed_by": "test.mitmproxy.test_tls.<module>"
+      }
+    },
+    {
+      "rule_id": "hardcoded-credential",
+      "message": "Hardcoded credential in web_password: t\u2026 (4 characters)",
+      "severity": "high",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/tools/web/test_webaddons.py",
+        "line": 26,
+        "column": 41,
+        "end_line": 26,
+        "end_column": 47
+      },
+      "function": "test_plaintext_auth",
+      "metadata": {
+        "name": "web_password",
+        "length": "4",
+        "context": "test",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "hardcoded-credential",
+      "message": "Hardcoded credential in web_password: $arg\u2026 (61 characters)",
+      "severity": "high",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/tools/web/test_webaddons.py",
+        "line": 37,
+        "column": 17,
+        "end_line": 37,
+        "end_column": 80
+      },
+      "function": "test_argon2_auth",
+      "metadata": {
+        "name": "web_password",
+        "length": "61",
+        "context": "test",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "hardcoded-credential",
+      "message": "Hardcoded credential in web_password: $arg\u2026 (10 characters)",
+      "severity": "high",
+      "confidence": "low",
+      "location": {
+        "path": "test/mitmproxy/tools/web/test_webaddons.py",
+        "line": 48,
+        "column": 45,
+        "end_line": 48,
+        "end_column": 57
+      },
+      "function": "test_invalid_hash",
+      "metadata": {
+        "name": "web_password",
+        "length": "10",
+        "context": "test",
+        "exposure": "unreached"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: Kk1l\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/charles.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.04"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: PaWn\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/chrome.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.12"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: CKG1\u2026 (116 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/chrome.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "116",
+        "entropy": "5.11"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: DPEk\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.14"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: Eufb\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.14"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: UuHH\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "4.99"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: TOLq\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "4.92"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: nnIr\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.10"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: PMTL\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.17"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: Wea5\u2026 (76 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "76",
+        "entropy": "5.37"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: 0okG\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.16"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: dkVe\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/firefox.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.06"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: aN65\u2026 (33 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/head-content-length.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "33",
+        "entropy": "4.60"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: uGf_\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/insomnia.json",
+        "line": 54,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "4.88"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: Qd8J\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.07"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: X2i3\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.20"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: IW86\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.12"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: hZNJ\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.06"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: OOEf\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.14"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: zPDS\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.13"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: EnEf\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.11"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: _rRb\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "4.93"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: Eznj\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.02"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: V4Oi\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.17"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: V4Oi\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.17"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: LbvT\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.19"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: LbvT\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.19"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: hvJP\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.16"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: 6aMk\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.27"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: TIE2\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.13"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: qpYq\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.21"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: I+4U\u2026 (76 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "76",
+        "entropy": "5.29"
+      }
+    },
+    {
+      "rule_id": "high-entropy-string",
+      "message": "High-entropy string in headers: PQpx\u2026 (56 characters)",
+      "severity": "medium",
+      "confidence": "low",
+      "location": {
+        "path": "tests-project/mitmproxy/test/mitmproxy/data/har_files/safari.json",
+        "line": 57,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "headers",
+        "length": "56",
+        "entropy": "5.31"
+      }
+    },
+    {
+      "rule_id": "vulnerable-dependency",
+      "message": "CVE-2026-27199: werkzeug <3.1.6 is required by werkzeug: safe_join() accepts a Windows device name in a later segment of a multi-segment path (reports/NUL), so reading the path never ends",
+      "severity": "medium",
+      "confidence": "high",
+      "location": {
+        "path": "tests-project/mitmproxy/uv.lock",
+        "line": 620,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "advisory": "CVE-2026-27199",
+        "package": "werkzeug",
+        "specifier": "",
+        "level": "imported",
+        "advisory_source": "curated-advisories@2026.09.27"
+      }
+    },
+    {
+      "rule_id": "hardcoded-credential",
+      "message": "Hardcoded credential in js-tokens: ^\u2026 (6 characters)",
+      "severity": "high",
+      "confidence": "medium",
+      "location": {
+        "path": "tests-project/mitmproxy/web/package-lock.json",
+        "line": 71,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "js-tokens",
+        "length": "6"
+      }
+    },
+    {
+      "rule_id": "hardcoded-credential",
+      "message": "Hardcoded credential in js-tokens: ^3.0\u2026 (16 characters)",
+      "severity": "high",
+      "confidence": "medium",
+      "location": {
+        "path": "tests-project/mitmproxy/web/package-lock.json",
+        "line": 71,
+        "column": 1,
+        "end_line": null,
+        "end_column": null
+      },
+      "function": null,
+      "metadata": {
+        "name": "js-tokens",
+        "length": "16"
+      }
+    }
+  ],
+  "coverage": {
+    "files": 583,
+    "files_analysed": 571,
+    "functions": 6182,
+    "functions_analysed": 6182,
+    "details": [
+      {
+        "path": "docs/build.py",
+        "status": "ambiguous",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "docs/scripts/api-events.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "docs/scripts/api-render.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "docs/scripts/clirecording/clidirector.py",
+        "status": "analysed",
+        "functions": 23,
+        "analysed": 23
+      },
+      {
+        "path": "docs/scripts/clirecording/record.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "docs/scripts/clirecording/screenplays.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "docs/scripts/examples.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "docs/scripts/filters.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "docs/scripts/options.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/anatomy.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/anatomy2.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/commands-flows.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/commands-paths.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/commands-simple.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/contentview-interactive.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/contentview.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/dns-simple.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/duplicate-modify-replay.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/filter-flows.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "examples/addons/http-add-header.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/http-modify-form.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/http-modify-query-string.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/http-redirect-requests.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/http-reply-from-proxy.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/http-stream-modify.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/http-stream-simple.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/http-trailers.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/internet-in-mirror.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/io-read-saved-flows.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "examples/addons/io-write-flow-file.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "examples/addons/log-events.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/nonblocking.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/addons/options-configure.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "examples/addons/options-simple.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "examples/addons/shutdown.py",
+        "status": "ambiguous",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/tcp-simple.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/websocket-inject-message.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "examples/addons/websocket-simple.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/addons/wsgi-flask-app.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/contrib/all_markers.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/contrib/block_dns_over_https.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "examples/contrib/change_upstream_proxy.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/contrib/check_ssl_pinning.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "examples/contrib/custom_next_layer.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/contrib/dns_spoofing.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/contrib/domain_fronting.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "examples/contrib/har_dump.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "examples/contrib/http_manipulate_cookies.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "examples/contrib/httpdump.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "examples/contrib/jsondump.py",
+        "status": "analysed",
+        "functions": 17,
+        "analysed": 17
+      },
+      {
+        "path": "examples/contrib/link_expander.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/contrib/mitmproxywrapper.py",
+        "status": "analysed",
+        "functions": 19,
+        "analysed": 19
+      },
+      {
+        "path": "examples/contrib/modify_body_inject_iframe.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/contrib/ntlm_upstream_proxy.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "examples/contrib/portfile.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/contrib/remote-debug.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/contrib/save_streamed_data.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "examples/contrib/search.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "examples/contrib/sslstrip.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "examples/contrib/suppress_error_responses.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "examples/contrib/test_jsondump.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "examples/contrib/test_xss_scanner.py",
+        "status": "analysed",
+        "functions": 23,
+        "analysed": 23
+      },
+      {
+        "path": "examples/contrib/tls_passthrough.py",
+        "status": "analysed",
+        "functions": 20,
+        "analysed": 20
+      },
+      {
+        "path": "examples/contrib/upstream_pac.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/mapping.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/proxyauth_selenium.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/test_mapping.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/test_proxyauth_selenium.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/test_urldict.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/test_urlindex.py",
+        "status": "analysed",
+        "functions": 24,
+        "analysed": 24
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/test_urlinjection.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/test_watchdog.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/urldict.py",
+        "status": "analysed",
+        "functions": 17,
+        "analysed": 17
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/urlindex.py",
+        "status": "analysed",
+        "functions": 21,
+        "analysed": 21
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/urlinjection.py",
+        "status": "analysed",
+        "functions": 20,
+        "analysed": 20
+      },
+      {
+        "path": "examples/contrib/webscanner_helper/watchdog.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "examples/contrib/xss_scanner.py",
+        "status": "analysed",
+        "functions": 26,
+        "analysed": 26
+      },
+      {
+        "path": "mitmproxy/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/addonmanager.py",
+        "status": "analysed",
+        "functions": 26,
+        "analysed": 26
+      },
+      {
+        "path": "mitmproxy/addons/__init__.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/addons/anticache.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/addons/anticomp.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/addons/asgiapp.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/addons/block.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/addons/blocklist.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/addons/browser.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/addons/clientplayback.py",
+        "status": "analysed",
+        "functions": 21,
+        "analysed": 21
+      },
+      {
+        "path": "mitmproxy/addons/command_history.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "mitmproxy/addons/comment.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/addons/core.py",
+        "status": "analysed",
+        "functions": 18,
+        "analysed": 18
+      },
+      {
+        "path": "mitmproxy/addons/cut.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/addons/disable_h2c.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/addons/dns_resolver.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "mitmproxy/addons/dumper.py",
+        "status": "analysed",
+        "functions": 30,
+        "analysed": 30
+      },
+      {
+        "path": "mitmproxy/addons/errorcheck.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/addons/eventstore.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/addons/export.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "mitmproxy/addons/intercept.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "mitmproxy/addons/keepserving.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/addons/maplocal.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/addons/mapremote.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/addons/modifybody.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/addons/modifyheaders.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/addons/next_layer.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "mitmproxy/addons/onboarding.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/addons/onboardingapp/__init__.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/addons/proxyauth.py",
+        "status": "analysed",
+        "functions": 26,
+        "analysed": 26
+      },
+      {
+        "path": "mitmproxy/addons/proxyserver.py",
+        "status": "analysed",
+        "functions": 23,
+        "analysed": 23
+      },
+      {
+        "path": "mitmproxy/addons/readfile.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "mitmproxy/addons/save.py",
+        "status": "analysed",
+        "functions": 23,
+        "analysed": 23
+      },
+      {
+        "path": "mitmproxy/addons/savehar.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "mitmproxy/addons/script.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "mitmproxy/addons/server_side_events.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/addons/serverplayback.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "mitmproxy/addons/stickyauth.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/addons/stickycookie.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/addons/strip_dns_https_records.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/addons/termlog.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/addons/tlsconfig.py",
+        "status": "analysed",
+        "functions": 19,
+        "analysed": 19
+      },
+      {
+        "path": "mitmproxy/addons/update_alt_svc.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/addons/upstream_auth.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/addons/view.py",
+        "status": "analysed",
+        "functions": 89,
+        "analysed": 89
+      },
+      {
+        "path": "mitmproxy/certs.py",
+        "status": "analysed",
+        "functions": 48,
+        "analysed": 48
+      },
+      {
+        "path": "mitmproxy/command.py",
+        "status": "analysed",
+        "functions": 30,
+        "analysed": 30
+      },
+      {
+        "path": "mitmproxy/command_lexer.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/connection.py",
+        "status": "analysed",
+        "functions": 23,
+        "analysed": 23
+      },
+      {
+        "path": "mitmproxy/contentviews/__init__.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/contentviews/_api.py",
+        "status": "syntax-error",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/contentviews/_compat.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/contentviews/_registry.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/contentviews/_utils.py",
+        "status": "syntax-error",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_css.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_dns.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_graphql.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_http3.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_image/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_image/image_parser.py",
+        "status": "syntax-error",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_image/view.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_javascript.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_json.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_mqtt.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_multipart.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_query.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_raw.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_socketio.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_urlencoded.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_wbxml.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_xml_html.py",
+        "status": "analysed",
+        "functions": 24,
+        "analysed": 24
+      },
+      {
+        "path": "mitmproxy/contentviews/_view_zip.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/contentviews/base.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/contrib/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/contrib/click/__init__.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/contrib/imghdr.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/dtls_client_hello.py",
+        "status": "analysed",
+        "functions": 28,
+        "analysed": 28
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/exif.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/gif.py",
+        "status": "analysed",
+        "functions": 38,
+        "analysed": 38
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/google_protobuf.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/ico.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/jpeg.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/png.py",
+        "status": "analysed",
+        "functions": 48,
+        "analysed": 48
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/tls_client_hello.py",
+        "status": "analysed",
+        "functions": 26,
+        "analysed": 26
+      },
+      {
+        "path": "mitmproxy/contrib/kaitaistruct/vlq_base128_le.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "mitmproxy/contrib/wbxml/ASCommandResponse.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/contrib/wbxml/ASWBXML.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/contrib/wbxml/ASWBXMLByteQueue.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/contrib/wbxml/ASWBXMLCodePage.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/contrib/wbxml/GlobalTokens.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/contrib/wbxml/InvalidDataException.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/contrib/wbxml/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/coretypes/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/coretypes/bidi.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/coretypes/multidict.py",
+        "status": "analysed",
+        "functions": 32,
+        "analysed": 32
+      },
+      {
+        "path": "mitmproxy/coretypes/serializable.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "mitmproxy/ctx.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/dns.py",
+        "status": "analysed",
+        "functions": 47,
+        "analysed": 47
+      },
+      {
+        "path": "mitmproxy/eventsequence.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/exceptions.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/flow.py",
+        "status": "analysed",
+        "functions": 20,
+        "analysed": 20
+      },
+      {
+        "path": "mitmproxy/flowfilter.py",
+        "status": "analysed",
+        "functions": 136,
+        "analysed": 136
+      },
+      {
+        "path": "mitmproxy/hooks.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/http.py",
+        "status": "analysed",
+        "functions": 119,
+        "analysed": 119
+      },
+      {
+        "path": "mitmproxy/io/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/io/compat.py",
+        "status": "analysed",
+        "functions": 38,
+        "analysed": 38
+      },
+      {
+        "path": "mitmproxy/io/har.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/io/io.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/io/tnetstring.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/log.py",
+        "status": "analysed",
+        "functions": 24,
+        "analysed": 24
+      },
+      {
+        "path": "mitmproxy/master.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/net/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/net/check.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/net/dns/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/net/dns/classes.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/net/dns/domain_names.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/net/dns/https_records.py",
+        "status": "syntax-error",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/net/dns/op_codes.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/net/dns/response_codes.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/net/dns/types.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/net/encoding.py",
+        "status": "analysed",
+        "functions": 18,
+        "analysed": 18
+      },
+      {
+        "path": "mitmproxy/net/free_port.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/net/http/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/net/http/cookies.py",
+        "status": "analysed",
+        "functions": 22,
+        "analysed": 22
+      },
+      {
+        "path": "mitmproxy/net/http/headers.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/net/http/http1/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/net/http/http1/assemble.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/net/http/http1/read.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/net/http/multipart.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/net/http/status_codes.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/net/http/url.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "mitmproxy/net/http/user_agents.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/net/http/validate.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/net/local_ip.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/net/server_spec.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/net/tls.py",
+        "status": "analysed",
+        "functions": 19,
+        "analysed": 19
+      },
+      {
+        "path": "mitmproxy/options.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/optmanager.py",
+        "status": "analysed",
+        "functions": 52,
+        "analysed": 52
+      },
+      {
+        "path": "mitmproxy/platform/__init__.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/platform/linux.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/platform/openbsd.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/platform/osx.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/platform/pf.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/platform/windows.py",
+        "status": "analysed",
+        "functions": 48,
+        "analysed": 48
+      },
+      {
+        "path": "mitmproxy/proxy/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/proxy/commands.py",
+        "status": "analysed",
+        "functions": 19,
+        "analysed": 19
+      },
+      {
+        "path": "mitmproxy/proxy/context.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/proxy/events.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "mitmproxy/proxy/layer.py",
+        "status": "analysed",
+        "functions": 21,
+        "analysed": 21
+      },
+      {
+        "path": "mitmproxy/proxy/layers/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/proxy/layers/dns.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/__init__.py",
+        "status": "analysed",
+        "functions": 50,
+        "analysed": 50
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_base.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_events.py",
+        "status": "analysed",
+        "functions": 19,
+        "analysed": 19
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_hooks.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_http1.py",
+        "status": "analysed",
+        "functions": 25,
+        "analysed": 25
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_http2.py",
+        "status": "analysed",
+        "functions": 27,
+        "analysed": 27
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_http3.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_http_h2.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_http_h3.py",
+        "status": "analysed",
+        "functions": 29,
+        "analysed": 29
+      },
+      {
+        "path": "mitmproxy/proxy/layers/http/_upstream_proxy.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/proxy/layers/modes.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "mitmproxy/proxy/layers/quic/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/proxy/layers/quic/_client_hello_parser.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/proxy/layers/quic/_commands.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "mitmproxy/proxy/layers/quic/_events.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/proxy/layers/quic/_hooks.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/proxy/layers/quic/_raw_layers.py",
+        "status": "analysed",
+        "functions": 18,
+        "analysed": 18
+      },
+      {
+        "path": "mitmproxy/proxy/layers/quic/_stream_layers.py",
+        "status": "analysed",
+        "functions": 33,
+        "analysed": 33
+      },
+      {
+        "path": "mitmproxy/proxy/layers/tcp.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/proxy/layers/tls.py",
+        "status": "analysed",
+        "functions": 41,
+        "analysed": 41
+      },
+      {
+        "path": "mitmproxy/proxy/layers/udp.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/proxy/layers/websocket.py",
+        "status": "analysed",
+        "functions": 18,
+        "analysed": 18
+      },
+      {
+        "path": "mitmproxy/proxy/mode_servers.py",
+        "status": "analysed",
+        "functions": 52,
+        "analysed": 52
+      },
+      {
+        "path": "mitmproxy/proxy/mode_specs.py",
+        "status": "analysed",
+        "functions": 36,
+        "analysed": 36
+      },
+      {
+        "path": "mitmproxy/proxy/server.py",
+        "status": "analysed",
+        "functions": 32,
+        "analysed": 32
+      },
+      {
+        "path": "mitmproxy/proxy/server_hooks.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/proxy/tunnel.py",
+        "status": "analysed",
+        "functions": 19,
+        "analysed": 19
+      },
+      {
+        "path": "mitmproxy/proxy/utils.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/script/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/script/concurrent.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/tcp.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "mitmproxy/test/taddons.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/test/tflow.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "mitmproxy/test/tutils.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/tls.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/tools/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/tools/cmdline.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "mitmproxy/tools/console/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/tools/console/commander/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/tools/console/commander/commander.py",
+        "status": "analysed",
+        "functions": 23,
+        "analysed": 23
+      },
+      {
+        "path": "mitmproxy/tools/console/commandexecutor.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/tools/console/commands.py",
+        "status": "analysed",
+        "functions": 26,
+        "analysed": 26
+      },
+      {
+        "path": "mitmproxy/tools/console/common.py",
+        "status": "analysed",
+        "functions": 27,
+        "analysed": 27
+      },
+      {
+        "path": "mitmproxy/tools/console/consoleaddons.py",
+        "status": "analysed",
+        "functions": 60,
+        "analysed": 60
+      },
+      {
+        "path": "mitmproxy/tools/console/defaultkeys.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/tools/console/eventlog.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/tools/console/flowdetailview.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/tools/console/flowlist.py",
+        "status": "analysed",
+        "functions": 20,
+        "analysed": 20
+      },
+      {
+        "path": "mitmproxy/tools/console/flowview.py",
+        "status": "analysed",
+        "functions": 33,
+        "analysed": 33
+      },
+      {
+        "path": "mitmproxy/tools/console/grideditor/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/tools/console/grideditor/base.py",
+        "status": "analysed",
+        "functions": 63,
+        "analysed": 63
+      },
+      {
+        "path": "mitmproxy/tools/console/grideditor/col_bytes.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/tools/console/grideditor/col_subgrid.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/tools/console/grideditor/col_text.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/tools/console/grideditor/col_viewany.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/tools/console/grideditor/editors.py",
+        "status": "analysed",
+        "functions": 45,
+        "analysed": 45
+      },
+      {
+        "path": "mitmproxy/tools/console/help.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/tools/console/keybindings.py",
+        "status": "analysed",
+        "functions": 26,
+        "analysed": 26
+      },
+      {
+        "path": "mitmproxy/tools/console/keymap.py",
+        "status": "analysed",
+        "functions": 30,
+        "analysed": 30
+      },
+      {
+        "path": "mitmproxy/tools/console/layoutwidget.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/tools/console/master.py",
+        "status": "analysed",
+        "functions": 21,
+        "analysed": 21
+      },
+      {
+        "path": "mitmproxy/tools/console/options.py",
+        "status": "analysed",
+        "functions": 29,
+        "analysed": 29
+      },
+      {
+        "path": "mitmproxy/tools/console/overlay.py",
+        "status": "analysed",
+        "functions": 31,
+        "analysed": 31
+      },
+      {
+        "path": "mitmproxy/tools/console/palettes.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/tools/console/quickhelp.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/tools/console/searchable.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "mitmproxy/tools/console/signals.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "mitmproxy/tools/console/statusbar.py",
+        "status": "analysed",
+        "functions": 25,
+        "analysed": 25
+      },
+      {
+        "path": "mitmproxy/tools/console/tabs.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/tools/console/window.py",
+        "status": "analysed",
+        "functions": 31,
+        "analysed": 31
+      },
+      {
+        "path": "mitmproxy/tools/dump.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/tools/main.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "mitmproxy/tools/web/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/tools/web/app.py",
+        "status": "analysed",
+        "functions": 72,
+        "analysed": 72
+      },
+      {
+        "path": "mitmproxy/tools/web/master.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "mitmproxy/tools/web/static_viewer.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "mitmproxy/tools/web/web_columns.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/tools/web/webaddons.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "mitmproxy/types.py",
+        "status": "analysed",
+        "functions": 78,
+        "analysed": 78
+      },
+      {
+        "path": "mitmproxy/udp.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "mitmproxy/utils/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "mitmproxy/utils/arg_check.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/utils/asyncio_utils.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/utils/data.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/utils/debug.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "mitmproxy/utils/emoji.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/utils/htpasswd.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/utils/human.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "mitmproxy/utils/magisk.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "mitmproxy/utils/pyinstaller/__init__.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/utils/pyinstaller/hook-mitmproxy.addons.onboardingapp.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/utils/pyinstaller/hook-mitmproxy.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/utils/pyinstaller/hook-mitmproxy.tools.web.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "mitmproxy/utils/signals.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "mitmproxy/utils/sliding_window.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/utils/spec.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/utils/strutils.py",
+        "status": "analysed",
+        "functions": 22,
+        "analysed": 22
+      },
+      {
+        "path": "mitmproxy/utils/typecheck.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/utils/vt_codes.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "mitmproxy/version.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "mitmproxy/websocket.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "release/build.py",
+        "status": "ambiguous",
+        "functions": 17,
+        "analysed": 17
+      },
+      {
+        "path": "release/deploy-microsoft-store.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "release/deploy.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "release/release.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "release/selftest.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/bench/benchmark.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/conftest.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/examples/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/examples/test_examples.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/filename_matching.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/helper_tools/dumperview.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/helper_tools/gen_sample_flows.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "test/helper_tools/hunt_memory_leaks.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/helper_tools/inspect_dumpfile.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/helper_tools/linkify-changelog.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/helper_tools/loggrep.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/helper_tools/memoryleak.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/helper_tools/memoryleak2.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/helper_tools/passive_close.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/individual_coverage.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/__init__.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/addons/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/addons/test_anticache.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/addons/test_anticomp.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/addons/test_asgiapp.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/mitmproxy/addons/test_block.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/addons/test_blocklist.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/mitmproxy/addons/test_browser.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "test/mitmproxy/addons/test_clientplayback.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "test/mitmproxy/addons/test_command_history.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "test/mitmproxy/addons/test_comment.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/addons/test_core.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "test/mitmproxy/addons/test_cut.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "test/mitmproxy/addons/test_disable_h2c.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/addons/test_dns_resolver.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "test/mitmproxy/addons/test_dumper.py",
+        "status": "analysed",
+        "functions": 16,
+        "analysed": 16
+      },
+      {
+        "path": "test/mitmproxy/addons/test_errorcheck.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/addons/test_eventstore.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/addons/test_export.py",
+        "status": "analysed",
+        "functions": 50,
+        "analysed": 50
+      },
+      {
+        "path": "test/mitmproxy/addons/test_intercept.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/addons/test_keepserving.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "test/mitmproxy/addons/test_maplocal.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/addons/test_mapremote.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/addons/test_modifybody.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/addons/test_modifyheaders.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/addons/test_next_layer.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/addons/test_onboarding.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/addons/test_proxyauth.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "test/mitmproxy/addons/test_proxyserver.py",
+        "status": "analysed",
+        "functions": 64,
+        "analysed": 64
+      },
+      {
+        "path": "test/mitmproxy/addons/test_readfile.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "test/mitmproxy/addons/test_save.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "test/mitmproxy/addons/test_savehar.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "test/mitmproxy/addons/test_script.py",
+        "status": "analysed",
+        "functions": 20,
+        "analysed": 20
+      },
+      {
+        "path": "test/mitmproxy/addons/test_server_side_events.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/addons/test_serverplayback.py",
+        "status": "analysed",
+        "functions": 25,
+        "analysed": 25
+      },
+      {
+        "path": "test/mitmproxy/addons/test_stickyauth.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/addons/test_stickycookie.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "test/mitmproxy/addons/test_strip_dns_https_records.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/addons/test_termlog.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/addons/test_tlsconfig.py",
+        "status": "analysed",
+        "functions": 27,
+        "analysed": 27
+      },
+      {
+        "path": "test/mitmproxy/addons/test_update_alt_svc.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/addons/test_upstream_auth.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/addons/test_view.py",
+        "status": "analysed",
+        "functions": 39,
+        "analysed": 39
+      },
+      {
+        "path": "test/mitmproxy/contentviews/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/contentviews/_view_image/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/contentviews/_view_image/test_image_parser.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/contentviews/_view_image/test_view.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test___init__.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__api.py",
+        "status": "analysed",
+        "functions": 12,
+        "analysed": 12
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__compat.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__registry.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__utils.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_css.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_dns.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_graphql.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_http3.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_javascript.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_json.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_mqtt.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_multipart.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_query.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_raw.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_socketio.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_urlencoded.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_wbxml.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_xml_html.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test__view_zip.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/contentviews/test_base.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/coretypes/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/coretypes/test_bidi.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/coretypes/test_multidict.py",
+        "status": "analysed",
+        "functions": 26,
+        "analysed": 26
+      },
+      {
+        "path": "test/mitmproxy/coretypes/test_serializable.py",
+        "status": "analysed",
+        "functions": 29,
+        "analysed": 29
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/addon.py",
+        "status": "ambiguous",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/concurrent_decorator.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/concurrent_decorator_class.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/concurrent_decorator_err.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/configure.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/custom_option.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/error.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/import_error.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/load_error.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/recorder/a.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/recorder/b.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/recorder/c.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/recorder/e.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/recorder/recorder.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/same_filename/addon.py",
+        "status": "ambiguous",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/shutdown.py",
+        "status": "ambiguous",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/stream_modify.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/data/addonscripts/tcp_stream_modify.py",
+        "status": "analysed",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/data/servercert/generate.py",
+        "status": "ambiguous",
+        "functions": 1,
+        "analysed": 1
+      },
+      {
+        "path": "test/mitmproxy/io/test_compat.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/io/test_har.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/io/test_io.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/io/test_tnetstring.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "test/mitmproxy/net/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/net/data/verificationcerts/generate.py",
+        "status": "ambiguous",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/net/dns/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/net/dns/test_classes.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/net/dns/test_domain_names.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/net/dns/test_https_records.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/mitmproxy/net/dns/test_op_codes.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/net/dns/test_response_codes.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/net/dns/test_types.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/net/http/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/net/http/http1/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/net/http/http1/test_assemble.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/net/http/http1/test_read.py",
+        "status": "analysed",
+        "functions": 18,
+        "analysed": 18
+      },
+      {
+        "path": "test/mitmproxy/net/http/test_cookies.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "test/mitmproxy/net/http/test_headers.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/net/http/test_multipart.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/net/http/test_status_codes.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/net/http/test_url.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "test/mitmproxy/net/http/test_user_agents.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/net/http/test_validate.py",
+        "status": "analysed",
+        "functions": 10,
+        "analysed": 10
+      },
+      {
+        "path": "test/mitmproxy/net/test_check.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/net/test_encoding.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/net/test_free_port.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/net/test_local_ip.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/net/test_server_spec.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/net/test_tls.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/mitmproxy/platform/test_pf.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/proxy/bench.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "test/mitmproxy/proxy/conftest.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/http/hyper_h2_test_helpers.py",
+        "status": "analysed",
+        "functions": 17,
+        "analysed": 17
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/http/test_http.py",
+        "status": "analysed",
+        "functions": 76,
+        "analysed": 76
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/http/test_http1.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/http/test_http2.py",
+        "status": "analysed",
+        "functions": 45,
+        "analysed": 45
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/http/test_http3.py",
+        "status": "analysed",
+        "functions": 61,
+        "analysed": 61
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/http/test_http_fuzz.py",
+        "status": "analysed",
+        "functions": 25,
+        "analysed": 25
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/http/test_http_version_interop.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/quic/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/quic/test__client_hello_parser.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/quic/test__commands.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/quic/test__events.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/quic/test__hooks.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/quic/test__raw_layers.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/quic/test__stream_layers.py",
+        "status": "analysed",
+        "functions": 64,
+        "analysed": 64
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_dns.py",
+        "status": "analysed",
+        "functions": 18,
+        "analysed": 18
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_modes.py",
+        "status": "analysed",
+        "functions": 22,
+        "analysed": 22
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_socks5_fuzz.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_tcp.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_tls.py",
+        "status": "analysed",
+        "functions": 40,
+        "analysed": 40
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_tls_fuzz.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_udp.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/mitmproxy/proxy/layers/test_websocket.py",
+        "status": "analysed",
+        "functions": 27,
+        "analysed": 27
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_commands.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_context.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_events.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_layer.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_mode_servers.py",
+        "status": "analysed",
+        "functions": 28,
+        "analysed": 28
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_mode_specs.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_server.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_server_hooks.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_tunnel.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_tutils.py",
+        "status": "analysed",
+        "functions": 20,
+        "analysed": 20
+      },
+      {
+        "path": "test/mitmproxy/proxy/test_utils.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/proxy/tutils.py",
+        "status": "analysed",
+        "functions": 34,
+        "analysed": 34
+      },
+      {
+        "path": "test/mitmproxy/script/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/script/test_concurrent.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/test_addonmanager.py",
+        "status": "analysed",
+        "functions": 24,
+        "analysed": 24
+      },
+      {
+        "path": "test/mitmproxy/test_certs.py",
+        "status": "analysed",
+        "functions": 32,
+        "analysed": 32
+      },
+      {
+        "path": "test/mitmproxy/test_command.py",
+        "status": "analysed",
+        "functions": 37,
+        "analysed": 37
+      },
+      {
+        "path": "test/mitmproxy/test_command_lexer.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/test_connection.py",
+        "status": "analysed",
+        "functions": 8,
+        "analysed": 8
+      },
+      {
+        "path": "test/mitmproxy/test_ctx.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/test_dns.py",
+        "status": "analysed",
+        "functions": 18,
+        "analysed": 18
+      },
+      {
+        "path": "test/mitmproxy/test_eventsequence.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/test_exceptions.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/test_flow.py",
+        "status": "analysed",
+        "functions": 14,
+        "analysed": 14
+      },
+      {
+        "path": "test/mitmproxy/test_flowfilter.py",
+        "status": "analysed",
+        "functions": 103,
+        "analysed": 103
+      },
+      {
+        "path": "test/mitmproxy/test_hooks.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/test_http.py",
+        "status": "analysed",
+        "functions": 112,
+        "analysed": 112
+      },
+      {
+        "path": "test/mitmproxy/test_log.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/test_master.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/test_options.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/test_optmanager.py",
+        "status": "analysed",
+        "functions": 37,
+        "analysed": 37
+      },
+      {
+        "path": "test/mitmproxy/test_proxy.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/test_taddons.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/test_tcp.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/test_tls.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/test_typemanager.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/test_types.py",
+        "status": "analysed",
+        "functions": 22,
+        "analysed": 22
+      },
+      {
+        "path": "test/mitmproxy/test_udp.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/test_version.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/test_websocket.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/tools/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/tools/console/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/tools/console/conftest.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_commander.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_common.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_contentview.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_defaultkeys.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_flowview.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_integration.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_keymap.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_master.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_palettes.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_quickhelp.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/tools/console/test_statusbar.py",
+        "status": "analysed",
+        "functions": 15,
+        "analysed": 15
+      },
+      {
+        "path": "test/mitmproxy/tools/test_cmdline.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/tools/test_dump.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/tools/test_main.py",
+        "status": "analysed",
+        "functions": 5,
+        "analysed": 5
+      },
+      {
+        "path": "test/mitmproxy/tools/web/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/tools/web/test_app.py",
+        "status": "analysed",
+        "functions": 51,
+        "analysed": 51
+      },
+      {
+        "path": "test/mitmproxy/tools/web/test_master.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "test/mitmproxy/tools/web/test_static_viewer.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/tools/web/test_web_columns.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/tools/web/test_webaddons.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/utils/__init__.py",
+        "status": "analysed",
+        "functions": 0,
+        "analysed": 0
+      },
+      {
+        "path": "test/mitmproxy/utils/test_arg_check.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/utils/test_asyncio_utils.py",
+        "status": "analysed",
+        "functions": 9,
+        "analysed": 9
+      },
+      {
+        "path": "test/mitmproxy/utils/test_data.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/utils/test_debug.py",
+        "status": "analysed",
+        "functions": 6,
+        "analysed": 6
+      },
+      {
+        "path": "test/mitmproxy/utils/test_emoji.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/utils/test_htpasswd.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/utils/test_human.py",
+        "status": "analysed",
+        "functions": 7,
+        "analysed": 7
+      },
+      {
+        "path": "test/mitmproxy/utils/test_magisk.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/utils/test_signals.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "test/mitmproxy/utils/test_sliding_window.py",
+        "status": "analysed",
+        "functions": 4,
+        "analysed": 4
+      },
+      {
+        "path": "test/mitmproxy/utils/test_spec.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "test/mitmproxy/utils/test_strutils.py",
+        "status": "analysed",
+        "functions": 13,
+        "analysed": 13
+      },
+      {
+        "path": "test/mitmproxy/utils/test_typecheck.py",
+        "status": "analysed",
+        "functions": 11,
+        "analysed": 11
+      },
+      {
+        "path": "test/mitmproxy/utils/test_vt_codes.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "web/gen/backend_consts.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "web/gen/options_js.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "web/gen/state_js.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      },
+      {
+        "path": "web/gen/tflow_js.py",
+        "status": "analysed",
+        "functions": 2,
+        "analysed": 2
+      },
+      {
+        "path": "web/gen/web_columns.py",
+        "status": "analysed",
+        "functions": 3,
+        "analysed": 3
+      }
+    ]
+  }
+}
