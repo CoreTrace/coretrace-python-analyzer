@@ -384,10 +384,12 @@ def analyze_project(
 
     if jobs < 1:
         raise ValueError("jobs must be at least 1")
-    # Module sources are loaded by their resolved path; every other file under the root
-    # (manifests, configuration, advisories, policy) must be named the same way, or the
-    # reports and baselines would see it relative to the working directory (#206).
+    # Module sources are loaded by their resolved path; every other file the project is
+    # read from (manifests, configuration, advisories, policy) must be named the same way,
+    # or the reports and baselines would see it relative to the working directory (#206).
     root = root.resolve()
+    advisory_files = [path.resolve() for path in advisory_files]
+    policy_file = None if policy_file is None else policy_file.resolve()
     sources = SourceManager()
     findings: list[Finding] = []
     dependencies = resolve_dependencies(root, sources)

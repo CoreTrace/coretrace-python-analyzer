@@ -71,6 +71,35 @@ def test_configuration_findings_are_located_relative_to_the_root(
     assert located(capsys, "hardcoded-credential") == ["settings.json"]
 
 
+@pytest.mark.parametrize(
+    ("option", "name", "text"),
+    [
+        ("--policy", "bad-policy.toml", "[dependencies\n"),
+        ("--advisories", "bad-advisories.json", "{\n"),
+    ],
+)
+def test_explicit_files_are_located_relative_to_the_root(
+    project: Path, option: str, name: str, text: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (project / name).write_text(text, encoding="utf-8")
+
+    main(["--check", "proj", option, f"proj/{name}", "--format", "json"])
+
+    assert located(capsys, "syntax-error") == [name]
+
+
+@pytest.mark.parametrize("form", ["relative", "absolute"])
+def test_a_root_reached_through_a_symbolic_link_keeps_root_relative_paths(
+    project: Path, tmp_path: Path, form: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "link").symlink_to(project, target_is_directory=True)
+    root = "link" if form == "relative" else str(tmp_path / "link")
+
+    main(["--check", root, "--format", "json"])
+
+    assert located(capsys, "vulnerable-dependency") == ["uv.lock"]
+
+
 def test_a_baseline_recorded_with_a_relative_root_matches_an_absolute_one(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
