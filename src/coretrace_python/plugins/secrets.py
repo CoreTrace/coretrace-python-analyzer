@@ -224,11 +224,12 @@ DEFAULT_CREDENTIAL_NAMES: tuple[str, ...] = (
 CONFIG_SUFFIXES = frozenset({".env", ".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".properties", ".conf"})
 _PAIR = re.compile(r"^\s*(?:-\s+)?([A-Za-z_][\w.-]*)\s*[:=]\s*(.*?)\s*$")
 _MAX_CONFIG_BYTES = 8_000_000
-# In npm lock files, the keys of these maps are package names and their values version
-# ranges: ``"js-tokens": "^4.0.0"`` binds no value to the name ``js-tokens``.
+# In npm lock files, the keys of these maps are package or command names, and their
+# values version ranges or paths: ``"js-tokens": "^4.0.0"`` binds no value to the name
+# ``js-tokens``, nor ``"secretlint": "bin/secretlint.js"`` to ``secretlint``.
 _NPM_LOCK_FILES = frozenset({"package-lock.json", "npm-shrinkwrap.json"})
-_NPM_DEPENDENCY_MAPS = frozenset(
-    {"dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "requires"}
+_NPM_NAME_MAPS = frozenset(
+    {"dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "requires", "bin"}
 )
 
 
@@ -249,7 +250,7 @@ def config_literals(root: Path) -> Iterator[Literal]:
             continue
         source = SourceId(str(path))
         if path.suffix == ".json":
-            maps = _NPM_DEPENDENCY_MAPS if path.name in _NPM_LOCK_FILES else frozenset()
+            maps = _NPM_NAME_MAPS if path.name in _NPM_LOCK_FILES else frozenset()
             yield from _structured(source, text, _load_json(text), maps)
         elif path.suffix == ".toml":
             yield from _structured(source, text, _load_toml(text))
@@ -272,10 +273,10 @@ def _load_toml(text: str) -> object:
 
 
 def _structured(
-    source: SourceId, text: str, data: object, package_maps: frozenset[str] = frozenset()
+    source: SourceId, text: str, data: object, name_maps: frozenset[str] = frozenset()
 ) -> Iterator[Literal]:
     """Every string value of ``data`` with its key, except that a value directly under
-    one of ``package_maps`` is bound to no name: its key names a package."""
+    one of ``name_maps`` is bound to no name: its key names a package or a command."""
 
     lines = text.splitlines()
 
@@ -288,7 +289,7 @@ def _structured(
     def walk(node: object, key: str | None, named: bool = True) -> Iterator[Literal]:
         if isinstance(node, dict):
             for name, value in node.items():
-                yield from walk(value, str(name), key not in package_maps)
+                yield from walk(value, str(name), key not in name_maps)
         elif isinstance(node, list):
             for item in node:
                 yield from walk(item, key, named)

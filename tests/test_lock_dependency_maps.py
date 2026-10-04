@@ -3,7 +3,8 @@
 In ``package-lock.json`` and ``npm-shrinkwrap.json``, the keys of a dependency map
 (``dependencies``, ``devDependencies``, ``peerDependencies``, ``optionalDependencies``,
 ``requires``) are package names and its values version ranges: ``"js-tokens": "^4.0.0"``
-is not a credential named ``js-tokens``. The lock file is still scanned: a ``resolved``
+is not a credential named ``js-tokens``. The keys of a ``bin`` map are command names and
+its values paths: ``"secretlint": "bin/secretlint.js"`` is not a secret either. The lock file is still scanned: a ``resolved``
 URL carrying a private-registry credential is a real leak, and a credential-named key
 outside a dependency map is still a credential. Other JSON files are judged as before.
 """
@@ -39,6 +40,7 @@ LOCK_V3 = {
             "peerDependencies": {"secret-handshake": ">=1"},
             "optionalDependencies": {"api-key-utils": "^2.0.0"},
         },
+        "node_modules/secretlint": {"version": "9.0.0", "bin": {"secretlint": "bin/secretlint.js"}},
     },
 }
 LOCK_V1 = {
