@@ -255,6 +255,10 @@ class InternalSecrets(SecretDetector):
     credential_names: ClassVar[tuple[str, ...]] = (*DEFAULT_CREDENTIAL_NAMES, "acme_key")
 ```
 
+A pattern whose regex names a `secret` group (`(?P<secret>...)`) is judged on that group:
+a match whose secret is a placeholder (`...`, `<token>`, `${VAR}`, fewer than four
+characters) is not reported, as with credential names.
+
 `entropy_threshold`, `hex_entropy_threshold` and `minimum_length` tune the high-entropy
 rule. Findings carry a redacted preview only.
 

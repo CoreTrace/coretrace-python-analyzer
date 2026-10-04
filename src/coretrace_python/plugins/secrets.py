@@ -203,13 +203,19 @@ def _bound_name(target: nodes.Target) -> str | None:
 
 @dataclass(frozen=True)
 class SecretPattern:
-    """A provider-specific secret format."""
+    """A provider-specific secret format. When the regex names a ``secret`` group, that
+    group is the secret itself, and a match whose secret is a placeholder is not one;
+    punctuation that ends a sentence around it (``(see ?token=...)``) is not part of it."""
 
     provider: str
     regex: str
 
     def matches(self, text: str) -> bool:
-        return re.search(self.regex, text) is not None
+        for match in re.finditer(self.regex, text):
+            secret = match.groupdict().get("secret")
+            if secret is None or not is_placeholder(secret.rstrip(".,;:!?)")):
+                return True
+        return False
 
 
 DEFAULT_PATTERNS: tuple[SecretPattern, ...] = (
@@ -223,10 +229,21 @@ DEFAULT_PATTERNS: tuple[SecretPattern, ...] = (
     SecretPattern("jwt", r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
     SecretPattern("sendgrid", r"\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b"),
     SecretPattern("twilio", r"\bSK[0-9a-fA-F]{32}\b"),
+    # A password in the user information, up to the last ``@`` before the host, since a
+    # password may hold one. An IP address or ``localhost`` and a port before the ``@``
+    # are an address, as in proxy specifications (``udp://127.0.0.1:1234@0.0.0.0:0``);
+    # a dotted name is not, since user names such as ``john.doe`` have dots.
     SecretPattern(
         "url",
-        r"://[^/\s:@'\"]+:[^/\s@'\"]+@"
-        r"|[?&](?:password|passwd|pwd|token|api_key|apikey|secret|access_key)=[^&\s'\"]{3,}",
+        r"://(?!(?:\d{1,3}(?:\.\d{1,3}){3}|localhost):\d+@)"
+        r"[^/\s:@'\"]+:(?P<secret>[^/\s'\"]+)@",
+    ),
+    # A secret in a query parameter, up to a character no URL holds unescaped (RFC 3986):
+    # prose around it, such as Markdown quotes, is not part of it.
+    SecretPattern(
+        "url",
+        r"[?&](?:password|passwd|pwd|token|api_key|apikey|secret|access_key)="
+        r"(?P<secret>[^&\s'\"`<>{}|\\^]{3,})",
     ),
 )
 
