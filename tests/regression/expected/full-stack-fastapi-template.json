@@ -25,12 +25,6 @@
       "function": null
     },
     {
-      "file": ".env",
-      "line": 18,
-      "rule": "hardcoded-secret",
-      "function": null
-    },
-    {
       "file": "backend/app/api/deps.py",
       "line": 1,
       "rule": "syntax-error",

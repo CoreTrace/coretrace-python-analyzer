@@ -221,24 +221,6 @@
       "function": "test_it_updates_channel"
     },
     {
-      "file": "hc/integrations/gotify/tests/test_notify.py",
-      "line": 50,
-      "rule": "hardcoded-secret",
-      "function": "test_it_works"
-    },
-    {
-      "file": "hc/integrations/gotify/tests/test_notify.py",
-      "line": 93,
-      "rule": "hardcoded-secret",
-      "function": "test_it_handles_subpath"
-    },
-    {
-      "file": "hc/integrations/gotify/tests/test_notify.py",
-      "line": 105,
-      "rule": "hardcoded-secret",
-      "function": "test_it_handles_subpath_with_missing_slash"
-    },
-    {
       "file": "hc/integrations/matrix/tests/test_notify.py",
       "line": 15,
       "rule": "hardcoded-credential",
