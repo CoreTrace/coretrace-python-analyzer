@@ -6,7 +6,9 @@ enclosing function; ``SecretDetector`` reports at most one finding per literal: 
 provider pattern first (``hardcoded-secret``), then a credential-like name with a real
 value (``hardcoded-credential``), then a high-entropy token on its own
 (``high-entropy-string``). Messages and metadata carry a redacted preview, never the
-secret. Only Python sources are scanned; configuration files are not.
+secret. ``config_literals`` gives the string values of the project's configuration
+files (``.env``, YAML, TOML, JSON, INI, properties) with the key each is bound to, and
+the same detector judges them.
 """
 
 from __future__ import annotations
@@ -222,6 +224,12 @@ DEFAULT_CREDENTIAL_NAMES: tuple[str, ...] = (
 CONFIG_SUFFIXES = frozenset({".env", ".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".properties", ".conf"})
 _PAIR = re.compile(r"^\s*(?:-\s+)?([A-Za-z_][\w.-]*)\s*[:=]\s*(.*?)\s*$")
 _MAX_CONFIG_BYTES = 8_000_000
+# In npm lock files, the keys of these maps are package names and their values version
+# ranges: ``"js-tokens": "^4.0.0"`` binds no value to the name ``js-tokens``.
+_NPM_LOCK_FILES = frozenset({"package-lock.json", "npm-shrinkwrap.json"})
+_NPM_DEPENDENCY_MAPS = frozenset(
+    {"dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "requires"}
+)
 
 
 def config_literals(root: Path) -> Iterator[Literal]:
@@ -241,7 +249,8 @@ def config_literals(root: Path) -> Iterator[Literal]:
             continue
         source = SourceId(str(path))
         if path.suffix == ".json":
-            yield from _structured(source, text, _load_json(text))
+            maps = _NPM_DEPENDENCY_MAPS if path.name in _NPM_LOCK_FILES else frozenset()
+            yield from _structured(source, text, _load_json(text), maps)
         elif path.suffix == ".toml":
             yield from _structured(source, text, _load_toml(text))
         else:
@@ -262,7 +271,12 @@ def _load_toml(text: str) -> object:
         return None
 
 
-def _structured(source: SourceId, text: str, data: object) -> Iterator[Literal]:
+def _structured(
+    source: SourceId, text: str, data: object, package_maps: frozenset[str] = frozenset()
+) -> Iterator[Literal]:
+    """Every string value of ``data`` with its key, except that a value directly under
+    one of ``package_maps`` is bound to no name: its key names a package."""
+
     lines = text.splitlines()
 
     def line_of(key: str) -> int:
@@ -271,15 +285,15 @@ def _structured(source: SourceId, text: str, data: object) -> Iterator[Literal]:
                 return number
         return 1
 
-    def walk(node: object, key: str | None) -> Iterator[Literal]:
+    def walk(node: object, key: str | None, named: bool = True) -> Iterator[Literal]:
         if isinstance(node, dict):
             for name, value in node.items():
-                yield from walk(value, str(name))
+                yield from walk(value, str(name), key not in package_maps)
         elif isinstance(node, list):
             for item in node:
-                yield from walk(item, key)
+                yield from walk(item, key, named)
         elif isinstance(node, str) and key is not None:
-            yield node, key, SourceSpan(source, line_of(key), 1), None
+            yield node, key if named else None, SourceSpan(source, line_of(key), 1), None
 
     yield from walk(data, None)
 
