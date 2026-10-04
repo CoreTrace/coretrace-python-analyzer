@@ -47,6 +47,17 @@ _DIGEST_WORDS = ("hash", "digest", "sha", "md5", "checksum", "commit", "etag", "
 # Subresource integrity, as in lock files: ``sha512-<base64>``.
 _INTEGRITY = re.compile(r"^(md5|sha1|sha256|sha384|sha512)-[A-Za-z0-9+/=]+$", re.IGNORECASE)
 _ALPHABET_WORDS = ("alphabet", "charset", "characters", "letters", "digits")
+# PHC strings and modular crypt strings open with their algorithm: argon2, bcrypt,
+# SHA-crypt, PBKDF2 and scrypt.
+_PASSWORD_HASH = re.compile(r"^\$(argon2(i|d|id)|2[abxy]|5|6|pbkdf2(-sha(1|256|512))?|scrypt)\$")
+
+
+def is_password_hash(value: str) -> bool:
+    """A password hash in PHC or modular crypt format, recognised by its algorithm
+    identifier: what an application stores instead of the password, which it does not
+    reveal, even when the rest of the hash is incomplete."""
+
+    return _PASSWORD_HASH.match(value) is not None
 
 
 def looks_like_digest(value: str, name: str | None) -> bool:
@@ -341,7 +352,12 @@ class SecretDetector(Plugin):
                     function,
                     {"provider": pattern.provider, "name": name or "", "length": str(len(value))},
                 )
-        if name is not None and self.is_credential_name(name) and not is_placeholder(value):
+        if (
+            name is not None
+            and self.is_credential_name(name)
+            and not is_placeholder(value)
+            and not is_password_hash(value)
+        ):
             # A password in a test fixture or a template file is rarely a leak; a name
             # is a hint, so the finding stays, at low confidence.
             context = credential_context(str(span.source_id))
