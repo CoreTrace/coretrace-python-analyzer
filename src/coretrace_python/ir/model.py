@@ -134,18 +134,26 @@ class BoolOp(Operands):
 
 @dataclass(frozen=True)
 class BuildList(Operands):
+    """``unpacked_at`` gives the place of each ``*iterable`` of ``unpacked`` among all the
+    items of the display, so that the order of ``[1, *a, 2]`` is kept."""
+
     result: Value
     location: SourceSpan
     elements: tuple[Value, ...]
     unpacked: tuple[Value, ...] = ()
+    unpacked_at: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
 class BuildTuple(Operands):
+    """``unpacked_at`` gives the place of each ``*iterable`` of ``unpacked`` among all the
+    items of the display, so that the order of ``[1, *a, 2]`` is kept."""
+
     result: Value
     location: SourceSpan
     elements: tuple[Value, ...]
     unpacked: tuple[Value, ...] = ()
+    unpacked_at: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

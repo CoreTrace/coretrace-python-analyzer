@@ -127,6 +127,14 @@ judges by its own criteria. The refutation's
 verdict, which other consumers of the flow such as the advisory correlation read, does
 not change; a rule reading more analyses declares them in its `requires`.
 
+A rule that tells cases of its sinks apart by severity too overrides `assess(ctx,
+function, flow, verdict)`, which returns an `Assessment` of the verdict and the
+severity; by default it pairs `judge`'s verdict with the rule's `severity`. A `hotspot`
+verdict lowers the confidence of the finding, never its severity. `command-injection`
+reads there the command a flow reaches (`coretrace_python.taint.commands`): a shell
+string or the program is `high`; an element of an argument list run without a shell is
+an option, `medium` unless a documented option of the program runs a command it chooses.
+
 ### Security models: `ModelPlugin`
 
 Declares sources, sinks and sanitizers for a library or a framework. A model plugin

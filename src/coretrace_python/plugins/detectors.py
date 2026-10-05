@@ -1,7 +1,8 @@
 """Reusable detector bases (architecture §15).
 
 ``TaintDetector`` turns the flows of one taint kind into findings; every security
-detector is a few class attributes on top of it. ``SymbolCallDetector`` reports calls
+detector is a few class attributes on top of it, and a rule that knows more about its
+sinks refines the verdict (``judge``) or the severity too (``assess``). ``SymbolCallDetector`` reports calls
 whose callee resolves to a canonical symbol, through imports and local aliases alike,
 by reading the SSA form.
 """
@@ -9,6 +10,7 @@ by reading the SSA form.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
@@ -21,6 +23,14 @@ from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.plugins.api import Plugin, PluginContext
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint import TaintAnalysis, TaintFlow, TaintKind
+
+
+@dataclass(frozen=True)
+class Assessment:
+    """A rule's verdict on one flow and the severity it reports the flow at."""
+
+    verdict: Verdict
+    severity: Severity
 
 
 class TaintDetector(Plugin):
@@ -43,7 +53,8 @@ class TaintDetector(Plugin):
                 verdict = verdicts.verdict(flow)
                 if verdict.status is Status.REFUTED:
                     continue
-                verdict = self.judge(ctx, function, flow, verdict)
+                assessment = self.assess(ctx, function, flow, verdict)
+                verdict = assessment.verdict
                 if verdict.status is Status.REFUTED:
                     continue
                 message = f"{self.title}: {flow.source.label} input reaches {flow.sink.symbol}"
@@ -65,7 +76,7 @@ class TaintDetector(Plugin):
                     Finding(
                         rule_id=self.rule_id,
                         message=message,
-                        severity=self.severity,
+                        severity=assessment.severity,
                         confidence=confidence,
                         span=flow.location,
                         function=function.name,
@@ -80,6 +91,15 @@ class TaintDetector(Plugin):
         of the flow read, does not change."""
 
         return verdict
+
+    def assess(
+        self, ctx: PluginContext, function: nodes.Function, flow: TaintFlow, verdict: Verdict
+    ) -> Assessment:
+        """This rule's verdict on ``flow`` (``judge``'s) and its severity: the rule's own,
+        unless the rule tells cases of its sinks apart. A ``hotspot`` verdict lowers the
+        confidence of the finding, never its severity, which is set here."""
+
+        return Assessment(self.judge(ctx, function, flow, verdict), self.severity)
 
 
 def _lower(confidence: Confidence) -> Confidence:
