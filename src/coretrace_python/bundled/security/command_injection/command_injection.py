@@ -2,21 +2,24 @@
 
 What decides the result is what the attacker still controls in the command a process is
 started with (issue #208). A string that a shell interprets, a string naming the program,
-the program itself, or an operand the program runs as a command (after the host for
-``ssh``, the program of a wrapper such as ``sudo``, any argument of a batch file) is a
-command injection, ``high``. An element of an argument list run without a shell
-otherwise injects at most an option: ``medium``, or ``high`` when ``OPTIONS`` establishes
-that the program runs a command chosen through an option that fits there.
+the program itself, or an operand that the program runs as shell text (``ssh`` after the
+host, a shell's first operand after ``-c``, any argument of a batch file) is a command
+injection, ``high``. Operands that are a command of their own (the program a wrapper such
+as ``sudo`` runs, what follows ``find -exec``) are read again as that command. An element
+of an argument list run without a shell otherwise injects at most an option: ``medium``,
+or ``high`` when ``OPTIONS`` establishes that the program runs a command chosen through an
+option that fits there.
 
 A value an option takes is judged by what ``OPTIONS`` establishes the option does with
-it, whatever its prefix: run it (``sh -c``, ``cmd /c``, ``python -c``: ``high``), keep it
-as data (``git commit -m``: refuted), or something not established (``medium``). After an
-option ``OPTIONS`` does not describe, the finding is kept for review at the severity of a
-free element; after options established to take no value (``rm -rf``, grouped short
-options read as getopt reads them), the element stands alone. An element standing alone
-is judged by its constant prefix: ``f"v{x}"`` is no option, the value of ``f"--output={x}"``
-belongs to a fixed option, ``f"--{x}"`` leaves the option open. A ``hotspot`` verdict
-lowers the confidence, never the severity, which each case sets.
+it, whatever its prefix: run it (``cmd /c``, ``python -c``: ``high``), keep it as data
+(``git commit -m``: refuted), or something not established (``medium``). After an option
+``OPTIONS`` does not describe, or an element of unknown value, the finding is kept for
+review at the severity of a free element; after options established to take no value
+(``rm -rf``, grouped short options read as getopt reads them), the element stands alone.
+An element standing alone is judged by its constant prefix: ``f"v{x}"`` is no option, the
+value of ``f"--output={x}"`` belongs to a fixed option, ``f"--{x}"`` leaves the option
+open. A ``hotspot`` verdict lowers the confidence, never the severity, which each case
+sets.
 """
 
 from __future__ import annotations
@@ -46,10 +49,12 @@ class CommandOption:
     """An option of ``program``, after one of ``subcommands`` when any are given. An
     option that ``takes_value`` reads it from the next element, or after ``=`` or the
     short option in the same element, and ``single`` says one element can carry the option
-    and its value; with ``rest``, every element after it is its value. What the program
-    does with the value decides: with ``runs``, it runs a command the value chooses;
-    with ``inert``, it only keeps it as data (a commit message); with neither, the effect
-    is not established. An option that takes no value leaves the next element free."""
+    and its value; with ``rest``, every element after it is its value, and with ``opens``
+    the elements after it, up to ``;`` or ``+``, are a command of their own. What the
+    program does with the value decides: with ``runs``, it runs a command the value
+    chooses; with ``inert``, it only keeps it as data (a commit message); with neither,
+    the effect is not established. An option that takes no value leaves the next element
+    free."""
 
     program: str
     option: str
@@ -59,6 +64,20 @@ class CommandOption:
     takes_value: bool = True
     inert: str | None = None
     rest: bool = False
+    opens: bool = False
+
+
+@dataclass(frozen=True)
+class CommandOperands:
+    """Operands a program runs, counted from 0 after its options: from operand ``first``
+    on, either shell ``text`` the program has a shell run, or a program and its arguments,
+    a command of its own. With ``after``, only when that letter is among the program's
+    short options, and then operand ``first`` only (``sh -c 'cmd' name arguments``)."""
+
+    first: int
+    text: bool
+    how: str
+    after: str | None = None
 
 
 def _flags(program: str, *options: str) -> tuple[CommandOption, ...]:
@@ -66,6 +85,7 @@ def _flags(program: str, *options: str) -> tuple[CommandOption, ...]:
 
 
 _SHELLS = ("sh", "bash", "dash", "zsh", "ksh")
+_WRAPPERS = ("sudo", "doas", "env", "xargs", "nohup", "nice", "time")
 
 # Documented behaviours only: an option missing here is neither established to be
 # dangerous, nor inert, nor to take no value.
@@ -77,6 +97,7 @@ OPTIONS: tuple[CommandOption, ...] = (
         CommandOption("git", option, "runs the program it names", subcommands)
         for option, subcommands in (
             ("--upload-pack", ("clone", "fetch", "pull", "ls-remote")),
+            ("-u", ("clone", "ls-remote")),
             ("--receive-pack", ("push",)),
             ("--exec", ("push",)),
         )
@@ -107,26 +128,21 @@ OPTIONS: tuple[CommandOption, ...] = (
     CommandOption("rsync", "-e", "runs the remote shell it names"),
     CommandOption("rsync", "--rsh", "runs the remote shell it names"),
     *(
-        CommandOption("find", option, "runs the command that follows", single=False)
+        CommandOption("find", option, "runs the command that follows", single=False, opens=True)
         for option in ("-exec", "-execdir", "-ok", "-okdir")
-    ),
-    *(
-        CommandOption(shell, "-c", "runs its value as a shell command", single=False)
-        for shell in _SHELLS
     ),
     *(CommandOption(shell, "-o", single=False) for shell in _SHELLS),
     *(
         option
         for shell in _SHELLS
-        for option in _flags(shell, *(f"-{letter}" for letter in "abCefhimnsuvx"))
+        for option in _flags(shell, *(f"-{letter}" for letter in "abCcefhilmnsuvx"))
     ),
-    *(option for shell in ("bash", "zsh", "ksh") for option in _flags(shell, "-l")),
     CommandOption("python", "-c", "runs its value as Python code"),
     *(
         CommandOption(
             "cmd", option, "runs the rest of the command line as a command", single=False, rest=True
         )
-        for option in ("/c", "/C", "/k", "/K")
+        for option in ("/c", "/k")
     ),
     *(
         CommandOption(
@@ -137,7 +153,7 @@ OPTIONS: tuple[CommandOption, ...] = (
             rest=True,
         )
         for powershell in ("powershell", "pwsh")
-        for option in ("-Command", "-command", "-c", "-EncodedCommand", "-e")
+        for option in ("-command", "-c", "-encodedcommand", "-e", "-ec")
     ),
     *_flags(
         "rm",
@@ -156,17 +172,24 @@ OPTIONS: tuple[CommandOption, ...] = (
 )
 # Programs documented to read ``--`` as the end of their options.
 END_OF_OPTIONS = frozenset({"git", "tar", "rsync", "rm"})
-# Programs whose operands, from the given one on, are a command they run, and how.
-COMMAND_OPERANDS: Mapping[str, tuple[int, str]] = {
-    "ssh": (1, "is part of the command the remote shell runs"),
-    "timeout": (1, "may name the program timeout runs"),
+OPERANDS: Mapping[str, CommandOperands] = {
+    "ssh": CommandOperands(1, True, "is part of the command the remote shell runs"),
+    "powershell": CommandOperands(0, True, "is part of the command PowerShell runs"),
     **{
-        wrapper: (0, f"may name the program {wrapper} runs")
-        for wrapper in ("sudo", "doas", "env", "xargs", "nohup", "nice", "time")
+        shell: CommandOperands(0, True, "is the command the shell runs after -c", after="c")
+        for shell in _SHELLS
+    },
+    "timeout": CommandOperands(1, False, "names the program timeout runs"),
+    **{
+        wrapper: CommandOperands(0, False, f"names the program {wrapper} runs")
+        for wrapper in _WRAPPERS
     },
 }
-# Windows runs a batch file through cmd.exe, which parses its arguments again.
+# Windows runs a batch file through cmd.exe, which parses its arguments again; its own
+# programs read their options whatever the case.
 _BATCH = (".bat", ".cmd")
+_ANY_CASE = frozenset({"cmd", "powershell", "pwsh"})
+_TERMINATORS = (";", "+")
 
 _PROCESS_STARTERS = frozenset(
     SymbolId(f"python.subprocess.{name}")
@@ -184,13 +207,23 @@ _PYTHON_EXECUTABLE = SymbolId("python.sys.executable")
 @dataclass(frozen=True)
 class _Reading:
     """What one tainted element of a command lets the attacker do: run a ``command``
-    (the program, ``high``), give an option at ``severity``, possibly only ``to_review``,
-    or nothing, with ``severity`` None."""
+    (``high``), give an option at ``severity``, possibly only ``to_review``, or nothing,
+    with ``severity`` None."""
 
     reason: str
     severity: Severity | None
     command: bool = False
     to_review: bool = False
+
+
+@dataclass(frozen=True)
+class _Operands:
+    """The operands before an element, by position; whether the option before it takes
+    the element as its value (``consumed``); whether a ``--`` ended the options."""
+
+    positions: tuple[int, ...]
+    consumed: bool = False
+    ended: bool = False
 
 
 class CommandInjectionPlugin(TaintDetector):
@@ -225,10 +258,12 @@ class CommandInjectionPlugin(TaintDetector):
             i.result: i for block in ssa.blocks for i in block.instructions if i.result is not None
         }
         parts = command_parts(flow.argument, defs, ctx.get(DefUseAnalysis, function))
-        if parts is None:
+        if not parts:
             return default
         taint = ctx.get(TaintAnalysis, function)
-        command = _Command(parts, defs, ctx.get(ModuleStringsAnalysis), _executable(arguments))
+        command = _Command(
+            parts, defs, ctx.get(ModuleStringsAnalysis), _program(arguments, parts[0], defs)
+        )
         readings = [
             command.read(index)
             for index, part in enumerate(parts)
@@ -254,27 +289,30 @@ class CommandInjectionPlugin(TaintDetector):
 
 
 class _Command:
-    """The command of one call, read element by element."""
+    """A command, read element by element; ``program`` is the name of the program it
+    runs, None when unknown."""
 
     def __init__(
         self,
         parts: tuple[CommandPart, ...],
         defs: Mapping[Value, Instruction],
         strings: Mapping[str, str],
-        executable: str | None,
+        program: str | None,
     ) -> None:
         self.parts = parts
         self.defs = defs
         self.strings = strings
-        first = executable if executable is not None else self.text(0)
-        made = defs.get(parts[0].value) if parts and parts[0].known else None
-        if first is None and isinstance(made, Symbol) and made.symbol_id == _PYTHON_EXECUTABLE:
-            first = "python"
-        name = re.split(r"[\\/]", first)[-1].lower() if first is not None else None
+        name = _name(program) if program is not None else None
         self.batch = name is not None and name.endswith(_BATCH)
-        if name is not None and name.endswith(".exe"):
-            name = name.removesuffix(".exe")
-        self.program = "python" if name is not None and _PYTHON.fullmatch(name) else name
+        self.program = name
+
+    def nested(self, start: int, end: int | None = None) -> _Command:
+        """The command that the elements from ``start`` (to ``end``) spell."""
+
+        parts = self.parts[start:end]
+        return _Command(
+            parts, self.defs, self.strings, _first_program(parts[0], self.defs, self.strings)
+        )
 
     def text(self, index: int) -> str | None:
         """The constant text of the element at ``index``, when all of it is constant."""
@@ -285,11 +323,15 @@ class _Command:
         text, whole = leading_text(part.value, self.defs, self.strings)
         return text if whole else None
 
+    def prefix(self, index: int) -> str:
+        part = self.parts[index]
+        return leading_text(part.value, self.defs, self.strings)[0] if part.known else ""
+
     def read(self, index: int) -> _Reading:
-        """What the input at ``index`` lets the attacker do. An element an established
-        option takes is judged by what the option does with it, whatever its prefix; one
-        that stands alone by what it can still be: the program, a command operand, an
-        option, or an operand only."""
+        """What the input at ``index`` lets the attacker do. Operands the program runs
+        come first; then an element an established option takes is judged by what the
+        option does with it, whatever its prefix; one standing alone, by what it can
+        still be: an option, or an operand only."""
 
         if all(not earlier.known for earlier in self.parts[:index]):
             return _Reading("the input may name the program", Severity.HIGH, command=True)
@@ -297,33 +339,56 @@ class _Command:
             return _Reading(
                 "cmd.exe parses the arguments of a batch file again", Severity.HIGH, command=True
             )
+        operand = self.operand(index)
+        if operand is not None:
+            return operand
         for position in range(1, index):
             option = self.option(self.text(position) or "", position)
+            if option is not None and option.opens:
+                end = next(
+                    (
+                        later
+                        for later in range(position + 1, len(self.parts))
+                        if self.text(later) in _TERMINATORS
+                    ),
+                    len(self.parts),
+                )
+                if position < index < end:
+                    return self.inside(position + 1, end, index)
             if option is not None and option.rest:
                 return _Reading(
                     f"the input follows {self.program} {option.option}, which {option.runs}",
                     Severity.HIGH,
                 )
-        before = self.text(index - 1)
-        if before is not None and before not in ("-", "--") and self.option_like(before):
-            taker = self.taker(before, index)
-            if isinstance(taker, CommandOption):
-                return self.value_of(taker, before)
-            if taker is None:
-                if self.command_operand(index) is not False:
-                    return self.operand_command()
+        if index >= 2:
+            before = self.text(index - 1)
+            if before is None:
                 free = self.free(index, "the input is a whole element")
-                return _Reading(
-                    f"cannot tell whether {before} takes the input as its value; if not, {free.reason}",
-                    free.severity,
-                    to_review=True,
+                return self.review(
+                    f"cannot tell what the element before the input is; if not an option, {free.reason}",
+                    free,
                 )
-        part = self.parts[index]
-        prefix = leading_text(part.value, self.defs, self.strings)[0] if part.known else ""
-        if not prefix.startswith("-") and self.command_operand(index) is not False:
-            return self.operand_command()
-        if not part.known:
+            if before not in ("-", "--") and self.option_like(before):
+                taker = self.taker(before, index)
+                if isinstance(taker, CommandOption):
+                    if not self.parts[index].known and taker.runs is None:
+                        return self.free(index, f"the input gives whole elements after {before}")
+                    return self.value_of(taker, before)
+                if taker is None:
+                    free = self.free(index, "the input is a whole element")
+                    return self.review(
+                        f"cannot tell whether {before} takes the input as its value; if not, {free.reason}",
+                        free,
+                    )
+        if not self.parts[index].known:
             return self.free(index, "the input gives whole elements")
+        prefix = self.prefix(index)
+        for option in self.applicable(index):
+            if option.rest and self.same(prefix[: len(option.option)], option.option):
+                return _Reading(
+                    f"the input follows {self.program} {option.option}, which {option.runs}",
+                    Severity.HIGH,
+                )
         if prefix.startswith("--") and "=" in prefix:
             return self.option_value(index, prefix[: prefix.index("=")])
         if prefix.startswith("-") and len(prefix) >= 2 and prefix[1] != "-":
@@ -334,7 +399,7 @@ class _Command:
             return _Reading(
                 f"the constant prefix {prefix!r} keeps the input from being an option", None
             )
-        if self.after_end_of_options(index):
+        if any(self.text(position) == "--" for position in range(1, index)):
             if self.program in END_OF_OPTIONS:
                 return _Reading(f"{self.program} reads the input after '--' as an operand", None)
             return self.free(
@@ -342,9 +407,110 @@ class _Command:
             )
         return self.free(index, "the input is a whole element")
 
+    def operand(self, index: int) -> _Reading | None:
+        """The reading of an element among the operands the program runs, or None when
+        the element is not one of them."""
+
+        if self.program not in OPERANDS:
+            return None
+        spec = OPERANDS[self.program]
+        unclear = _Reading(
+            f"the input may be an operand that {spec.how}", Severity.HIGH, command=True
+        )
+        if spec.after is not None:
+            given = self.letter_given(spec.after, index)
+            if given is None:
+                return unclear
+            if not given:
+                return None
+        operands = self.operands(index, spec.first + 1)
+        if operands is None:
+            return unclear
+        if operands.consumed:
+            return None
+        count = len(operands.positions)
+        operand_like = operands.ended or not self.prefix(index).startswith("-")
+        if count > spec.first:
+            if not spec.text:
+                return self.inside(operands.positions[spec.first], None, index)
+            return (
+                None
+                if spec.after is not None
+                else _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
+            )
+        if count == spec.first and operand_like:
+            return _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
+        return None
+
+    def inside(self, start: int, end: int | None, index: int) -> _Reading:
+        """The reading of the element at ``index`` in the command the elements from
+        ``start`` (to ``end``) spell, which the program runs."""
+
+        if index == start:
+            return _Reading(
+                f"the input names the program {self.program} runs", Severity.HIGH, command=True
+            )
+        reading = self.nested(start, end).read(index - start)
+        return _Reading(
+            f"in the command {self.program} runs, {reading.reason}",
+            reading.severity,
+            reading.command,
+            reading.to_review,
+        )
+
+    def operands(self, index: int, enough: int) -> _Operands | None:
+        """The operands before ``index``, up to ``enough`` of them; None when an element of
+        unknown value, or an option that may take one, comes first."""
+
+        positions: list[int] = []
+        position = 1
+        while position < index and len(positions) < enough:
+            text = self.text(position)
+            if text is None:
+                return None
+            if text == "--":
+                return _Operands((*positions, *range(position + 1, index))[:enough], ended=True)
+            if self.option_like(text) and text != "-":
+                if not (text.startswith("--") and "=" in text):
+                    taker = self.taker(text, position + 1)
+                    if taker is None:
+                        return None
+                    if isinstance(taker, CommandOption):
+                        position += 1
+                        if position == index:
+                            return _Operands(tuple(positions), consumed=True)
+            else:
+                positions.append(position)
+            position += 1
+        return _Operands(tuple(positions))
+
+    def letter_given(self, letter: str, index: int) -> bool | None:
+        """Whether a short option ``letter`` comes among the options before ``index``, None
+        when an element of unknown value comes first."""
+
+        position = 1
+        while position < index:
+            text = self.text(position)
+            if text is None:
+                return None
+            if text == "--" or not text.startswith("-") or text == "-":
+                return False
+            if not text.startswith("--") and letter in text[1:]:
+                return True
+            if isinstance(self.taker(text, position + 1), CommandOption):
+                position += 1
+            position += 1
+        return False
+
+    def review(self, reason: str, free: _Reading) -> _Reading:
+        return _Reading(reason, free.severity, to_review=True)
+
+    def same(self, written: str, option: str) -> bool:
+        return written.lower() == option.lower() if self.program in _ANY_CASE else written == option
+
     def option_like(self, text: str) -> bool:
         return text.startswith("-") or any(
-            option.option == text for option in OPTIONS if option.program == self.program
+            self.same(text, option.option) for option in OPTIONS if option.program == self.program
         )
 
     def free(self, index: int, how: str) -> _Reading:
@@ -386,48 +552,6 @@ class _Command:
             )
         return _Reading(f"the input is the value of {self.program} {given}", Severity.MEDIUM)
 
-    def operand_command(self) -> _Reading:
-        assert self.program is not None
-        return _Reading(
-            f"the input {COMMAND_OPERANDS[self.program][1]}", Severity.HIGH, command=True
-        )
-
-    def command_operand(self, index: int) -> bool | None:
-        """Whether the element at ``index`` is one of the operands the program runs as a
-        command: False when the program has none or the element comes before them, None
-        when the options before it do not tell."""
-
-        if self.program not in COMMAND_OPERANDS:
-            return False
-        operands = self.operands_before(index)
-        return None if operands is None else operands >= COMMAND_OPERANDS[self.program][0]
-
-    def operands_before(self, index: int) -> int | None:
-        """The number of operands before ``index``, or None when an element of unknown
-        value, or an option that may take one, comes first."""
-
-        count, position = 0, 1
-        while position < index:
-            text = self.text(position)
-            if text is None:
-                return None
-            if text == "--":
-                return count + index - position - 1
-            if text.startswith("-") and text != "-":
-                if not (text.startswith("--") and "=" in text):
-                    taker = self.taker(text, position + 1)
-                    if taker is None:
-                        return None
-                    if isinstance(taker, CommandOption):
-                        position += 1
-            else:
-                count += 1
-            position += 1
-        return count
-
-    def after_end_of_options(self, index: int) -> bool:
-        return any(self.text(position) == "--" for position in range(1, index))
-
     def taker(self, before: str, index: int) -> CommandOption | bool | None:
         """The option ``before`` whose value is the element at ``index``; False when the
         model establishes that ``before`` takes no value there, None when it cannot tell.
@@ -449,12 +573,15 @@ class _Command:
         return False
 
     def option(self, name: str, index: int) -> CommandOption | None:
-        return next((option for option in self.applicable(index) if option.option == name), None)
+        return next(
+            (option for option in self.applicable(index) if self.same(name, option.option)), None
+        )
 
     def applicable(self, index: int) -> list[CommandOption]:
         """The options of ``OPTIONS`` the element at ``index`` may give: those of the
-        program, after their subcommand when the command shows it before the element, or
-        whatever the subcommand when the command does not tell."""
+        program, after their subcommand when the command shows it before the element. When
+        the command does not tell, options that run a command still apply, whatever their
+        subcommand, but not an inert reading, which needs the subcommand established."""
 
         if self.program is None:
             return []
@@ -463,7 +590,11 @@ class _Command:
             option
             for option in OPTIONS
             if option.program == self.program
-            and (not option.subcommands or subcommand is None or subcommand in option.subcommands)
+            and (
+                not option.subcommands
+                or (subcommand is None and option.inert is None)
+                or subcommand in option.subcommands
+            )
         ]
 
     def subcommand(self, index: int) -> str | None:
@@ -478,21 +609,51 @@ class _Command:
         return ""
 
 
+def _name(program: str) -> str:
+    """The name a program is known by in ``OPTIONS``: without its directory (POSIX or
+    Windows) or ``.exe``, in lower case, any ``python3.x`` as ``python``."""
+
+    name = re.split(r"[\\/]", program)[-1].lower().removesuffix(".exe")
+    return "python" if _PYTHON.fullmatch(name) else name
+
+
+def _first_program(
+    part: CommandPart, defs: Mapping[Value, Instruction], strings: Mapping[str, str]
+) -> str | None:
+    """The program the first element of a command names: its constant text, or Python
+    for ``sys.executable``; None when unknown."""
+
+    if not part.known:
+        return None
+    text, whole = leading_text(part.value, defs, strings)
+    if whole:
+        return text
+    made = defs.get(part.value)
+    return "python" if isinstance(made, Symbol) and made.symbol_id == _PYTHON_EXECUTABLE else None
+
+
+def _program(
+    arguments: Arguments, first: CommandPart, defs: Mapping[Value, Instruction]
+) -> str | None:
+    """The program a call runs: the one a constant ``executable`` names, which the
+    command's first element then only labels, or the one that element names. An
+    ``executable`` that is given but cannot be read leaves the program unknown."""
+
+    given = arguments.given("executable", _EXECUTABLE)
+    if given == (False, None):
+        return _first_program(first, defs, {})
+    written = given[1] if given is not None else None
+    if written == str(_PYTHON_EXECUTABLE):
+        return "python"
+    if written is None or len(written) < 2 or written[0] not in "'\"" or written[-1] != written[0]:
+        return None
+    return written[1:-1].replace("\\\\", "\\")
+
+
 def _spelled(option: str) -> str:
     """An option with its value in the same element: ``--name=...`` or ``-o...``."""
 
     return f"{option}=..." if option.startswith("--") else f"{option}..."
-
-
-def _executable(arguments: Arguments) -> str | None:
-    """The program a constant ``executable`` names, which the command's first element
-    then only labels."""
-
-    given = arguments.given("executable", _EXECUTABLE)
-    written = given[1] if given is not None else None
-    if written is None or len(written) < 2 or written[0] not in "'\"" or written[-1] != written[0]:
-        return None
-    return written[1:-1].replace("\\\\", "\\")
 
 
 def _shell(arguments: Arguments) -> bool | None:

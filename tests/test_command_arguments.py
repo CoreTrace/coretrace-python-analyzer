@@ -129,10 +129,43 @@ def judged(call: str) -> list[tuple[str, str, str]]:
         ('cmd = ["ls", "-l"]\n    cmd.insert(0, x)\n    subprocess.run(cmd)', HIGH),
         ('cmd = ["ls"]\n    cmd += [x]\n    subprocess.run(cmd)', HIGH),
         ('cmd = ["ls", "-l"]\n    cmd[0] = x\n    subprocess.run(cmd)', HIGH),
+        # Second review: an element of unknown value before the input leaves it to review.
+        ('subprocess.run(["tool", extra, f"echo {x}"])', MEDIUM_TO_REVIEW),
+        ('subprocess.run(["sh", extra, f"echo {x}"])', HIGH),
+        # A shell's -c is a flag: its first operand is the command, later ones are $1, $2...
+        ('subprocess.run(["sh", "-ce", f"echo {x}"])', HIGH),
+        ('subprocess.run(["bash", "-c", "-e", f"echo {x}"])', HIGH),
+        ('subprocess.run(["sh", "-c", "--", f"echo {x}"])', HIGH),
+        ('subprocess.run(["sh", "-lc", x])', HIGH),
+        ('subprocess.run(["bash", "-o", "pipefail", "-c", x])', HIGH),
+        ('subprocess.run(["sh", "-c", "echo $1", "sh", f"v{x}"])', None),
+        # After the first word of a remote command, ssh operands are shell text.
+        ('subprocess.run(["ssh", "host", "ls", f"-l{x}"])', HIGH),
+        ('subprocess.run(["ssh", "host", "ls", f"--color={x}"])', HIGH),
+        # A command inside the command: find -exec, a wrapper's program.
+        ('subprocess.run(["find", ".", "-exec", "sh", "-c", x, ";"])', HIGH),
+        ('subprocess.run(["find", ".", "-exec", "rm", x, ";"])', MEDIUM),
+        ('subprocess.run(["sudo", "ls", x])', MEDIUM),
+        ('subprocess.run(["sudo", "sh", "-c", f"echo {x}"])', HIGH),
+        # Inert values only where the subcommand is established, and one element only.
+        ('subprocess.run(["git", "commit", "-m", *x.split()])', MEDIUM),
+        ('subprocess.run(["git", "-C", "repo", "branch", "-m", x])', HIGH_TO_REVIEW),
+        ('subprocess.run(["gh", "--title", x])', MEDIUM_TO_REVIEW),
+        ('subprocess.run(["git", "clone", f"-u{x}", "url"])', HIGH),
+        ('subprocess.run(["git", "clone", "-u", x, "url"])', HIGH),
+        # Windows: PowerShell runs its operands, parameters ignore case, /c may be glued.
+        ('subprocess.run(["powershell", f"Get-Item {x}"])', HIGH),
+        ('subprocess.run(["powershell", "-NoProfile", f"Get-Item {x}"])', HIGH),
+        ('subprocess.run(["powershell", "-COMMAND", x])', HIGH),
+        ('subprocess.run(["cmd", f"/c{x}"])', HIGH),
+        ('subprocess.run(["CMD.EXE", "/C", x])', HIGH),
+        # An executable that cannot be read leaves the program unknown.
+        ('subprocess.run(["git", "commit", "-m", x], executable=extra)', MEDIUM_TO_REVIEW),
+        ('subprocess.run(["x", "-c", f"echo {x}"], executable=sys.executable)', HIGH),
         # Unpacked parts keep their place in the command.
         ('subprocess.run(["xcrun", "notarytool", *(["--keychain", x])])', MEDIUM_TO_REVIEW),
         ("subprocess.run([*extra, x])", HIGH),
-        ('subprocess.run(["ls", *extra, x])', MEDIUM),
+        ('subprocess.run(["ls", *extra, x])', MEDIUM_TO_REVIEW),
         ('subprocess.run(["ls", *x.split()])', MEDIUM),
     ],
 )
