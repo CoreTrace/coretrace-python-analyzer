@@ -202,10 +202,18 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
     }
     for rule in ("sql-injection", "command-injection", "code-injection", "nosql-injection", "path-traversal", "ssrf", "xss"):
         assert by_name[rule].provides == (f"vulnerability.{rule}",)
-    for rule in ("sql-injection", "command-injection", "code-injection", "nosql-injection", "path-traversal", "xss"):
+    for rule in ("sql-injection", "code-injection", "nosql-injection", "path-traversal", "xss"):
         assert by_name[rule].requires == ("taint.flows", "findings.refutation")
     # ``ssrf`` also reads how the URL of each flow is built.
     assert by_name["ssrf"].requires == ("taint.flows", "findings.refutation", "ir.ssa", "abstract.module_strings")
+    # ``command-injection`` also reads the command each flow reaches, element by element.
+    assert by_name["command-injection"].requires == (
+        "taint.flows",
+        "findings.refutation",
+        "ir.ssa",
+        "ir.defuse",
+        "abstract.module_strings",
+    )
     assert by_name["python-stdlib-models"].provides == ("model.python-stdlib",)
     assert by_name["weak-crypto"].provides == ("vulnerability.weak-crypto",)
 

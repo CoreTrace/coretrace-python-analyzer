@@ -189,7 +189,10 @@ class _FunctionLowerer:
         if isinstance(node, nodes.List | nodes.Tuple):
             elements, unpacked = self.spread(node.elements)
             builder = BuildList if isinstance(node, nodes.List) else BuildTuple
-            return self.emit(builder(self.new_value(), node.span, elements, unpacked))
+            at = tuple(
+                i for i, element in enumerate(node.elements) if isinstance(element, nodes.Starred)
+            )
+            return self.emit(builder(self.new_value(), node.span, elements, unpacked, at))
         if isinstance(node, nodes.Dict):
             items = tuple((self.expression(k), self.expression(v)) for k, v in node.items if k is not None)
             unpacked = tuple(self.expression(v) for k, v in node.items if k is None)
