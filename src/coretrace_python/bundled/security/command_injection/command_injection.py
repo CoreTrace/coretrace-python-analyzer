@@ -170,7 +170,31 @@ OPTIONS: tuple[CommandOption, ...] = (
     CommandOption("python", "-m", "runs the module it names", examine=True),
     CommandOption("python", "-W", "imports the module its warning category names", examine=True),
     CommandOption("python", "-X", single=False),
-    *_flags("python", *(f"-{letter}" for letter in "bBdEhiIOPqsSuvVx")),
+    *_flags("python", *(f"-{letter}" for letter in "23bBdEhiIOPqsSuvVx")),
+    *_flags("perl", *(f"-{letter}" for letter in "acnpsStTUwWX")),
+    CommandOption("perl", "-I", single=True),
+    *_flags("ruby", *(f"-{letter}" for letter in "acdlnpsvwWy")),
+    *(CommandOption("ruby", option) for option in ("-I", "-C", "-E")),
+    *_flags(
+        "node",
+        "-c",
+        "--check",
+        "-i",
+        "--interactive",
+        "--inspect",
+        "--inspect-brk",
+        "--no-warnings",
+        "--no-deprecation",
+        "--trace-warnings",
+        "--enable-source-maps",
+        "--expose-gc",
+        "--preserve-symlinks",
+    ),
+    *_flags("php", *(f"-{letter}" for letter in "aehHilmnqsvw")),
+    CommandOption("php", "-f", "runs the script it names", examine=True),
+    CommandOption("php", "-d", "sets any ini directive, auto_prepend_file included", examine=True),
+    CommandOption("php", "-c", "loads the php.ini it names", examine=True),
+    CommandOption("php", "-z", "loads the Zend extension it names", examine=True),
     *(CommandOption("perl", option, "runs its value as Perl code") for option in ("-e", "-E")),
     *(
         CommandOption("perl", option, "runs the import of its value as Perl code")
@@ -178,12 +202,21 @@ OPTIONS: tuple[CommandOption, ...] = (
     ),
     CommandOption("ruby", "-e", "runs its value as Ruby code"),
     CommandOption("ruby", "-r", "requires the library it names", examine=True),
+    # node reads the value of a short option from the next element only.
     *(
-        CommandOption("node", option, "loads the module it names", examine=True)
+        CommandOption(
+            "node",
+            option,
+            "loads the module it names",
+            examine=True,
+            single=option.startswith("--"),
+        )
         for option in ("-r", "--require", "--import")
     ),
     *(
-        CommandOption("node", option, "runs its value as JavaScript code")
+        CommandOption(
+            "node", option, "runs its value as JavaScript code", single=option.startswith("--")
+        )
         for option in ("-e", "--eval", "-p", "--print")
     ),
     *(
@@ -207,6 +240,22 @@ OPTIONS: tuple[CommandOption, ...] = (
         for powershell in ("powershell", "pwsh")
         for option in ("-command", "-c", "-encodedcommand", "-e", "-ec")
     ),
+    *(
+        option
+        for powershell in ("powershell", "pwsh")
+        for option in (
+            CommandOption(
+                powershell, "-file", "runs the script it names", single=False, examine=True
+            ),
+            *_flags(
+                powershell, "-noprofile", "-noninteractive", "-nologo", "-noexit", "-sta", "-mta"
+            ),
+            *(
+                CommandOption(powershell, value, single=False)
+                for value in ("-executionpolicy", "-windowstyle", "-inputformat", "-outputformat")
+            ),
+        )
+    ),
     *_flags(
         "rm",
         "-d",
@@ -225,15 +274,21 @@ OPTIONS: tuple[CommandOption, ...] = (
 # Programs documented to read ``--`` as the end of their options.
 END_OF_OPTIONS = frozenset({"git", "tar", "rsync", "rm"})
 # Interpreters run the script their first operand names, unless one of these options
-# gives the code instead (or, for a shell's ``-s``, reads it from the standard input).
+# gives the code or the script instead (or, for a shell's ``-s``, reads it from the
+# standard input).
+_POWERSHELL_CODE = ("-command", "-c", "-encodedcommand", "-e", "-ec", "-file")
 _SCRIPTS: Mapping[str, tuple[str, ...]] = {
     **{shell: ("-c", "-s") for shell in _SHELLS},
     "python": ("-c", "-m"),
     "perl": ("-e", "-E"),
     "ruby": ("-e",),
     "node": ("-e", "--eval", "-p", "--print"),
-    "php": ("-r",),
+    "php": ("-r", "-f", "-B", "-R", "-E"),
+    "pwsh": _POWERSHELL_CODE,
 }
+# These read their options after the code too, up to their first operand: what follows
+# ``perl -e CODE`` may be another ``-e``. Python and the shells read none after it.
+_OPTIONS_AFTER_CODE = frozenset({"perl", "ruby", "node", "php"})
 
 
 def _interpreter(name: str, code: tuple[str, ...]) -> tuple[CommandOperands, ...]:
@@ -248,7 +303,9 @@ def _interpreter(name: str, code: tuple[str, ...]) -> tuple[CommandOperands, ...
 
 OPERANDS: Mapping[str, tuple[CommandOperands, ...]] = {
     "ssh": (CommandOperands(1, "text", "is part of the command the remote shell runs"),),
-    "powershell": (CommandOperands(0, "text", "is part of the command PowerShell runs"),),
+    "powershell": (
+        CommandOperands(0, "text", "is part of the command PowerShell runs", unless=("-file",)),
+    ),
     "timeout": (CommandOperands(1, "command", "names the program timeout runs"),),
     **{
         wrapper: (
@@ -283,9 +340,9 @@ _PROCESS_STARTERS = frozenset(
 _COMMAND_ARGUMENT = frozenset({(0, None), (None, "args")})
 _EXECUTABLE, _SHELL_POSITION = 2, 8
 _SHELL, _NO_SHELL = frozenset({"True", "1"}), frozenset({"False", "None", "0"})
-# Versioned and distribution names of interpreters: python3.12, pythonw, pypy3, nodejs,
-# perl5.36, ruby3.2, php8.2.
-_INTERPRETER = re.compile(r"(python|pypy|perl|ruby|php|node)(?:js)?[0-9.]*w?")
+# Versioned and distribution names of interpreters: python3.12, pythonw, python3-dbg,
+# pypy3, the Windows launchers py and pyw, nodejs, perl5.36, ruby3.2, php8.2.
+_INTERPRETER = re.compile(r"(python|pypy|perl|ruby|php|node|py)(?:js)?[0-9.]*w?(?:-dbg)?")
 _PYTHON_EXECUTABLE = SymbolId("python.sys.executable")
 
 
@@ -533,7 +590,7 @@ class _Command:
             if given is None:
                 return unclear
             if given is not False:
-                return self.argument(given + 1, index) if index > given else None
+                return self.after_code(given, index)
         operands = self.operands(index, spec.first + 1, spec.assignments)
         if operands is None:
             return unclear
@@ -621,7 +678,7 @@ class _Command:
             text = self.text(position)
             if text is None:
                 return None
-            if text == "--":
+            if text == "--" or (text == "-" and self.program in _SHELLS):
                 return _Operands((*positions, *range(position + 1, index))[:enough], ended=True)
             if self.option_like(text) and text != "-":
                 if not (text.startswith("--") and "=" in text):
@@ -651,11 +708,20 @@ class _Command:
                 return None
             if text == "--" or text in ("-", "+") or not self.option_like(text):
                 return False
-            if text[0] in "-+" and not text.startswith("--") and len(text) > 2:
+            whole = text.split("=", 1)[0]
+            if self.named(whole, names):
+                option = self.option(text, position + 1)
+                return (
+                    position + 1
+                    if "=" not in text and option is not None and option.takes_value
+                    else position
+                )
+            grouped = text[0] in "-+" and not text.startswith("--") and len(text) > 2
+            if grouped and self.option(whole, position + 1) is None:
                 for offset, letter in enumerate(text[1:], start=1):
                     option = self.option(text[0] + letter, position + 1)
                     last = offset == len(text) - 1
-                    if text[0] + letter in names:
+                    if self.named(text[0] + letter, names):
                         return (
                             position + 1
                             if last and option is not None and option.takes_value
@@ -666,13 +732,6 @@ class _Command:
                     if option.takes_value:
                         position += last
                         break
-            elif text.split("=", 1)[0] in names:
-                option = self.option(text, position + 1)
-                return (
-                    position + 1
-                    if "=" not in text and option is not None and option.takes_value
-                    else position
-                )
             elif not (text.startswith("--") and "=" in text):
                 taker = self.taker(text, position + 1)
                 if taker is None:
@@ -680,6 +739,31 @@ class _Command:
                 position += isinstance(taker, CommandOption)
             position += 1
         return False
+
+    def after_code(self, given: int, index: int) -> _Reading | None:
+        """The reading of the element at ``index``, once the option ending at ``given`` gave
+        the code: an argument of it, except that the interpreters of
+        ``_OPTIONS_AFTER_CODE`` read options up to their first operand, which the usual
+        reading of options judges (None)."""
+
+        if index <= given:
+            return None
+        if self.program not in _OPTIONS_AFTER_CODE:
+            return self.argument(given + 1, index)
+        operands = self.operands(index, 1)
+        if operands is None or operands.consumed:
+            return None
+        if operands.positions:
+            return self.argument(operands.positions[0], index)
+        prefix = self.prefix(index)
+        if operands.ended or (prefix and not prefix.startswith("-")):
+            return self.argument(index, index)
+        if prefix.startswith("-"):
+            return None
+        return self.free(index, "the input is a whole element where options are still read")
+
+    def named(self, written: str, names: tuple[str, ...]) -> bool:
+        return any(self.same(written, name) for name in names)
 
     def review(self, reason: str, free: _Reading) -> _Reading:
         return _Reading(reason, free.severity, to_review=True)
@@ -707,7 +791,7 @@ class _Command:
             option for option in self.applicable(index) if option.runs is not None and option.single
         ]
         if dangerous:
-            option = dangerous[0]
+            option = min(dangerous, key=lambda found: found.examine)
             return _Reading(
                 f"{how}, and an option such as {self.program} {_spelled(option.option)} {option.runs}",
                 Severity.HIGH,
