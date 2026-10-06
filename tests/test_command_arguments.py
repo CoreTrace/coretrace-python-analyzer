@@ -7,9 +7,13 @@ fixed, ``high`` when the option's dangerous behaviour is established by model da
 (``git push --receive-pack=<cmd>``, ``ssh -o ProxyCommand=...``, ``sh -c``). A constant
 prefix is judged by what the attacker still controls: ``f"v{x}"`` is no option at all,
 ``f"--output={x}"`` is the value of a fixed option, ``f"--{x}"`` leaves the option open.
-A value after an option is that option's value only when the model establishes that the
-option consumes it, and a free element when the model establishes that the options before
-it take no value (``rm -rf``); otherwise the finding stays, for review. Severity is set per case:
+A value an option takes is judged by what the model establishes the option does with it,
+whatever its prefix: run it (``sh -c``, ``cmd /c``, ``python -c``: ``high``), keep it as
+data (``git commit -m``: refuted), or something not established (``medium``). After an
+option the model does not describe, the finding stays for review; after options the model
+establishes to take no value (``rm -rf``), the element stands alone. Operands that a
+program runs as a command (after the host for ``ssh``, a wrapper's program such as
+``sudo``'s, any argument of a batch file) are ``high``. Severity is set per case:
 the ``hotspot`` verdict lowers the confidence, never the severity.
 """
 
@@ -83,6 +87,48 @@ def judged(call: str) -> list[tuple[str, str, str]]:
         ('subprocess.run(["rm", "-rz", x])', MEDIUM_TO_REVIEW),
         ('subprocess.run(["ssh", "-vo", x, "host"])', HIGH),
         ('subprocess.run(["ssh", "-ov", x, "host"])', HIGH),
+        # An established option judges the value it takes, whatever its prefix.
+        ('subprocess.run(["sh", "-c", f"echo {x}"])', HIGH),
+        ('subprocess.run(["bash", "-c", "ls " + x])', HIGH),
+        ('subprocess.run(["ssh", "-o", f"ProxyCommand={x}", "host"])', HIGH),
+        ('subprocess.run(["git", "-c", f"core.sshCommand={x}", "fetch"])', HIGH),
+        ('subprocess.run(["find", ".", "-exec", f"sh -c {x}", ";"])', HIGH),
+        ('subprocess.run(["python3", "-c", f"print({x})"])', HIGH),
+        ('subprocess.run([sys.executable, "-c", f"print({x})"])', HIGH),
+        ('subprocess.run(["python3.12", "-c", x])', HIGH),
+        ('subprocess.run(["cmd", "/c", f"dir {x}"])', HIGH),
+        ('subprocess.run(["cmd", "/c", "dir", x])', HIGH),
+        ('subprocess.run(["powershell", "-Command", x])', HIGH),
+        ('subprocess.run(["git", "commit", "-m", x])', None),
+        ('subprocess.run(["gh", "release", "create", "v1", "--title", f"release {x}"])', None),
+        ('subprocess.run(["gh", "workflow", "run", "main.yml", "--ref", x])', None),
+        ('subprocess.run(["notmodelled", "-c", f"echo {x}"])', MEDIUM_TO_REVIEW),
+        ('subprocess.run(["bash", "-lc", x])', HIGH),
+        ('subprocess.run(["sh", "-ec", f"echo {x}"])', HIGH),
+        ('subprocess.run(["tar", f"-I{x}", "-xf", "a.tar"])', HIGH),
+        ('subprocess.run(["safe", "-c", x], executable="/bin/sh")', HIGH),
+        # Operands that are a command: a remote shell, a wrapper, a batch file.
+        ('subprocess.run(["ssh", "user@host", "--", x])', HIGH),
+        ('subprocess.run(["ssh", "host", f"cat {x}"])', HIGH),
+        ('subprocess.run(["sudo", x])', HIGH),
+        ('subprocess.run(["env", x])', HIGH),
+        ('subprocess.run(["timeout", "5", x])', HIGH),
+        ('subprocess.run(["build.bat", x])', HIGH),
+        ('subprocess.run(["git.exe", "push", "origin", x])', HIGH),
+        (r'subprocess.run(["C:\\Git\\bin\\git.exe", "push", "origin", x])', HIGH),
+        # An operand after the end of options, anywhere before it.
+        ('subprocess.run(["git", "log", "--", "a", x])', None),
+        ('subprocess.run(["rm", "-rf", "--", x])', None),
+        # Where shell comes from, and lists the module cannot read.
+        ('subprocess.Popen(["ls", x], -1, None, None, None, None, None, True, True)', HIGH),
+        ('subprocess.run(["ls", x], **extra)', HIGH_TO_REVIEW),
+        ('subprocess.Popen(args=["ls", x])', MEDIUM),
+        ('subprocess.run(("ls", x))', MEDIUM),
+        ('cmd = ["ls", x]\n    subprocess.run(cmd)', MEDIUM),
+        ('cmd = ["ls"]\n    cmd.append(x)\n    subprocess.run(cmd)', HIGH),
+        ('cmd = ["ls", "-l"]\n    cmd.insert(0, x)\n    subprocess.run(cmd)', HIGH),
+        ('cmd = ["ls"]\n    cmd += [x]\n    subprocess.run(cmd)', HIGH),
+        ('cmd = ["ls", "-l"]\n    cmd[0] = x\n    subprocess.run(cmd)', HIGH),
         # Unpacked parts keep their place in the command.
         ('subprocess.run(["xcrun", "notarytool", *(["--keychain", x])])', MEDIUM_TO_REVIEW),
         ("subprocess.run([*extra, x])", HIGH),
