@@ -177,15 +177,18 @@ def judged(call: str) -> list[tuple[str, str, str]]:
         ('subprocess.run([shutil.which("ssh"), "host", f"cat {x}"])', HIGH),
         ('subprocess.run([shutil.which("bash"), "-c", f"echo {x}"])', HIGH),
         # An interpreter runs the script its first operand names, unless code is given:
-        # execution is possible, exploitability depends on the file, so high to review.
+        # execution is possible, exploitability depends on the file, so high to review. An
+        # input that starts the element may as well be a code option (-e<code>#.pl): high.
         ('subprocess.run(["bash", f"/tmp/{x}.sh"])', HIGH_TO_REVIEW),
         ('subprocess.run(["sh", x])', HIGH_TO_REVIEW),
         ('subprocess.run(["bash", "-x", "--", f"run-{x}.sh"])', HIGH_TO_REVIEW),
         ('subprocess.run(["python3", f"scripts/{x}.py"])', HIGH_TO_REVIEW),
         ('subprocess.run([sys.executable, f"tools/{x}.py", "--flag"])', HIGH_TO_REVIEW),
         ('subprocess.run(["python3", "-m", f"pkg.{x}"])', HIGH_TO_REVIEW),
-        ('subprocess.run(["perl", f"{x}.pl"])', HIGH_TO_REVIEW),
-        ('subprocess.run(["node", f"{x}.js"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["perl", f"lib/{x}.pl"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["perl", f"{x}.pl"])', HIGH),
+        ('subprocess.run(["node", f"app/{x}.js"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["node", f"{x}.js"])', HIGH),
         # Code given by an option runs; the operands after it are the script's arguments.
         ('subprocess.run(["perl", "-e", f"print {x}"])', HIGH),
         ('subprocess.run(["ruby", "-e", x])', HIGH),
@@ -194,6 +197,25 @@ def judged(call: str) -> list[tuple[str, str, str]]:
         ('subprocess.run(["python3", "-c", "import sys; print(sys.argv[1])", f"v{x}"])', None),
         ('subprocess.run(["bash", "script.sh", f"v{x}"])', None),
         ('subprocess.run(["python3", "script.py", f"--name={x}"])', MEDIUM),
+        # Fourth review: options that choose code, arguments of a script, interpreter names.
+        ('subprocess.run(["python", "-W", x, "s.py"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["python", f"-W{x}"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["python", x])', HIGH),
+        ('subprocess.run(["node", x])', HIGH),
+        ('subprocess.run(["node", "app.js", x])', MEDIUM),
+        ('subprocess.run(["node", "app.js", "-e", x])', MEDIUM_TO_REVIEW),
+        ('subprocess.run(["perl", "x.pl", "-e", x])', MEDIUM_TO_REVIEW),
+        ('subprocess.run(["python3", "script.py", x])', MEDIUM),
+        ('subprocess.run(["python", "-m", "pkg", x])', MEDIUM),
+        ('subprocess.run(["node", "--eval=code", f"v{x}"])', None),
+        ('subprocess.run(["nodejs", f"s/{x}"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["pypy3", f"tools/{x}.py"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["perl5.36", f"lib/{x}.pl"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["perl", f"-M{x}", "s.pl"])', HIGH),
+        ('subprocess.run(["ruby", "-r", x, "s.rb"])', HIGH_TO_REVIEW),
+        ('subprocess.run(["php", "-R", f"echo {x};"])', HIGH),
+        ('subprocess.run(["bash", "-s", f"v{x}"])', None),
+        ('subprocess.run(["bash", "-s", x])', MEDIUM),
         # Unpacked parts keep their place in the command.
         ('subprocess.run(["xcrun", "notarytool", *(["--keychain", x])])', MEDIUM_TO_REVIEW),
         ("subprocess.run([*extra, x])", HIGH),

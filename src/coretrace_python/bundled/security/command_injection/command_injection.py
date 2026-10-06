@@ -8,7 +8,9 @@ injection, ``high``. Operands that are a command of their own (the program a wra
 as ``sudo`` runs, what follows ``find -exec``) are read again as that command. The script
 an interpreter runs (its first operand when no option gives the code, as ``bash run.sh`` or
 ``python tool.py``), or the module ``python -m`` runs, is ``high`` to review: execution is
-possible, and whether it is exploitable depends on the file the input chooses. An element
+possible, and whether it is exploitable depends on the file the input chooses. The
+arguments that follow a script or code are the script's: its own options, whose meaning is
+unknown, kept for review after an option and refuted behind a constant prefix. An element
 of an argument list run without a shell otherwise injects at most an option: ``medium``,
 or ``high`` when ``OPTIONS`` establishes that the program runs a command chosen through an
 option that fits there.
@@ -166,15 +168,28 @@ OPTIONS: tuple[CommandOption, ...] = (
     ),
     CommandOption("python", "-c", "runs its value as Python code"),
     CommandOption("python", "-m", "runs the module it names", examine=True),
-    *(CommandOption("python", option, single=False) for option in ("-W", "-X")),
+    CommandOption("python", "-W", "imports the module its warning category names", examine=True),
+    CommandOption("python", "-X", single=False),
     *_flags("python", *(f"-{letter}" for letter in "bBdEhiIOPqsSuvVx")),
     *(CommandOption("perl", option, "runs its value as Perl code") for option in ("-e", "-E")),
+    *(
+        CommandOption("perl", option, "runs the import of its value as Perl code")
+        for option in ("-M", "-m")
+    ),
     CommandOption("ruby", "-e", "runs its value as Ruby code"),
+    CommandOption("ruby", "-r", "requires the library it names", examine=True),
+    *(
+        CommandOption("node", option, "loads the module it names", examine=True)
+        for option in ("-r", "--require", "--import")
+    ),
     *(
         CommandOption("node", option, "runs its value as JavaScript code")
         for option in ("-e", "--eval", "-p", "--print")
     ),
-    CommandOption("php", "-r", "runs its value as PHP code"),
+    *(
+        CommandOption("php", option, "runs its value as PHP code")
+        for option in ("-r", "-B", "-R", "-E")
+    ),
     *(
         CommandOption(
             "cmd", option, "runs the rest of the command line as a command", single=False, rest=True
@@ -210,9 +225,9 @@ OPTIONS: tuple[CommandOption, ...] = (
 # Programs documented to read ``--`` as the end of their options.
 END_OF_OPTIONS = frozenset({"git", "tar", "rsync", "rm"})
 # Interpreters run the script their first operand names, unless one of these options
-# gives the code instead.
+# gives the code instead (or, for a shell's ``-s``, reads it from the standard input).
 _SCRIPTS: Mapping[str, tuple[str, ...]] = {
-    **{shell: ("-c",) for shell in _SHELLS},
+    **{shell: ("-c", "-s") for shell in _SHELLS},
     "python": ("-c", "-m"),
     "perl": ("-e", "-E"),
     "ruby": ("-e",),
@@ -268,7 +283,9 @@ _PROCESS_STARTERS = frozenset(
 _COMMAND_ARGUMENT = frozenset({(0, None), (None, "args")})
 _EXECUTABLE, _SHELL_POSITION = 2, 8
 _SHELL, _NO_SHELL = frozenset({"True", "1"}), frozenset({"False", "None", "0"})
-_PYTHON = re.compile(r"python[0-9.]*")
+# Versioned and distribution names of interpreters: python3.12, pythonw, pypy3, nodejs,
+# perl5.36, ruby3.2, php8.2.
+_INTERPRETER = re.compile(r"(python|pypy|perl|ruby|php|node)(?:js)?[0-9.]*w?")
 _PYTHON_EXECUTABLE = SymbolId("python.sys.executable")
 
 
@@ -505,13 +522,18 @@ class _Command:
             command=not script,
             to_review=script,
         )
-        for names, wanted in ((spec.after, True), (spec.unless, False)):
-            if names:
-                given = self.given(names, index)
-                if given is None:
-                    return unclear
-                if given is not wanted:
-                    return None
+        if spec.after:
+            given = self.given(spec.after, index)
+            if given is None:
+                return unclear
+            if given is False:
+                return None
+        if spec.unless:
+            given = self.given(spec.unless, index)
+            if given is None:
+                return unclear
+            if given is not False:
+                return self.argument(given + 1, index) if index > given else None
         operands = self.operands(index, spec.first + 1, spec.assignments)
         if operands is None:
             return unclear
@@ -524,16 +546,49 @@ class _Command:
                 return self.inside(operands.positions[spec.first], None, index)
             if spec.kind == "text" and not spec.after:
                 return _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
-            return None
+            return self.argument(operands.positions[spec.first] + 1, index)
         if count == spec.first and operand_like:
-            if script:
-                return _Reading(
-                    f"the input {spec.how}, whose contents decide what runs",
-                    Severity.HIGH,
-                    to_review=True,
-                )
-            return _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
+            if not script:
+                return _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
+            if not operands.ended and self.prefix(index) == "":
+                # A whole element there may as well be a code option and its value.
+                free = self.free(index, "the input is a whole element")
+                if free.severity is Severity.HIGH:
+                    return free
+            return _Reading(
+                f"the input {spec.how}, whose contents decide what runs",
+                Severity.HIGH,
+                to_review=True,
+            )
         return None
+
+    def argument(self, start: int, index: int) -> _Reading:
+        """An argument of a script or of code given by an option, the arguments starting at
+        ``start``, which the engine does not read: an option of it, whose meaning is
+        unknown, unless a constant prefix keeps it from being one."""
+
+        before = self.text(index - 1) if index > start else None
+        if (
+            before is not None
+            and before.startswith("-")
+            and before not in ("-", "--")
+            and "=" not in before
+        ):
+            return _Reading(
+                f"the input follows {before}, an option of the script it may be the value of",
+                Severity.MEDIUM,
+                to_review=True,
+            )
+        prefix = self.prefix(index)
+        if self.parts[index].known and prefix and not prefix.startswith("-"):
+            return _Reading(
+                f"the input is an argument of the script, behind the constant prefix {prefix!r}",
+                None,
+            )
+        return _Reading(
+            "the input is an argument of the script, which it may read as an option",
+            Severity.MEDIUM,
+        )
 
     def inside(self, start: int, end: int | None, index: int) -> _Reading:
         """The reading of the element at ``index`` in the command the elements from
@@ -582,11 +637,12 @@ class _Command:
             position += 1
         return _Operands(tuple(positions))
 
-    def given(self, names: tuple[str, ...], index: int) -> bool | None:
-        """Whether one of the options ``names`` comes among the options before ``index``,
-        read as getopt reads them (a short option that takes a value takes the rest of its
-        element); None when an element of unknown value, or an option that may take one,
-        comes first."""
+    def given(self, names: tuple[str, ...], index: int) -> int | bool | None:
+        """Where one of the options ``names`` ends among the options before ``index``: the
+        position of the element holding its value, or of the option itself when it takes
+        none; False when none comes, None when an element of unknown value, or an option
+        that may take one, comes first. Options are read as getopt reads them: a short
+        option that takes a value takes the rest of its element."""
 
         position = 1
         while position < index:
@@ -598,15 +654,25 @@ class _Command:
             if text[0] in "-+" and not text.startswith("--") and len(text) > 2:
                 for offset, letter in enumerate(text[1:], start=1):
                     option = self.option(text[0] + letter, position + 1)
+                    last = offset == len(text) - 1
                     if text[0] + letter in names:
-                        return True
+                        return (
+                            position + 1
+                            if last and option is not None and option.takes_value
+                            else position
+                        )
                     if option is None:
                         return None
                     if option.takes_value:
-                        position += offset == len(text) - 1
+                        position += last
                         break
             elif text.split("=", 1)[0] in names:
-                return True
+                option = self.option(text, position + 1)
+                return (
+                    position + 1
+                    if "=" not in text and option is not None and option.takes_value
+                    else position
+                )
             elif not (text.startswith("--") and "=" in text):
                 taker = self.taker(text, position + 1)
                 if taker is None:
@@ -740,10 +806,14 @@ class _Command:
 
 def _name(program: str) -> str:
     """The name a program is known by in ``OPTIONS``: without its directory (POSIX or
-    Windows) or ``.exe``, in lower case, any ``python3.x`` as ``python``."""
+    Windows) or ``.exe``, in lower case, an interpreter without its version (``pypy`` and
+    the Windows launcher ``py`` as ``python``)."""
 
     name = re.split(r"[\\/]", program)[-1].lower().removesuffix(".exe")
-    return "python" if _PYTHON.fullmatch(name) else name
+    interpreter = _INTERPRETER.fullmatch(name)
+    if interpreter is not None:
+        name = interpreter.group(1)
+    return "python" if name in ("pypy", "py") else name
 
 
 def _first_program(
