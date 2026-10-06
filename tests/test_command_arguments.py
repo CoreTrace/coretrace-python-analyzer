@@ -238,6 +238,14 @@ def judged(call: str) -> list[tuple[str, str, str]]:
         ('subprocess.run(["powershell", "-File", "s.ps1", f"v{x}"])', None),
         ('subprocess.run(["pyw", f"s/{x}.py"])', HIGH_TO_REVIEW),
         ('subprocess.run(["python3-dbg", f"s/{x}.py"])', HIGH_TO_REVIEW),
+        # Sixth review: every element after pwsh -Command is the command; node -pe.
+        ('subprocess.run(["pwsh", "-Command", "Get-Item", f"v{x}"])', HIGH),
+        ('subprocess.run(["pwsh", "-NoProfile", "-Command", "Get-Item", f"v{x}"])', HIGH),
+        ('subprocess.run(["pwsh", "-ec", "AAA", f"v{x}"])', HIGH),
+        ('subprocess.run(["pwsh", "-c", "echo", x])', HIGH),
+        ('subprocess.run(["sudo", "pwsh", "-c", "Get-Item", x])', HIGH),
+        ('subprocess.run(["node", "-pe", f"console.log({x})"])', HIGH),
+        ('subprocess.run(["node", "-pe", "CODE", x])', HIGH),
         # Unpacked parts keep their place in the command.
         ('subprocess.run(["xcrun", "notarytool", *(["--keychain", x])])', MEDIUM_TO_REVIEW),
         ("subprocess.run([*extra, x])", HIGH),

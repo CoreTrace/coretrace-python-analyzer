@@ -217,7 +217,7 @@ OPTIONS: tuple[CommandOption, ...] = (
         CommandOption(
             "node", option, "runs its value as JavaScript code", single=option.startswith("--")
         )
-        for option in ("-e", "--eval", "-p", "--print")
+        for option in ("-e", "--eval", "-p", "--print", "-pe")
     ),
     *(
         CommandOption("php", option, "runs its value as PHP code")
@@ -282,7 +282,7 @@ _SCRIPTS: Mapping[str, tuple[str, ...]] = {
     "python": ("-c", "-m"),
     "perl": ("-e", "-E"),
     "ruby": ("-e",),
-    "node": ("-e", "--eval", "-p", "--print"),
+    "node": ("-e", "--eval", "-p", "--print", "-pe"),
     "php": ("-r", "-f", "-B", "-R", "-E"),
     "pwsh": _POWERSHELL_CODE,
 }
@@ -748,6 +748,11 @@ class _Command:
 
         if index <= given:
             return None
+        for position in range(1, given + 1):
+            option = self.option(self.text(position) or "", position)
+            if option is not None and option.rest:
+                # Every element after it is the command (``pwsh -Command``).
+                return None
         if self.program not in _OPTIONS_AFTER_CODE:
             return self.argument(given + 1, index)
         operands = self.operands(index, 1)
