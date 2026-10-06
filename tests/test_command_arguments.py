@@ -41,7 +41,7 @@ def judged(call: str) -> list[tuple[str, str, str]]:
     """Severity, verdict and confidence of each command-injection finding on ``call``,
     made with ``x`` read from the command line and ``extra`` of unknown value."""
 
-    text = f"import os\nimport subprocess\nimport sys\n\n\ndef run(extra):\n    x = sys.argv[1]\n    {call}\n"
+    text = f"import os\nimport shutil\nimport subprocess\nimport sys\n\n\ndef run(extra):\n    x = sys.argv[1]\n    {call}\n"
     findings = engine.check(SourceManager().add_source("app/run.py", text), [PLUGINS])
     return [
         (f.severity.value, f.metadata["verdict"], f.confidence.value)
@@ -162,6 +162,20 @@ def judged(call: str) -> list[tuple[str, str, str]]:
         # An executable that cannot be read leaves the program unknown.
         ('subprocess.run(["git", "commit", "-m", x], executable=extra)', MEDIUM_TO_REVIEW),
         ('subprocess.run(["x", "-c", f"echo {x}"], executable=sys.executable)', HIGH),
+        # Third review: options a shell reads, assignments before a wrapper's program.
+        ('subprocess.run(["bash", "-O", "extglob", "-c", f"echo {x}"])', HIGH),
+        ('subprocess.run(["bash", "--rcfile", "f", "-c", f"echo {x}"])', HIGH),
+        ('subprocess.run(["sh", "+e", "-c", f"echo {x}"])', HIGH),
+        ('subprocess.run(["bash", "+o", "history", "-c", f"echo {x}"])', HIGH),
+        ('subprocess.run(["env", "PATH=/usr/bin", x])', HIGH),
+        ('subprocess.run(["sudo", "A=1", x])', HIGH),
+        ('subprocess.run(["env", "A=1", "sh", "-c", f"echo {x}"])', HIGH),
+        ('subprocess.run(["env", "A=1", "ls", x])', MEDIUM),
+        # An unknown program may run its operands: kept for review, never refuted.
+        ('subprocess.run([extra, f"echo {x}"])', MEDIUM_TO_REVIEW),
+        ('subprocess.run(["ls", f"echo {x}"], -1, extra)', MEDIUM_TO_REVIEW),
+        ('subprocess.run([shutil.which("ssh"), "host", f"cat {x}"])', HIGH),
+        ('subprocess.run([shutil.which("bash"), "-c", f"echo {x}"])', HIGH),
         # Unpacked parts keep their place in the command.
         ('subprocess.run(["xcrun", "notarytool", *(["--keychain", x])])', MEDIUM_TO_REVIEW),
         ("subprocess.run([*extra, x])", HIGH),
@@ -187,3 +201,8 @@ def test_an_unpacked_element_keeps_its_place_in_a_list_or_tuple_display() -> Non
 
     assert built_list.unpacked_at == (1, 3)
     assert built_tuple.unpacked_at == (0,)
+
+
+def test_a_deeply_nested_command_is_still_read() -> None:
+    wrappers = '"sudo", ' * 500
+    assert judged(f"subprocess.run([{wrappers}x])") == [HIGH]

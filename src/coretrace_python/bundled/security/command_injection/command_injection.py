@@ -36,7 +36,7 @@ from coretrace_python.findings.refutation import Status, Verdict
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import Arguments
 from coretrace_python.ir.defuse import DefUseAnalysis
-from coretrace_python.ir.model import Instruction, Symbol, Value
+from coretrace_python.ir.model import Call, Instruction, Symbol, Value
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.plugins import Assessment, PluginContext, TaintDetector
 from coretrace_python.semantic.symbols import SymbolId
@@ -70,14 +70,17 @@ class CommandOption:
 @dataclass(frozen=True)
 class CommandOperands:
     """Operands a program runs, counted from 0 after its options: from operand ``first``
-    on, either shell ``text`` the program has a shell run, or a program and its arguments,
-    a command of its own. With ``after``, only when that letter is among the program's
-    short options, and then operand ``first`` only (``sh -c 'cmd' name arguments``)."""
+        on, either shell ``text`` the program has a shell run, or a program and its arguments,
+        a command of its own. With ``after``, only when that letter is among the program's
+        short options, and then operand ``first`` only (``sh -c 'cmd' name arguments``). With
+    ``assignments``, ``NAME=VALUE`` operands before the program set its environment and do
+    not count (``env A=1 cmd``)."""
 
     first: int
     text: bool
     how: str
     after: str | None = None
+    assignments: bool = False
 
 
 def _flags(program: str, *options: str) -> tuple[CommandOption, ...]:
@@ -131,7 +134,23 @@ OPTIONS: tuple[CommandOption, ...] = (
         CommandOption("find", option, "runs the command that follows", single=False, opens=True)
         for option in ("-exec", "-execdir", "-ok", "-okdir")
     ),
-    *(CommandOption(shell, "-o", single=False) for shell in _SHELLS),
+    *(CommandOption(shell, sign + "o", single=False) for shell in _SHELLS for sign in "-+"),
+    *(
+        option
+        for shell in _SHELLS
+        for option in _flags(shell, *(f"+{letter}" for letter in "abCefhmnuvx"))
+    ),
+    *_flags(
+        "bash",
+        "--login",
+        "--noediting",
+        "--noprofile",
+        "--norc",
+        "--posix",
+        "--restricted",
+        "--verbose",
+    ),
+    *(CommandOption("bash", option, single=False) for option in ("--rcfile", "--init-file")),
     *(
         option
         for shell in _SHELLS
@@ -181,7 +200,9 @@ OPERANDS: Mapping[str, CommandOperands] = {
     },
     "timeout": CommandOperands(1, False, "names the program timeout runs"),
     **{
-        wrapper: CommandOperands(0, False, f"names the program {wrapper} runs")
+        wrapper: CommandOperands(
+            0, False, f"names the program {wrapper} runs", assignments=wrapper in ("env", "sudo")
+        )
         for wrapper in _WRAPPERS
     },
 }
@@ -190,6 +211,11 @@ OPERANDS: Mapping[str, CommandOperands] = {
 _BATCH = (".bat", ".cmd")
 _ANY_CASE = frozenset({"cmd", "powershell", "pwsh"})
 _TERMINATORS = (";", "+")
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+_WHICH = SymbolId("python.shutil.which")
+# Commands inside commands are read to this depth; deeper, an element is taken to be an
+# operand the program runs.
+_MAX_DEPTH = 32
 
 _PROCESS_STARTERS = frozenset(
     SymbolId(f"python.subprocess.{name}")
@@ -298,30 +324,37 @@ class _Command:
         defs: Mapping[Value, Instruction],
         strings: Mapping[str, str],
         program: str | None,
+        depth: int = 0,
     ) -> None:
         self.parts = parts
         self.defs = defs
         self.strings = strings
+        self.depth = depth
         name = _name(program) if program is not None else None
         self.batch = name is not None and name.endswith(_BATCH)
         self.program = name
+        # Each element's text, and the options by subcommand, are read once: ``read``
+        # looks back over the command for every tainted element.
+        self._texts: dict[int, str | None] = {}
+        self._options: dict[str | None, list[CommandOption]] = {}
 
     def nested(self, start: int, end: int | None = None) -> _Command:
         """The command that the elements from ``start`` (to ``end``) spell."""
 
         parts = self.parts[start:end]
-        return _Command(
-            parts, self.defs, self.strings, _first_program(parts[0], self.defs, self.strings)
-        )
+        program = _first_program(parts[0], self.defs, self.strings)
+        return _Command(parts, self.defs, self.strings, program, self.depth + 1)
 
     def text(self, index: int) -> str | None:
         """The constant text of the element at ``index``, when all of it is constant."""
 
-        part = self.parts[index]
-        if not part.known:
-            return None
-        text, whole = leading_text(part.value, self.defs, self.strings)
-        return text if whole else None
+        if index not in self._texts:
+            part = self.parts[index]
+            text, whole = (
+                leading_text(part.value, self.defs, self.strings) if part.known else ("", False)
+            )
+            self._texts[index] = text if whole else None
+        return self._texts[index]
 
     def prefix(self, index: int) -> str:
         part = self.parts[index]
@@ -342,6 +375,11 @@ class _Command:
         operand = self.operand(index)
         if operand is not None:
             return operand
+        if self.program is None:
+            free = self.free(index, "the input is an element")
+            return self.review(
+                f"the program is unknown and may run its operands; {free.reason}", free
+            )
         for position in range(1, index):
             option = self.option(self.text(position) or "", position)
             if option is not None and option.opens:
@@ -423,7 +461,7 @@ class _Command:
                 return unclear
             if not given:
                 return None
-        operands = self.operands(index, spec.first + 1)
+        operands = self.operands(index, spec.first + 1, spec.assignments)
         if operands is None:
             return unclear
         if operands.consumed:
@@ -450,6 +488,10 @@ class _Command:
             return _Reading(
                 f"the input names the program {self.program} runs", Severity.HIGH, command=True
             )
+        if self.depth >= _MAX_DEPTH:
+            return _Reading(
+                f"the input is in a command {self.program} runs", Severity.HIGH, command=True
+            )
         reading = self.nested(start, end).read(index - start)
         return _Reading(
             f"in the command {self.program} runs, {reading.reason}",
@@ -458,9 +500,10 @@ class _Command:
             reading.to_review,
         )
 
-    def operands(self, index: int, enough: int) -> _Operands | None:
-        """The operands before ``index``, up to ``enough`` of them; None when an element of
-        unknown value, or an option that may take one, comes first."""
+    def operands(self, index: int, enough: int, assignments: bool = False) -> _Operands | None:
+        """The operands before ``index``, up to ``enough`` of them, without ``NAME=VALUE``
+        assignments when the program reads them; None when an element of unknown value, or
+        an option that may take one, comes first."""
 
         positions: list[int] = []
         position = 1
@@ -479,7 +522,7 @@ class _Command:
                         position += 1
                         if position == index:
                             return _Operands(tuple(positions), consumed=True)
-            else:
+            elif not (assignments and _ASSIGNMENT.match(text)):
                 positions.append(position)
             position += 1
         return _Operands(tuple(positions))
@@ -493,12 +536,16 @@ class _Command:
             text = self.text(position)
             if text is None:
                 return None
-            if text == "--" or not text.startswith("-") or text == "-":
+            if text == "--" or not self.option_like(text) or text in ("-", "+"):
                 return False
-            if not text.startswith("--") and letter in text[1:]:
+            if text.startswith("-") and not text.startswith("--") and letter in text[1:]:
                 return True
-            if isinstance(self.taker(text, position + 1), CommandOption):
-                position += 1
+            if not (text.startswith("--") and "=" in text):
+                taker = self.taker(text, position + 1)
+                if taker is None:
+                    return None
+                if isinstance(taker, CommandOption):
+                    position += 1
             position += 1
         return False
 
@@ -509,7 +556,14 @@ class _Command:
         return written.lower() == option.lower() if self.program in _ANY_CASE else written == option
 
     def option_like(self, text: str) -> bool:
-        return text.startswith("-") or any(
+        """Whether ``text`` reads as an option of the program: ``-x``, a shell's ``+x``, or
+        an option the model names (``/c``)."""
+
+        if text.startswith("-") or (
+            self.program in _SHELLS and text.startswith("+") and text != "+"
+        ):
+            return True
+        return any(
             self.same(text, option.option) for option in OPTIONS if option.program == self.program
         )
 
@@ -561,11 +615,12 @@ class _Command:
         option = self.option(before, index)
         if option is not None:
             return option if option.takes_value else False
-        if not before.startswith("-") or before.startswith("--") or len(before) <= 2:
+        sign = before[:1]
+        if sign not in ("-", "+") or before.startswith("--") or len(before) <= 2:
             return None
         letters = before[1:]
         for position, letter in enumerate(letters):
-            option = self.option(f"-{letter}", index)
+            option = self.option(f"{sign}{letter}", index)
             if option is None:
                 return None
             if option.takes_value:
@@ -586,16 +641,18 @@ class _Command:
         if self.program is None:
             return []
         subcommand = self.subcommand(index)
-        return [
-            option
-            for option in OPTIONS
-            if option.program == self.program
-            and (
-                not option.subcommands
-                or (subcommand is None and option.inert is None)
-                or subcommand in option.subcommands
-            )
-        ]
+        if subcommand not in self._options:
+            self._options[subcommand] = [
+                option
+                for option in OPTIONS
+                if option.program == self.program
+                and (
+                    not option.subcommands
+                    or (subcommand is None and option.inert is None)
+                    or subcommand in option.subcommands
+                )
+            ]
+        return self._options[subcommand]
 
     def subcommand(self, index: int) -> str | None:
         """The first operand before ``index``, ``""`` when there is none, or None when an
@@ -620,8 +677,8 @@ def _name(program: str) -> str:
 def _first_program(
     part: CommandPart, defs: Mapping[Value, Instruction], strings: Mapping[str, str]
 ) -> str | None:
-    """The program the first element of a command names: its constant text, or Python
-    for ``sys.executable``; None when unknown."""
+    """The program the first element of a command names: its constant text, Python for
+    ``sys.executable``, or the name ``shutil.which`` looks up; None when unknown."""
 
     if not part.known:
         return None
@@ -629,7 +686,14 @@ def _first_program(
     if whole:
         return text
     made = defs.get(part.value)
-    return "python" if isinstance(made, Symbol) and made.symbol_id == _PYTHON_EXECUTABLE else None
+    if isinstance(made, Symbol) and made.symbol_id == _PYTHON_EXECUTABLE:
+        return "python"
+    if isinstance(made, Call) and made.arguments:
+        callee = defs.get(made.callee)
+        if isinstance(callee, Symbol) and callee.symbol_id == _WHICH:
+            name, whole = leading_text(made.arguments[0], defs, strings)
+            return name if whole else None
+    return None
 
 
 def _program(
