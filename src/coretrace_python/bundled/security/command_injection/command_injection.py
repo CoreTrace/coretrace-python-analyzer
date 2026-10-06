@@ -5,7 +5,10 @@ started with (issue #208). A string that a shell interprets, a string naming the
 the program itself, or an operand that the program runs as shell text (``ssh`` after the
 host, a shell's first operand after ``-c``, any argument of a batch file) is a command
 injection, ``high``. Operands that are a command of their own (the program a wrapper such
-as ``sudo`` runs, what follows ``find -exec``) are read again as that command. An element
+as ``sudo`` runs, what follows ``find -exec``) are read again as that command. The script
+an interpreter runs (its first operand when no option gives the code, as ``bash run.sh`` or
+``python tool.py``), or the module ``python -m`` runs, is ``high`` to review: execution is
+possible, and whether it is exploitable depends on the file the input chooses. An element
 of an argument list run without a shell otherwise injects at most an option: ``medium``,
 or ``high`` when ``OPTIONS`` establishes that the program runs a command chosen through an
 option that fits there.
@@ -52,8 +55,9 @@ class CommandOption:
     and its value; with ``rest``, every element after it is its value, and with ``opens``
     the elements after it, up to ``;`` or ``+``, are a command of their own. What the
     program does with the value decides: with ``runs``, it runs a command the value
-    chooses; with ``inert``, it only keeps it as data (a commit message); with neither,
-    the effect is not established. An option that takes no value leaves the next element
+    chooses (``examine``: a choice among code already there, such as a module, whose
+    exploitability is to examine); with ``inert``, it only keeps it as data (a commit
+    message); with neither, the effect is not established. An option that takes no value leaves the next element
     free."""
 
     program: str
@@ -65,21 +69,25 @@ class CommandOption:
     inert: str | None = None
     rest: bool = False
     opens: bool = False
+    examine: bool = False
 
 
 @dataclass(frozen=True)
 class CommandOperands:
-    """Operands a program runs, counted from 0 after its options: from operand ``first``
-        on, either shell ``text`` the program has a shell run, or a program and its arguments,
-        a command of its own. With ``after``, only when that letter is among the program's
-        short options, and then operand ``first`` only (``sh -c 'cmd' name arguments``). With
-    ``assignments``, ``NAME=VALUE`` operands before the program set its environment and do
-    not count (``env A=1 cmd``)."""
+    """Operands a program runs, counted from 0 after its options, of one ``kind``: from
+    operand ``first`` on, shell ``text`` the program has a shell run, or a ``command`` of
+    its own (a program and its arguments); or operand ``first`` only, a ``script`` file
+    the program runs, whose contents decide what runs. With ``after``, only when one of
+    those options comes before the operands, and then operand ``first`` only (``sh -c
+    'cmd' name arguments``); with ``unless``, only when none of them does (``python -c``
+    gives the code, not a script). With ``assignments``, ``NAME=VALUE`` operands before
+    the program set its environment and do not count (``env A=1 cmd``)."""
 
     first: int
-    text: bool
+    kind: str
     how: str
-    after: str | None = None
+    after: tuple[str, ...] = ()
+    unless: tuple[str, ...] = ()
     assignments: bool = False
 
 
@@ -157,6 +165,16 @@ OPTIONS: tuple[CommandOption, ...] = (
         for option in _flags(shell, *(f"-{letter}" for letter in "abCcefhilmnsuvx"))
     ),
     CommandOption("python", "-c", "runs its value as Python code"),
+    CommandOption("python", "-m", "runs the module it names", examine=True),
+    *(CommandOption("python", option, single=False) for option in ("-W", "-X")),
+    *_flags("python", *(f"-{letter}" for letter in "bBdEhiIOPqsSuvVx")),
+    *(CommandOption("perl", option, "runs its value as Perl code") for option in ("-e", "-E")),
+    CommandOption("ruby", "-e", "runs its value as Ruby code"),
+    *(
+        CommandOption("node", option, "runs its value as JavaScript code")
+        for option in ("-e", "--eval", "-p", "--print")
+    ),
+    CommandOption("php", "-r", "runs its value as PHP code"),
     *(
         CommandOption(
             "cmd", option, "runs the rest of the command line as a command", single=False, rest=True
@@ -191,20 +209,44 @@ OPTIONS: tuple[CommandOption, ...] = (
 )
 # Programs documented to read ``--`` as the end of their options.
 END_OF_OPTIONS = frozenset({"git", "tar", "rsync", "rm"})
-OPERANDS: Mapping[str, CommandOperands] = {
-    "ssh": CommandOperands(1, True, "is part of the command the remote shell runs"),
-    "powershell": CommandOperands(0, True, "is part of the command PowerShell runs"),
+# Interpreters run the script their first operand names, unless one of these options
+# gives the code instead.
+_SCRIPTS: Mapping[str, tuple[str, ...]] = {
+    **{shell: ("-c",) for shell in _SHELLS},
+    "python": ("-c", "-m"),
+    "perl": ("-e", "-E"),
+    "ruby": ("-e",),
+    "node": ("-e", "--eval", "-p", "--print"),
+    "php": ("-r",),
+}
+
+
+def _interpreter(name: str, code: tuple[str, ...]) -> tuple[CommandOperands, ...]:
+    script = CommandOperands(0, "script", f"names the script {name} runs", unless=code)
+    if name not in _SHELLS:
+        return (script,)
+    return (
+        CommandOperands(0, "text", "is the command the shell runs after -c", after=("-c",)),
+        script,
+    )
+
+
+OPERANDS: Mapping[str, tuple[CommandOperands, ...]] = {
+    "ssh": (CommandOperands(1, "text", "is part of the command the remote shell runs"),),
+    "powershell": (CommandOperands(0, "text", "is part of the command PowerShell runs"),),
+    "timeout": (CommandOperands(1, "command", "names the program timeout runs"),),
     **{
-        shell: CommandOperands(0, True, "is the command the shell runs after -c", after="c")
-        for shell in _SHELLS
-    },
-    "timeout": CommandOperands(1, False, "names the program timeout runs"),
-    **{
-        wrapper: CommandOperands(
-            0, False, f"names the program {wrapper} runs", assignments=wrapper in ("env", "sudo")
+        wrapper: (
+            CommandOperands(
+                0,
+                "command",
+                f"names the program {wrapper} runs",
+                assignments=wrapper in ("env", "sudo"),
+            ),
         )
         for wrapper in _WRAPPERS
     },
+    **{interpreter: _interpreter(interpreter, code) for interpreter, code in _SCRIPTS.items()},
 }
 # Windows runs a batch file through cmd.exe, which parses its arguments again; its own
 # programs read their options whatever the case.
@@ -449,18 +491,27 @@ class _Command:
         """The reading of an element among the operands the program runs, or None when
         the element is not one of them."""
 
-        if self.program not in OPERANDS:
-            return None
-        spec = OPERANDS[self.program]
+        for spec in OPERANDS.get(self.program or "", ()):
+            reading = self.operand_of(spec, index)
+            if reading is not None:
+                return reading
+        return None
+
+    def operand_of(self, spec: CommandOperands, index: int) -> _Reading | None:
+        script = spec.kind == "script"
         unclear = _Reading(
-            f"the input may be an operand that {spec.how}", Severity.HIGH, command=True
+            f"the input may be an operand that {spec.how}",
+            Severity.HIGH,
+            command=not script,
+            to_review=script,
         )
-        if spec.after is not None:
-            given = self.letter_given(spec.after, index)
-            if given is None:
-                return unclear
-            if not given:
-                return None
+        for names, wanted in ((spec.after, True), (spec.unless, False)):
+            if names:
+                given = self.given(names, index)
+                if given is None:
+                    return unclear
+                if given is not wanted:
+                    return None
         operands = self.operands(index, spec.first + 1, spec.assignments)
         if operands is None:
             return unclear
@@ -469,14 +520,18 @@ class _Command:
         count = len(operands.positions)
         operand_like = operands.ended or not self.prefix(index).startswith("-")
         if count > spec.first:
-            if not spec.text:
+            if spec.kind == "command":
                 return self.inside(operands.positions[spec.first], None, index)
-            return (
-                None
-                if spec.after is not None
-                else _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
-            )
+            if spec.kind == "text" and not spec.after:
+                return _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
+            return None
         if count == spec.first and operand_like:
+            if script:
+                return _Reading(
+                    f"the input {spec.how}, whose contents decide what runs",
+                    Severity.HIGH,
+                    to_review=True,
+                )
             return _Reading(f"the input {spec.how}", Severity.HIGH, command=True)
         return None
 
@@ -527,25 +582,36 @@ class _Command:
             position += 1
         return _Operands(tuple(positions))
 
-    def letter_given(self, letter: str, index: int) -> bool | None:
-        """Whether a short option ``letter`` comes among the options before ``index``, None
-        when an element of unknown value comes first."""
+    def given(self, names: tuple[str, ...], index: int) -> bool | None:
+        """Whether one of the options ``names`` comes among the options before ``index``,
+        read as getopt reads them (a short option that takes a value takes the rest of its
+        element); None when an element of unknown value, or an option that may take one,
+        comes first."""
 
         position = 1
         while position < index:
             text = self.text(position)
             if text is None:
                 return None
-            if text == "--" or not self.option_like(text) or text in ("-", "+"):
+            if text == "--" or text in ("-", "+") or not self.option_like(text):
                 return False
-            if text.startswith("-") and not text.startswith("--") and letter in text[1:]:
+            if text[0] in "-+" and not text.startswith("--") and len(text) > 2:
+                for offset, letter in enumerate(text[1:], start=1):
+                    option = self.option(text[0] + letter, position + 1)
+                    if text[0] + letter in names:
+                        return True
+                    if option is None:
+                        return None
+                    if option.takes_value:
+                        position += offset == len(text) - 1
+                        break
+            elif text.split("=", 1)[0] in names:
                 return True
-            if not (text.startswith("--") and "=" in text):
+            elif not (text.startswith("--") and "=" in text):
                 taker = self.taker(text, position + 1)
                 if taker is None:
                     return None
-                if isinstance(taker, CommandOption):
-                    position += 1
+                position += isinstance(taker, CommandOption)
             position += 1
         return False
 
@@ -595,6 +661,12 @@ class _Command:
         return self.value_of(option, name)
 
     def value_of(self, option: CommandOption, given: str) -> _Reading:
+        if option.runs is not None and option.examine:
+            return _Reading(
+                f"the input is the value of {self.program} {given}, which {option.runs}",
+                Severity.HIGH,
+                to_review=True,
+            )
         if option.runs is not None:
             return _Reading(
                 f"the input is the value of {self.program} {given}, which {option.runs}",
