@@ -105,7 +105,7 @@ def judged(call: str) -> list[tuple[str, str, str]]:
         ('subprocess.run(["notmodelled", "-c", f"echo {x}"])', MEDIUM_TO_REVIEW),
         ('subprocess.run(["bash", "-lc", x])', HIGH),
         ('subprocess.run(["sh", "-ec", f"echo {x}"])', HIGH),
-        ('subprocess.run(["tar", f"-I{x}", "-xf", "a.tar"])', HIGH),
+        ('subprocess.run(["tar", f"-I{x}", "-xf", "a.tar"])', HIGH_TO_REVIEW),
         ('subprocess.run(["safe", "-c", x], executable="/bin/sh")', HIGH),
         # Operands that are a command: a remote shell, a wrapper, a batch file.
         ('subprocess.run(["ssh", "user@host", "--", x])', HIGH),
