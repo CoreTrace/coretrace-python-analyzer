@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 
-from coretrace_python.source import SourceSpan
+from coretrace_python.source import Location
 
 FINDING_SCHEMA_VERSION = 1
 
@@ -50,7 +50,8 @@ class Finding:
     message: str
     severity: Severity
     confidence: Confidence
-    span: SourceSpan
+    # A verified range of lines, or a file location when the line is not established.
+    span: Location
     function: str | None = None
     metadata: Mapping[str, str] = field(default_factory=_no_metadata)
 

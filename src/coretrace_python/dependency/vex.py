@@ -26,6 +26,7 @@ from coretrace_python.dependency.graph import Advisory, DependencyGraph, Require
 from coretrace_python.dependency.sbom import purl
 from coretrace_python.findings import Component, Finding
 from coretrace_python.findings.coverage import Coverage
+from coretrace_python.source import SourceSpan
 from coretrace_python.taint import FILTER_FUNCTIONS
 
 CONTEXT = "https://openvex.dev/ns/v0.2.0"
@@ -179,10 +180,12 @@ def _reached(findings: Sequence[Finding], root: Path) -> str:
         level = finding.metadata.get("level")
         if level in REACHED:
             path = _relative(str(finding.span.source_id), root)
-            place = (path, finding.span.start_line, str(finding.metadata.get("symbol")))
+            line = finding.span.start_line if isinstance(finding.span, SourceSpan) else 0
+            place = (path, line, str(finding.metadata.get("symbol")))
             levels[place] = max(level, levels.get(place, level), key=REACHED.index)
     return "; ".join(
-        f"{path}:{line} {symbol} ({level})" for (path, line, symbol), level in sorted(levels.items())
+        f"{path}{f':{line}' if line else ''} {symbol} ({level})"
+        for (path, line, symbol), level in sorted(levels.items())
     )
 
 

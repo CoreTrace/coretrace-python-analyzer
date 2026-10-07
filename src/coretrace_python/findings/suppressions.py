@@ -14,7 +14,7 @@ import tokenize
 from collections.abc import Callable, Iterable, Mapping
 
 from coretrace_python.findings.model import Finding
-from coretrace_python.source import SourceId
+from coretrace_python.source import SourceId, SourceSpan, lines_of
 
 MARKER = re.compile(r"#\s*coretrace:\s*ignore(?:\[([^\]]*)\])?")
 
@@ -38,10 +38,14 @@ def suppressions_in(text: str) -> Suppressions:
 
 
 def _comments(text: str) -> Iterable[tuple[int, str]]:
+    """Every comment of ``text`` with its line, lines counted as every line number of the
+    engine counts them (``lines_of``)."""
+
+    lines = lines_of(text)
     try:
-        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+        tokens = list(tokenize.generate_tokens(io.StringIO("".join(f"{line}\n" for line in lines)).readline))
     except (tokenize.TokenError, SyntaxError):
-        for number, line in enumerate(text.splitlines(), 1):
+        for number, line in enumerate(lines, 1):
             if "#" in line:
                 yield number, line[line.index("#") :]
         return
@@ -59,6 +63,10 @@ def partition(
     kept: list[Finding] = []
     suppressed: list[Finding] = []
     for finding in findings:
+        if not isinstance(finding.span, SourceSpan):
+            # A suppression names a line; a file location has no verified one.
+            kept.append(finding)
+            continue
         source_id = finding.span.source_id
         if source_id not in cache:
             text = text_of(source_id)

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import PurePath
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.dependency import DependencyAnalysis
+from coretrace_python.dependency import Advisory, DependencyAnalysis, Requirement
 from coretrace_python.dependency.correlation import (
     affected_entries,
     affected_symbols,
@@ -44,11 +45,7 @@ class VulnerableDependencyPlugin(ProjectPlugin):
                 findings.append(
                     Finding(
                         rule_id="vulnerable-dependency",
-                        message=(
-                            f"{advisory.id}: {advisory.package} {advisory.vulnerable} is "
-                            f"{'required' if pinned else 'allowed'} by {requirement.name}"
-                            f"{requirement.specifier or ''}: {advisory.summary}"
-                        ),
+                        message=_message(ctx, advisory, requirement),
                         severity=advisory.severity,
                         confidence=Confidence.HIGH if pinned else Confidence.MEDIUM,
                         span=requirement.span,
@@ -56,6 +53,26 @@ class VulnerableDependencyPlugin(ProjectPlugin):
                     )
                 )
         return findings
+
+
+def _message(ctx: ProjectContext, advisory: Advisory, requirement: Requirement) -> str:
+    """The evidence: for a locked package, the version the lock file pins and the
+    packages that require it; for a declared requirement, the specifier that allows or
+    requires a vulnerable version."""
+
+    if requirement.locked is None:
+        verb = "required" if requirement.pinned is not None else "allowed"
+        return (
+            f"{advisory.id}: {advisory.package} {advisory.vulnerable} is {verb} by "
+            f"{requirement.name}{requirement.specifier or ''}: {advisory.summary}"
+        )
+    lock = PurePath(str(requirement.span.source_id)).name
+    dependents = sorted(ctx.dependencies.required_by(requirement.name) or ())
+    required = f" (required by {', '.join(dependents)})" if dependents else ""
+    return (
+        f"{advisory.id}: {advisory.package} {requirement.locked}, pinned in {lock}, "
+        f"is in {advisory.vulnerable}{required}: {advisory.summary}"
+    )
 
 
 def _ruled_out(ctx: ProjectContext) -> dict[str, list[str]]:

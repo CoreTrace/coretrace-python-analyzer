@@ -6,6 +6,7 @@ import json
 
 from coretrace_python.findings import Component, Finding, Severity
 from coretrace_python.reporters.report import Report
+from coretrace_python.source import SourceSpan
 
 SARIF_VERSION = "2.1.0"
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
@@ -34,23 +35,23 @@ def _result(
     baseline_state: str | None = None,
 ) -> dict[str, object]:
     span = finding.span
-    region: dict[str, int] = {"startLine": span.start_line, "startColumn": span.start_column}
-    if span.end_line is not None and span.end_column is not None:
-        region["endLine"] = span.end_line
-        region["endColumn"] = span.end_column
+    physical: dict[str, object] = {"artifactLocation": _artifact(report, str(span.source_id))}
+    location: dict[str, object] = {"physicalLocation": physical}
+    if isinstance(span, SourceSpan):
+        region: dict[str, int] = {"startLine": span.start_line, "startColumn": span.start_column}
+        if span.end_line is not None and span.end_column is not None:
+            region["endLine"] = span.end_line
+            region["endColumn"] = span.end_column
+        physical["region"] = region
+    else:
+        # No region: the line is not established; the pointer says where in the file.
+        location["properties"] = {"pointer": span.pointer}
     result: dict[str, object] = {
         "ruleId": finding.rule_id,
         "ruleIndex": rule_index,
         "level": _LEVELS[finding.severity],
         "message": {"text": finding.message},
-        "locations": [
-            {
-                "physicalLocation": {
-                    "artifactLocation": _artifact(report, str(span.source_id)),
-                    "region": region,
-                }
-            }
-        ],
+        "locations": [location],
     }
     if suppressed:
         result["suppressions"] = [{"kind": "inSource"}]

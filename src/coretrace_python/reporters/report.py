@@ -6,11 +6,16 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from coretrace_python.findings import Component, Coverage, Finding
+from coretrace_python.source import FileLocation
 
 
-def _order(finding: Finding) -> tuple[str, int, int, str]:
+def _order(finding: Finding) -> tuple[str, int, int, str, str]:
+    """By file, file locations first, then by line and column."""
+
     span = finding.span
-    return (str(span.source_id), span.start_line, span.start_column, finding.rule_id)
+    if isinstance(span, FileLocation):
+        return (str(span.source_id), 0, 0, span.pointer, finding.rule_id)
+    return (str(span.source_id), span.start_line, span.start_column, "", finding.rule_id)
 
 
 @dataclass(frozen=True)

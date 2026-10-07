@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from coretrace_python.reporters.report import Report
+from coretrace_python.source import SourceSpan
 
 
 def render_text(report: Report) -> str:
     lines = []
     for finding in report.findings:
         span = finding.span
-        line = (
-            f"{report.locate(str(span.source_id))}:{span.start_line}:{span.start_column}: "
-            f"{finding.severity.value} {finding.rule_id}: {finding.message}"
-        )
+        where = report.locate(str(span.source_id))
+        if isinstance(span, SourceSpan):
+            where += f":{span.start_line}:{span.start_column}"
+        line = f"{where}: {finding.severity.value} {finding.rule_id}: {finding.message}"
         if finding.function is not None:
             line += f" [{finding.function}]"
         lines.append(line)
