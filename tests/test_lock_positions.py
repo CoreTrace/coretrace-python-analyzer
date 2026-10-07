@@ -16,7 +16,8 @@ import pytest
 from coretrace_python import engine
 from coretrace_python.dependency import Advisory, dump_advisories
 from coretrace_python.findings import Finding, Severity
-from coretrace_python.source import FileLocation, SourceSpan
+from coretrace_python.source import SourceSpan
+from coretrace_python.source.positions import file_location
 
 PLUGINS = Path(__file__).resolve().parent.parent / "src" / "coretrace_python" / "bundled"
 ADVISORY = Advisory(
@@ -91,7 +92,7 @@ def test_the_message_states_the_pinned_version_the_lock_file_and_its_dependents(
 def test_a_locked_package_that_cannot_be_placed_has_a_file_location(tmp_path: Path) -> None:
     finding = vulnerable(tmp_path, "uv.lock", INLINE_LOCK)
 
-    assert isinstance(finding.span, FileLocation) and finding.span.pointer == "/package/0/name"
+    assert finding.span == file_location(finding.span.source_id, ("package", 0, "name"), "werkzeug")
     assert finding.message.startswith(
         "CVE-2099-0207: werkzeug 3.1.5, pinned in uv.lock, is in <3.1.6: "
     )

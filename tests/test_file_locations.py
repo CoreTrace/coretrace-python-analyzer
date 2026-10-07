@@ -19,6 +19,7 @@ from coretrace_python import engine
 from coretrace_python.cli import main
 from coretrace_python.findings import Finding
 from coretrace_python.source import FileLocation, SourceSpan
+from coretrace_python.source.positions import file_location
 
 PLUGINS = Path(__file__).resolve().parent.parent / "src" / "coretrace_python" / "bundled"
 TOKEN = "Zx81kQpLw0RtY7vBn3MsD9cF2hJ6gK4a"
@@ -57,7 +58,7 @@ def test_values_of_one_key_are_located_at_their_own_lines(tmp_path: Path) -> Non
 def test_a_value_that_cannot_be_located_gets_a_file_location(tmp_path: Path) -> None:
     (finding,) = credentials(project(tmp_path, {"settings.toml": f'a.api_token = "{TOKEN}"\n'}))
 
-    assert isinstance(finding.span, FileLocation) and finding.span.pointer == "/a/api_token"
+    assert finding.span == file_location(finding.span.source_id, ("a", "api_token"), TOKEN)
     assert Path(str(finding.span.source_id)).name == "settings.toml"
 
 
@@ -164,3 +165,27 @@ def test_a_changed_value_at_a_file_location_is_a_new_finding(
 
     assert main(["--check", "proj", "--baseline", str(baseline)]) == 1
     assert capsys.readouterr().out.startswith("settings.toml: high hardcoded-credential")
+
+
+def test_the_baseline_reads_the_line_a_finding_is_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Lines are counted by line feeds everywhere: a U+2028 in a string above a secret
+    does not make the baseline record another line's text."""
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    settings = (
+        project(root, {"settings.toml": f'note = "a\u2028b"\napi_token = "{TOKEN}"\n'})
+        / "settings.toml"
+    )
+    monkeypatch.chdir(tmp_path)
+    baseline = tmp_path / "baseline.json"
+    main(["--check", "proj", "--baseline", str(baseline)])
+    settings.write_text(
+        settings.read_text(encoding="utf-8").replace(TOKEN, OTHER), encoding="utf-8"
+    )
+    capsys.readouterr()
+
+    assert main(["--check", "proj", "--baseline", str(baseline)]) == 1
+    assert capsys.readouterr().out.startswith("settings.toml:2:13: high hardcoded-credential")

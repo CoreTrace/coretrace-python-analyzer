@@ -12,6 +12,8 @@ position (None).
 
 from __future__ import annotations
 
+import pytest
+
 from coretrace_python.source.positions import JsonPositions, TomlPositions, pointer_text
 
 HAR = """{
@@ -128,6 +130,17 @@ def test_a_header_or_key_written_inside_a_toml_string_is_not_one() -> None:
     assert TomlPositions(commented).locate(("t", "k"), "S") == (7, 5)
     assert TomlPositions(escaped).locate(("t", "k"), "S") == (7, 5)
     assert TomlPositions(one_line).locate(("t", "k"), "S") == (3, 5)
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_quotes_before_a_closing_delimiter_belong_to_the_string(quote: str) -> None:
+    triple = quote * 3
+    text = (
+        f"a = [{triple}x{triple}{quote}, {triple}y{triple}]\n"
+        f'c = {triple}\n]\n[t]\nk = "v"\n{triple}\n[t]\nk = "v"\n'
+    )
+
+    assert TomlPositions(text).locate(("t", "k"), "v") == (8, 5)
 
 
 def test_an_array_element_alone_on_its_line_is_not_a_toml_header() -> None:

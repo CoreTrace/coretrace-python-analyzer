@@ -31,13 +31,12 @@ _HEADER = re.compile(r"\s*(\[\[?)\s*(.+?)\s*(\]\]?)\s*(?:#.*)?$")
 _KEY_LINE = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*=\s*(.*)$""")
 
 
-def file_location(source_id: SourceId, path: Pointer, value: object) -> FileLocation:
+def file_location(source_id: SourceId, path: Pointer, value: str) -> FileLocation:
     """The location of a value whose line could not be established: its file, its JSON
     pointer, and a digest of the value, so that a baseline tells a changed value apart
     without recording it."""
 
-    written = value if isinstance(value, str) else json.dumps(value)
-    digest = hashlib.sha256(written.encode("utf-8", "surrogatepass")).hexdigest()[:16]
+    digest = hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()[:16]
     return FileLocation(source_id, pointer_text(path), f"sha256:{digest}")
 
 
@@ -238,7 +237,9 @@ class _LexState:
                 if self.string == '"""' and line[position] == "\\":
                     position += 2
                 elif line.startswith(self.string, position):
-                    self.string, position = None, position + 3
+                    # Up to two more quotes before the delimiter belong to the string.
+                    run = len(line[position:]) - len(line[position:].lstrip(self.string[0]))
+                    self.string, position = None, position + min(run, 5)
                 else:
                     position += 1
                 continue

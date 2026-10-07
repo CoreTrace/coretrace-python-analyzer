@@ -53,8 +53,11 @@ def fingerprint(finding: Finding, root: Path) -> Fingerprint:
 
 
 def _line_text(path: Path, line: int) -> str:
+    """The text of ``line``, lines counted by line feeds as the parser and the position
+    component count them (``splitlines`` also breaks on U+2028 and other separators)."""
+
     try:
-        lines = decode_text(path.read_bytes()).splitlines()
+        lines = [text.removesuffix("\r") for text in decode_text(path.read_bytes()).split("\n")]
     except (OSError, UnicodeDecodeError):
         return str(line)
     if not 1 <= line <= len(lines):

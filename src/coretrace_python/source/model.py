@@ -52,10 +52,10 @@ class FileLocation:
     which a report or an inline suppression would then take for a verified one."""
 
     source_id: SourceId
-    pointer: str = ""
+    pointer: str
     # A digest of the value (``sha256:…``), never the value: what the baseline compares
-    # where it would compare the text of a line.
-    digest: str = ""
+    # where it would compare the text of a line. ``positions.file_location`` builds both.
+    digest: str
 
     def display(self) -> str:
         return f"{self.source_id}{self.pointer and '#' + self.pointer}"
