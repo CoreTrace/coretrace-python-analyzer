@@ -57,8 +57,9 @@ class CommandOption:
     and its value; with ``rest``, every element after it is its value, and with ``opens``
     the elements after it, up to ``;`` or ``+``, are a command of their own. What the
     program does with the value decides: with ``runs``, it runs a command the value
-    chooses (``examine``: a choice among code already there, such as a module, whose
-    exploitability is to examine); with ``inert``, it only keeps it as data (a commit
+    chooses (``examine``: running is possible but its exploitability is to examine, as a
+    choice among code already there, such as a module, or an option only some
+    implementations of the program run); with ``inert``, it only keeps it as data (a commit
     message); with neither, the effect is not established. An option that takes no value leaves the next element
     free."""
 
@@ -132,12 +133,23 @@ OPTIONS: tuple[CommandOption, ...] = (
     ),
     CommandOption("ssh", "-o", "sets options such as ProxyCommand, which runs a command"),
     *_flags("ssh", *(f"-{letter}" for letter in "46AaCfGgKkMNnqsTtVvXxYy")),
-    CommandOption(
-        "tar", "--to-command", "pipes each extracted file to the command it names (GNU tar)"
+    # GNU tar runs what these options name; bsdtar reads -I as a file of include patterns
+    # and rejects the others. A bare tar may be either: running is possible, its
+    # exploitability is to examine.
+    *(
+        CommandOption(tar, option, runs, examine=tar == "tar")
+        for tar in ("tar", "gtar")
+        for option, runs in (
+            ("--to-command", "pipes each extracted file to the command it names on GNU tar"),
+            ("--checkpoint-action", "runs the command of an exec= action on GNU tar"),
+            ("-I", "runs the compressor it names on GNU tar, where bsdtar reads patterns from it"),
+        )
     ),
-    CommandOption("tar", "--checkpoint-action", "runs the command of an exec= action (GNU tar)"),
-    CommandOption("tar", "--use-compress-program", "runs the compressor it names"),
-    CommandOption("tar", "-I", "runs the compressor it names (GNU tar)"),
+    *(
+        CommandOption(tar, "--use-compress-program", "runs the compressor it names")
+        for tar in ("tar", "gtar", "bsdtar")
+    ),
+    CommandOption("bsdtar", "-I"),
     CommandOption("rsync", "-e", "runs the remote shell it names"),
     CommandOption("rsync", "--rsh", "runs the remote shell it names"),
     *(
@@ -272,7 +284,7 @@ OPTIONS: tuple[CommandOption, ...] = (
     ),
 )
 # Programs documented to read ``--`` as the end of their options.
-END_OF_OPTIONS = frozenset({"git", "tar", "rsync", "rm"})
+END_OF_OPTIONS = frozenset({"git", "tar", "gtar", "bsdtar", "rsync", "rm"})
 # Interpreters run the script their first operand names, unless one of these options
 # gives the code or the script instead (or, for a shell's ``-s``, reads it from the
 # standard input).
