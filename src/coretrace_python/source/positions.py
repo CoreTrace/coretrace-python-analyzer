@@ -29,6 +29,7 @@ _STRING = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"'
 _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?")
 _LITERALS = {"true": True, "false": False, "null": None}
 _HEADER = re.compile(r"\s*(\[\[?)\s*(.+?)\s*(\]\]?)\s*(?:#.*)?$")
+_SCALAR = re.compile(r"[^,\]}#\s]+")
 _KEY_LINE = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*=\s*(.*)$""")
 
 
@@ -56,6 +57,11 @@ class _Lines:
 
         line = bisect_right(self._starts, offset)
         return line, offset - self._starts[line - 1] + 1
+
+    def offset(self, line: int, column: int) -> int:
+        """The offset of the one-based ``line`` and ``column``."""
+
+        return self._starts[line - 1] + column - 1
 
 
 def _same(found: object, value: object) -> bool:
@@ -169,6 +175,10 @@ class TomlPositions:
         arrays: dict[Pointer, int] = {}
         current: Pointer = ()
         self._lines = lines_of(text)
+        # The text with one line feed per line break, where arrays are read, once each.
+        self._text = "\n".join(self._lines)
+        self._offsets = _Lines(self._text)
+        self._arrays: dict[int, list[tuple[int, int]]] = {}
         state = _LexState()
         for number, line in enumerate(self._lines, start=1):
             continued = state.inside()
@@ -216,24 +226,25 @@ class TomlPositions:
         return None
 
     def _element(self, path: Pointer, value: object) -> tuple[int, int] | None:
-        """An element of an array a key holds, written over one or several lines:
-        ``dependencies = [\\n  "a",\\n  "b",\\n]``."""
+        """An element of an array a key holds, the array written over one or several
+        lines (``dependencies = [\\n  "a",\\n  "b",\\n]``). An element whose own text
+        spans lines has no position: the line it starts on does not hold it."""
 
         if len(path) < 2 or isinstance(path[-2], int):
             return None
         index = path[-1]
         assert isinstance(index, int)
         for number, column, _ in self._keys.get(path[:-2], {}).get(path[-2], ()):
-            text = "\n".join(self._lines[number - 1 :])[column - 1 :]
-            elements = _array_elements(text)
+            start = self._offsets.offset(number, column)
+            if start not in self._arrays:
+                self._arrays[start] = _array_elements(self._text, start)
+            elements = self._arrays[start]
             if index >= len(elements):
                 continue
-            start, end = elements[index]
-            if not _same(_value(text[start:end]), value):
-                continue
-            before = text[:start]
-            line = number + before.count("\n")
-            return line, (start - before.rfind("\n") if "\n" in before else column + start)
+            first, end = elements[index]
+            written = self._text[first:end]
+            if "\n" not in written and _same(_value(written), value):
+                return self._offsets.position(first)
         return None
 
 
@@ -295,19 +306,43 @@ def _value(written: str) -> object:
         return None
 
 
-def _array_elements(text: str) -> list[tuple[int, int]]:
-    """The start and end offsets of the elements of the array ``text`` opens, skipping
-    strings and comments; empty when ``text`` does not open an array."""
+def _array_elements(text: str, start: int) -> list[tuple[int, int]]:
+    """The start and end offsets of the values of the array that opens at ``start``,
+    skipping comments; empty when no array opens there or it does not close."""
 
-    if not text.startswith("["):
+    if not text.startswith("[", start):
         return []
     elements: list[tuple[int, int]] = []
-    depth, start, position = 0, -1, 0
+    position = start + 1
+    while position < len(text):
+        character = text[position]
+        if character.isspace() or character == ",":
+            position += 1
+        elif character == "#":
+            newline = text.find("\n", position)
+            position = len(text) if newline < 0 else newline
+        elif character == "]":
+            return elements
+        else:
+            end = _value_end(text, position)
+            elements.append((position, end))
+            position = end
+    return []
+
+
+def _value_end(text: str, start: int) -> int:
+    """The offset just past the TOML value that starts at ``start``: a string, an array
+    or inline table with what it holds, or a bare scalar."""
+
+    if text[start] in "\"'":
+        return _string_end(text, start)
+    if text[start] not in "[{":
+        scalar = _SCALAR.match(text, start)
+        return scalar.end() if scalar is not None else start + 1
+    depth, position = 0, start
     while position < len(text):
         character = text[position]
         if character in "\"'":
-            if depth == 1 and start < 0:
-                start = position
             position = _string_end(text, position)
             continue
         if character == "#":
@@ -315,23 +350,13 @@ def _array_elements(text: str) -> list[tuple[int, int]]:
             position = len(text) if newline < 0 else newline
             continue
         if character in "[{":
-            if depth == 1 and start < 0:
-                start = position
             depth += 1
         elif character in "]}":
             depth -= 1
             if depth == 0:
-                if start >= 0:
-                    elements.append((start, position))
-                return elements
-        elif character == "," and depth == 1:
-            if start >= 0:
-                elements.append((start, position))
-            start = -1
-        elif depth == 1 and start < 0 and not character.isspace():
-            start = position
+                return position + 1
         position += 1
-    return []
+    return len(text)
 
 
 def _string_end(text: str, start: int) -> int:

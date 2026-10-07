@@ -189,3 +189,25 @@ def test_the_baseline_reads_the_line_a_finding_is_at(
 
     assert main(["--check", "proj", "--baseline", str(baseline)]) == 1
     assert capsys.readouterr().out.startswith("settings.toml:2:13: high hardcoded-credential")
+
+
+def test_a_changed_secret_written_over_several_lines_in_an_array_is_new(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A multi-line element is not placed at the line it starts on, which does not hold
+    it: it gets a file location, whose digest tells a changed value apart."""
+
+    key = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA1b2c3d4e5f6\n-----END RSA PRIVATE KEY-----\n"
+    root = tmp_path / "proj"
+    root.mkdir()
+    config = project(root, {"config.toml": f'[deploy]\nkeys = ["""\n{key}"""]\n'}) / "config.toml"
+    monkeypatch.chdir(tmp_path)
+    baseline = tmp_path / "baseline.json"
+    main(["--check", "proj", "--baseline", str(baseline)])
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("1b2c3d4e5f6", "9z8y7x6w5v4"), encoding="utf-8"
+    )
+    capsys.readouterr()
+
+    assert main(["--check", "proj", "--baseline", str(baseline)]) == 1
+    assert capsys.readouterr().out.startswith("config.toml: high hardcoded-secret")

@@ -173,6 +173,14 @@ def test_an_element_of_a_toml_array_is_found_and_checked() -> None:
     assert positions.locate(("project", "name", 0), "app") is None
 
 
+def test_an_array_element_written_over_several_lines_has_no_position() -> None:
+    positions = TomlPositions('keys = ["""\nfirst\n""", "b"]\nother = [[1,\n  2]]\n')
+
+    assert positions.locate(("keys", 0), "first\n") is None
+    assert positions.locate(("keys", 1), "b") == (3, 6)
+    assert positions.locate(("other", 0), [1, 2]) is None
+
+
 def test_a_structural_path_is_written_as_a_json_pointer() -> None:
     assert pointer_text(("packages", "node_modules/a", "dependencies", "js-tokens")) == (
         "/packages/node_modules~1a/dependencies/js-tokens"
