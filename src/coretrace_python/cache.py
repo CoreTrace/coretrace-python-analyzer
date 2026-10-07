@@ -187,13 +187,19 @@ def _encode_span(span: SourceSpan) -> list[Any]:
 
 def _encode_location(location: Location) -> Any:
     if isinstance(location, FileLocation):
-        return {"file": str(location.source_id), "pointer": location.pointer}
+        return {
+            "file": str(location.source_id),
+            "pointer": location.pointer,
+            "digest": location.digest,
+        }
     return _encode_span(location)
 
 
 def _decode_location(data: Any) -> Location:
     if isinstance(data, Mapping):
-        return FileLocation(SourceId(_string(data["file"])), _string(data["pointer"]))
+        return FileLocation(
+            SourceId(_string(data["file"])), _string(data["pointer"]), _string(data["digest"])
+        )
     return _decode_span(data)
 
 

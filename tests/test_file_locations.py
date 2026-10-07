@@ -57,7 +57,7 @@ def test_values_of_one_key_are_located_at_their_own_lines(tmp_path: Path) -> Non
 def test_a_value_that_cannot_be_located_gets_a_file_location(tmp_path: Path) -> None:
     (finding,) = credentials(project(tmp_path, {"settings.toml": f'a.api_token = "{TOKEN}"\n'}))
 
-    assert finding.span == FileLocation(finding.span.source_id, "/a/api_token")
+    assert isinstance(finding.span, FileLocation) and finding.span.pointer == "/a/api_token"
     assert Path(str(finding.span.source_id)).name == "settings.toml"
 
 
@@ -145,3 +145,22 @@ def test_the_baseline_recognises_a_file_location_by_its_pointer(
     ).items()
     assert main(["--check", "proj", "--baseline", str(baseline)]) == 0
     assert capsys.readouterr().out.startswith("no findings, 1 suppressed, 1 baselined\n")
+
+
+def test_a_changed_value_at_a_file_location_is_a_new_finding(
+    unlocated: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The pointer says where the value is, not what it is: the baseline also keeps a
+    digest of the value, never the value itself, so a new secret there is new."""
+
+    baseline = tmp_path / "baseline.json"
+    main(["--check", "proj", "--baseline", str(baseline)])
+    assert TOKEN not in baseline.read_text(encoding="utf-8")
+    settings = unlocated / "settings.toml"
+    settings.write_text(
+        settings.read_text(encoding="utf-8").replace(TOKEN, OTHER[::-1]), encoding="utf-8"
+    )
+    capsys.readouterr()
+
+    assert main(["--check", "proj", "--baseline", str(baseline)]) == 1
+    assert capsys.readouterr().out.startswith("settings.toml: high hardcoded-credential")

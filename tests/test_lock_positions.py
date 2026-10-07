@@ -91,7 +91,7 @@ def test_the_message_states_the_pinned_version_the_lock_file_and_its_dependents(
 def test_a_locked_package_that_cannot_be_placed_has_a_file_location(tmp_path: Path) -> None:
     finding = vulnerable(tmp_path, "uv.lock", INLINE_LOCK)
 
-    assert finding.span == FileLocation(finding.span.source_id, "/package/0/name")
+    assert isinstance(finding.span, FileLocation) and finding.span.pointer == "/package/0/name"
     assert finding.message.startswith(
         "CVE-2099-0207: werkzeug 3.1.5, pinned in uv.lock, is in <3.1.6: "
     )

@@ -28,8 +28,8 @@ from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.interprocedural import discover_files
 from coretrace_python.plugins.api import Plugin, PluginContext
-from coretrace_python.source import FileLocation, Location, SourceId, SourceSpan, decode_text
-from coretrace_python.source.positions import JsonPositions, Pointer, TomlPositions, pointer_text
+from coretrace_python.source import Location, SourceId, SourceSpan, decode_text
+from coretrace_python.source.positions import JsonPositions, Pointer, TomlPositions, file_location
 
 # A value, the name it is bound to, where it is, and its enclosing function. A value of
 # a JSON or TOML file whose line cannot be established is at a file location.
@@ -337,7 +337,9 @@ def _structured(
         elif isinstance(node, str) and key is not None:
             place = positions.locate(path, node)
             location: Location = (
-                SourceSpan(source, *place) if place is not None else FileLocation(source, pointer_text(path))
+                SourceSpan(source, *place)
+                if place is not None
+                else file_location(source, path, node)
             )
             yield node, key if named else None, location, None
 

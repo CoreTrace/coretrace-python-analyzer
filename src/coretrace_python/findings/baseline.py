@@ -3,7 +3,8 @@
 A finding is recognised by its file relative to the root, its rule, its function and the
 text of its line, never by its line number: code inserted above it does not make it
 new, a change to the line itself does. A finding with a file location, whose line is not
-established, is recognised by the JSON pointer of its value instead. Entries are
+established, is recognised by the JSON pointer of its value and a digest of the value
+instead, never the value itself: a new value there is a new finding. Entries are
 counted, so two identical findings on identical lines need two entries.
 
 Baselines are written in schema 2, whose entries carry the pointer. Schema 1 files are
@@ -30,8 +31,8 @@ _LEGACY_SCHEMA = 1
 # Files whose findings schema 1 placed at their key's first line.
 _STRUCTURED = (".json", ".toml", ".lock")
 
-# File, rule, function, text of the line (empty for a file location), pointer (empty
-# for a line).
+# File, rule, function, text of the line (for a file location, the digest of its
+# value), pointer (empty for a line).
 Fingerprint = tuple[str, str, str, str, str]
 
 
@@ -48,7 +49,7 @@ def fingerprint(finding: Finding, root: Path) -> Fingerprint:
     head = (relative, finding.rule_id, finding.function or "")
     if isinstance(finding.span, SourceSpan):
         return (*head, _line_text(path, finding.span.start_line), "")
-    return (*head, "", finding.span.pointer)
+    return (*head, finding.span.digest, finding.span.pointer)
 
 
 def _line_text(path: Path, line: int) -> str:

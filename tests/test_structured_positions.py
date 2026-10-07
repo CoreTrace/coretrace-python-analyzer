@@ -120,6 +120,29 @@ def test_toml_values_the_component_cannot_place_have_no_position() -> None:
     assert TomlPositions("[unclosed").locate(("a",), "x") is None
 
 
+def test_a_header_or_key_written_inside_a_toml_string_is_not_one() -> None:
+    commented = 'note = "a" # use """ for docs\nexample = """\n[t]\nk = "S"\n"""\n[t]\nk = "S"\n'
+    escaped = 'doc = """\nescaped \\"""\n[t]\nk = "S"\n"""\n[t]\nk = "S"\n'
+    one_line = 's = \'"""\'\n[t]\nk = "S"\n'
+
+    assert TomlPositions(commented).locate(("t", "k"), "S") == (7, 5)
+    assert TomlPositions(escaped).locate(("t", "k"), "S") == (7, 5)
+    assert TomlPositions(one_line).locate(("t", "k"), "S") == (3, 5)
+
+
+def test_an_array_element_alone_on_its_line_is_not_a_toml_header() -> None:
+    positions = TomlPositions('arr = [\n  ["b"]\n]\nk = "v"\n')
+
+    assert positions.locate(("k",), "v") == (4, 5)
+
+
+def test_toml_lines_are_counted_by_line_feeds_only() -> None:
+    positions = TomlPositions('# caf\u2028e\napi_token = "S"\r\nport = 1\r\n')
+
+    assert positions.locate(("api_token",), "S") == (2, 13)
+    assert positions.locate(("port",), 1) == (3, 8)
+
+
 def test_a_structural_path_is_written_as_a_json_pointer() -> None:
     assert pointer_text(("packages", "node_modules/a", "dependencies", "js-tokens")) == (
         "/packages/node_modules~1a/dependencies/js-tokens"

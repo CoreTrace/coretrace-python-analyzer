@@ -21,8 +21,8 @@ from typing import Any, ClassVar
 from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.findings import Severity
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.source import FileLocation, Location, SourceFile, SourceId, SourceSpan
-from coretrace_python.source.positions import TomlPositions, pointer_text
+from coretrace_python.source import Location, SourceFile, SourceId, SourceSpan
+from coretrace_python.source.positions import TomlPositions, file_location
 
 _REQUIREMENT = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$")
 _CLAUSE = re.compile(r"^(===|==|!=|<=|>=|~=|<|>|\^)\s*([0-9][0-9A-Za-z.*+!-]*)$")
@@ -420,7 +420,7 @@ def _lock_requirements(data: Mapping[str, Any], source: SourceFile) -> list[Requ
         location: Location = (
             SourceSpan(source.source_id, *place)
             if place is not None
-            else FileLocation(source.source_id, pointer_text(path))
+            else file_location(source.source_id, path, name)
         )
         found.append(
             Requirement(normalize(name), "", location, Version.parse(version), locked=version)

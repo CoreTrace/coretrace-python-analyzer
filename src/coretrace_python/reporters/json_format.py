@@ -14,9 +14,16 @@ def finding_record(finding: Finding, report: Report | None = None) -> dict[str, 
     path = str(span.source_id)
     location: dict[str, object] = {"path": report.locate(path) if report is not None else path}
     if isinstance(span, SourceSpan):
-        location.update(line=span.start_line, column=span.start_column, end_line=span.end_line, end_column=span.end_column)
+        location.update(
+            line=span.start_line,
+            column=span.start_column,
+            end_line=span.end_line,
+            end_column=span.end_column,
+        )
     else:
-        location.update(line=None, column=None, end_line=None, end_column=None, pointer=span.pointer)
+        location.update(
+            line=None, column=None, end_line=None, end_column=None, pointer=span.pointer
+        )
     return {
         "rule_id": finding.rule_id,
         "message": finding.message,

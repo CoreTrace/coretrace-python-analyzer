@@ -234,7 +234,8 @@ shrink it as findings are fixed: an entry without a matching finding is simply u
 Baselined findings are counted in the text report, listed under `baselined` in the JSON
 report and marked `baselineState: unchanged` in the SARIF log, where new results are
 marked `new`. A finding with a file location is recognised by the JSON pointer of its
-value instead of the text of a line.
+value and a digest of the value (never the value itself) instead of the text of a line,
+so a new value at the same place is a new finding.
 
 Baselines are written in schema 2. A schema 1 file, written by an earlier version, is
 still read and its entries match exactly as they did; but it recorded a finding in a

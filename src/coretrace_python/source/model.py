@@ -53,6 +53,9 @@ class FileLocation:
 
     source_id: SourceId
     pointer: str = ""
+    # A digest of the value (``sha256:…``), never the value: what the baseline compares
+    # where it would compare the text of a line.
+    digest: str = ""
 
     def display(self) -> str:
         return f"{self.source_id}{self.pointer and '#' + self.pointer}"

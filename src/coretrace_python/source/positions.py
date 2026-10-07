@@ -12,10 +12,13 @@ gives the file, never a guessed line.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import tomllib
 from bisect import bisect_right
+
+from coretrace_python.source.model import FileLocation, SourceId
 
 Pointer = tuple[str | int, ...]
 
@@ -26,6 +29,16 @@ _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?")
 _LITERALS = {"true": True, "false": False, "null": None}
 _HEADER = re.compile(r"\s*(\[\[?)\s*(.+?)\s*(\]\]?)\s*(?:#.*)?$")
 _KEY_LINE = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*=\s*(.*)$""")
+
+
+def file_location(source_id: SourceId, path: Pointer, value: object) -> FileLocation:
+    """The location of a value whose line could not be established: its file, its JSON
+    pointer, and a digest of the value, so that a baseline tells a changed value apart
+    without recording it."""
+
+    written = value if isinstance(value, str) else json.dumps(value)
+    digest = hashlib.sha256(written.encode("utf-8", "surrogatepass")).hexdigest()[:16]
+    return FileLocation(source_id, pointer_text(path), f"sha256:{digest}")
 
 
 def pointer_text(path: Pointer) -> str:
@@ -145,18 +158,22 @@ class JsonPositions:
 
 class TomlPositions:
     """The key lines of each section of a TOML document, by the structural path of its
-    table: the root, ``[a.b]``, or the element ``[[a]]`` opens, numbered in order."""
+    table: the root, ``[a.b]``, or the element ``[[a]]`` opens, numbered in order. Lines
+    are counted by line feeds, as the rest of the engine counts them; a line that starts
+    inside a multi-line string or an open array or inline table is a continuation, never
+    a header or a key."""
 
     def __init__(self, text: str) -> None:
-        self._lines = text.splitlines()
-        self._sections: dict[Pointer, list[int]] = {(): []}
+        # Section, key -> the line number, column and written text of each value.
+        self._keys: dict[Pointer, dict[str, list[tuple[int, int, str]]]] = {(): {}}
         arrays: dict[Pointer, int] = {}
         current: Pointer = ()
-        quoted: str | None = None
-        for number, line in enumerate(self._lines):
-            if quoted is not None:
-                if line.count(quoted) % 2:
-                    quoted = None
+        state = _LexState()
+        for number, line in enumerate(text.split("\n"), start=1):
+            line = line.removesuffix("\r")
+            continued = state.inside()
+            state.read(line)
+            if continued:
                 continue
             header = _HEADER.match(line)
             keys = _header_keys(header.group(2)) if header is not None else None
@@ -172,12 +189,18 @@ class TomlPositions:
                 else:
                     table = _resolve(keys, arrays)
                 current = table
-                self._sections.setdefault(current, [])
+                self._keys.setdefault(current, {})
                 continue
-            self._sections[current].append(number)
-            for delimiter in ('"""', "'''"):
-                if line.count(delimiter) % 2:
-                    quoted = delimiter
+            match = _KEY_LINE.match(line)
+            if match is None:
+                continue
+            try:
+                key = _key(match.group(1))
+            except tomllib.TOMLDecodeError:
+                continue
+            self._keys[current].setdefault(key, []).append(
+                (number, match.start(2) + 1, match.group(2))
+            )
 
     def locate(self, path: Pointer, value: object) -> tuple[int, int] | None:
         """The line and column ``value`` starts at under ``path``, or None when the
@@ -185,18 +208,61 @@ class TomlPositions:
 
         if not path or isinstance(path[-1], int):
             return None
-        for number in self._sections.get(path[:-1], ()):
-            line = self._lines[number]
-            match = _KEY_LINE.match(line)
-            if match is None or _key(match.group(1)) != path[-1]:
-                continue
+        for number, column, written in self._keys.get(path[:-1], {}).get(path[-1], ()):
             try:
-                found = tomllib.loads(f"v = {match.group(2)}")["v"]
+                found = tomllib.loads(f"v = {written}")["v"]
             except tomllib.TOMLDecodeError:
                 continue
             if _same(found, value):
-                return number + 1, match.start(2) + 1
+                return number, column
         return None
+
+
+class _LexState:
+    """Where a TOML line leaves the reader: inside a multi-line string (its delimiter),
+    or inside arrays and inline tables opened by a value (their depth). Strings and
+    comments are skipped, so a delimiter or a bracket written in them counts for
+    nothing."""
+
+    def __init__(self) -> None:
+        self.string: str | None = None
+        self.depth = 0
+
+    def inside(self) -> bool:
+        return self.string is not None or self.depth > 0
+
+    def read(self, line: str) -> None:
+        position, valued = 0, self.depth > 0
+        while position < len(line):
+            if self.string is not None:
+                if self.string == '"""' and line[position] == "\\":
+                    position += 2
+                elif line.startswith(self.string, position):
+                    self.string, position = None, position + 3
+                else:
+                    position += 1
+                continue
+            character = line[position]
+            if character == "#":
+                return
+            if line.startswith(('"""', "'''"), position):
+                self.string, position = line[position : position + 3], position + 3
+            elif character == '"':
+                position += 1
+                while position < len(line) and line[position] != '"':
+                    position += 2 if line[position] == "\\" else 1
+                position += 1
+            elif character == "'":
+                closing = line.find("'", position + 1)
+                position = len(line) if closing < 0 else closing + 1
+            else:
+                if character == "=" and self.depth == 0:
+                    valued = True
+                elif character in "[{" and valued:
+                    self.depth += 1
+                elif character in "]}" and self.depth > 0:
+                    self.depth -= 1
+                position += 1
 
 
 def _resolve(keys: tuple[str, ...], arrays: dict[Pointer, int]) -> Pointer:
