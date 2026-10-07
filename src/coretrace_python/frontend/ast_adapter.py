@@ -13,6 +13,13 @@ class HIRBuildError(Exception):
     """A source-located failure to represent parsed syntax as PyHIR."""
 
 
+# The frontend and the analyses after it recurse once per level of nesting: syntax nested
+# deeper, which Python parses in left-nested chains (``"a" + "b" + …``, ``x.f().g()…``)
+# and only generated code reaches, would exhaust Python's recursion limit (#233). The
+# bound leaves the later stages room below that limit, whatever the call stack.
+MAX_NESTING = 500
+
+
 _BINARY_OPERATORS = {
     ast.Add: "add",
     ast.Sub: "sub",
@@ -449,4 +456,21 @@ class AstHIRBuilder:
 
 
 def build_module(source: SourceFile, tree: ast.Module) -> nodes.Module:
-    return AstHIRBuilder(source).module(tree)
+    builder = AstHIRBuilder(source)
+    too_deep = _nested_too_deep(tree)
+    if too_deep is not None:
+        builder.fail(too_deep, f"syntax nested more than {MAX_NESTING} levels deep, beyond what the analyzer follows")
+    return builder.module(tree)
+
+
+def _nested_too_deep(tree: ast.AST) -> ast.AST | None:
+    """The first node nested more than ``MAX_NESTING`` levels below ``tree``, found
+    without recursion; None when there is none."""
+
+    pending: list[tuple[ast.AST, int]] = [(tree, 0)]
+    while pending:
+        node, depth = pending.pop()
+        if depth > MAX_NESTING:
+            return node
+        pending.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+    return None
