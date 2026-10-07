@@ -181,6 +181,13 @@ def test_an_array_element_written_over_several_lines_has_no_position() -> None:
     assert positions.locate(("other", 0), [1, 2]) is None
 
 
+def test_a_datetime_written_with_a_space_is_one_array_element() -> None:
+    positions = TomlPositions('a = [1979-05-27 07:32:00, "s", "s"  ]\n')
+
+    assert positions.locate(("a", 1), "s") == (1, 27)
+    assert positions.locate(("a", 2), "s") == (1, 32)
+
+
 def test_a_structural_path_is_written_as_a_json_pointer() -> None:
     assert pointer_text(("packages", "node_modules/a", "dependencies", "js-tokens")) == (
         "/packages/node_modules~1a/dependencies/js-tokens"

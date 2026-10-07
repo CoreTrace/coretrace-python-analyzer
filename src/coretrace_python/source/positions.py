@@ -29,7 +29,8 @@ _STRING = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"'
 _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?")
 _LITERALS = {"true": True, "false": False, "null": None}
 _HEADER = re.compile(r"\s*(\[\[?)\s*(.+?)\s*(\]\]?)\s*(?:#.*)?$")
-_SCALAR = re.compile(r"[^,\]}#\s]+")
+# A bare scalar ends at a separator or the end of its line; a datetime may hold a space.
+_SCALAR = re.compile(r"[^,\]}#\n]+")
 _KEY_LINE = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*=\s*(.*)$""")
 
 
@@ -338,7 +339,7 @@ def _value_end(text: str, start: int) -> int:
         return _string_end(text, start)
     if text[start] not in "[{":
         scalar = _SCALAR.match(text, start)
-        return scalar.end() if scalar is not None else start + 1
+        return start + len(scalar.group(0).rstrip()) if scalar is not None else start + 1
     depth, position = 0, start
     while position < len(text):
         character = text[position]
@@ -369,8 +370,10 @@ def _string_end(text: str, start: int) -> int:
             if quote == '"' and text[position] == "\\":
                 position += 2
             elif text.startswith(quote * 3, position):
-                run = len(text[position:]) - len(text[position:].lstrip(quote))
-                return position + min(run, 5)
+                run = 3
+                while run < 5 and text.startswith(quote, position + run):
+                    run += 1
+                return position + run
             else:
                 position += 1
         return len(text)
