@@ -17,6 +17,7 @@ import json
 import math
 import re
 import tomllib
+from bisect import bisect_right
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -347,7 +348,10 @@ def _structured(
 
 
 def _pairs(source: SourceId, text: str) -> Iterator[Literal]:
-    for number, line in enumerate(lines_of(text), start=1):
+    lines = lines_of(text)
+    # The numbers of the lines holding each quote, to find where an open quote closes.
+    quoted = {quote: [n for n, line in enumerate(lines, start=1) if quote in line] for quote in "'\""}
+    for number, line in enumerate(lines, start=1):
         stripped = line.strip()
         if not stripped or stripped[0] in "#;[":
             continue
@@ -357,10 +361,45 @@ def _pairs(source: SourceId, text: str) -> Iterator[Literal]:
         key, value = match.group(1), match.group(2)
         if value.startswith("#"):
             continue
+        last = _value_end(lines, quoted, number, match.start(1), value)
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
             value = value[1:-1]
         if value:
-            yield value, key, SourceSpan(source, number, 1), None
+            span = (
+                SourceSpan(source, number, 1)
+                if last == number
+                else SourceSpan(source, number, 1, last, len(lines[last - 1]) + 1)
+            )
+            yield value, key, span, None
+
+
+def _value_end(lines: list[str], quoted: dict[str, list[int]], number: int, indent: int, value: str) -> int:
+    """The last line of the value written on line ``number`` after a key at column
+    ``indent``: a value may continue on the lines that close a quote it leaves open
+    (``.env``, YAML), after a trailing backslash (properties), or on lines indented
+    deeper than its key (YAML, INI). A later line is counted in when it may continue
+    the value, so a change to it is a change to the value's text."""
+
+    last = number
+    quote = value[:1]
+    if quote in ("'", '"') and quote not in value[1:]:
+        closing = quoted[quote]
+        index = bisect_right(closing, number)
+        last = closing[index] if index < len(closing) else len(lines)
+    while last < len(lines):
+        if lines[last - 1].rstrip().endswith("\\"):
+            last += 1
+            continue
+        following = last + 1
+        while following <= len(lines) and not lines[following - 1].strip():
+            following += 1
+        if following > len(lines):
+            break
+        line = lines[following - 1]
+        if len(line) - len(line.lstrip()) <= indent:
+            break
+        last = following
+    return last
 
 
 def redacted(value: str) -> str:
