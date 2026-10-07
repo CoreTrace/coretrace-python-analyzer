@@ -2,7 +2,11 @@
 
 Secrets are string literals of the PyHIR. ``literals`` walks every string literal with
 the name it is bound to (assignment target, keyword argument, dictionary key) and the
-enclosing function; ``SecretDetector`` reports at most one finding per literal: a
+enclosing function; a string expression whose parts are all constant (``+``,
+``sep.join``, an f-string) is one literal, followed by its pieces (#228).
+``SecretDetector`` reports at most one finding per literal, and one per such expression,
+the strongest of its whole value and its pieces, at the whole expression, or its pieces
+on their own when the whole value is no secret: a
 provider pattern first (``hardcoded-secret``), then a credential-like name with a real
 value (``hardcoded-credential``), then a high-entropy token on its own
 (``high-entropy-string``). Messages and metadata carry a redacted preview, never the
@@ -20,7 +24,7 @@ import tomllib
 from bisect import bisect_right
 from collections import Counter
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import ClassVar
 
@@ -35,6 +39,8 @@ from coretrace_python.source.positions import JsonPositions, Pointer, TomlPositi
 # A value, the name it is bound to, where it is, and its enclosing function. A value of
 # a JSON or TOML file whose line cannot be established is at a file location.
 Literal = tuple[str, str | None, Location, str | None]
+# A literal and, for a string expression whose parts are all constant, its pieces.
+LiteralGroup = tuple[Literal, tuple[Literal, ...]]
 
 _HEX = re.compile(r"^[0-9a-fA-F]+$")
 _TOKEN = re.compile(r"^[A-Za-z0-9+/=_-]+$")
@@ -131,17 +137,36 @@ def shannon_entropy(text: str) -> float:
 
 
 def literals(module: nodes.Module) -> Iterator[Literal]:
-    """Every string literal of the module as ``(value, bound name, span, function)``."""
+    """Every string literal of the module as ``(value, bound name, span, function)``, a
+    string expression whose parts are all constant followed by its pieces."""
+
+    for literal, pieces in literal_groups(module):
+        yield literal
+        yield from pieces
+
+
+def literal_groups(module: nodes.Module) -> Iterator[LiteralGroup]:
+    """Every string literal of the module with, for a string expression whose parts are
+    all constant, the literals it is made of, bound to no name."""
 
     for statement in module.body:
         yield from _walk(statement, None, None)
 
 
-def _walk(node: Node, name: str | None, function: str | None) -> Iterator[Literal]:
+def _walk(node: Node, name: str | None, function: str | None) -> Iterator[LiteralGroup]:
     if isinstance(node, nodes.Constant):
         if isinstance(node.value, str):
-            yield node.value, name, node.span, function
+            yield (node.value, name, node.span, function), ()
         return
+    if isinstance(node, (nodes.BinaryOp, nodes.FormattedString, nodes.Call)):
+        folded = _folded(node)
+        if folded is not None:
+            # Folded once at the outermost expression: ``a + b`` of ``a + b + c`` is no
+            # value of its own. A chain that does not fold is tried again at each level,
+            # quadratic in its length, which the frontend bounds (about 1000 terms).
+            pieces = tuple((value, None, span, function) for value, span in _pieces(node))
+            yield (folded, name, node.span, function), pieces
+            return
     if isinstance(node, nodes.Function):
         for child in children(node):
             yield from _walk(child, None, node.name)
@@ -182,6 +207,56 @@ def _walk(node: Node, name: str | None, function: str | None) -> Iterator[Litera
         return
     for child in children(node):
         yield from _walk(child, None, function)
+
+
+def _folded(node: Node) -> str | None:
+    """The string ``node`` evaluates to when all its parts are constant: a string, ``+``
+    of strings, an f-string whose parts are all constant (its conversions and format
+    specifications ignored), ``sep.join`` of a list or tuple of strings with a constant
+    separator; None otherwise."""
+
+    parts = _parts(node)
+    if parts is None:
+        return node.value if isinstance(node, nodes.Constant) and isinstance(node.value, str) else None
+    folded = [_folded(part) for part in parts]
+    if None in folded:
+        return None
+    texts = [text for text in folded if text is not None]
+    if isinstance(node, nodes.Call):
+        return texts[0].join(texts[1:])
+    return "".join(texts)
+
+
+def _parts(node: Node) -> tuple[Node, ...] | None:
+    """What a string expression ``_folded`` reads is made of, the separator of a
+    ``join`` first; None for any other node."""
+
+    if isinstance(node, nodes.BinaryOp) and node.operator == "add":
+        return node.left, node.right
+    if isinstance(node, nodes.FormattedString):
+        return node.parts
+    if (
+        isinstance(node, nodes.Call)
+        and isinstance(node.callee, nodes.Attribute)
+        and node.callee.name == "join"
+        and len(node.arguments) == 1
+        and not node.keywords
+        and isinstance(node.arguments[0], (nodes.List, nodes.Tuple))
+    ):
+        return node.callee.value, *node.arguments[0].elements
+    return None
+
+
+def _pieces(node: Node) -> Iterator[tuple[str, SourceSpan]]:
+    """The strings a folded expression is made of, in order, with their spans."""
+
+    parts = _parts(node)
+    if parts is None:
+        assert isinstance(node, nodes.Constant) and isinstance(node.value, str)
+        yield node.value, node.span
+        return
+    for part in parts:
+        yield from _pieces(part)
 
 
 def _is_environment_lookup(call: nodes.Call) -> bool:
@@ -402,6 +477,13 @@ def _value_end(lines: list[str], quoted: dict[str, list[int]], number: int, inde
     return last
 
 
+_CONFIDENCE_ORDER = (Confidence.LOW, Confidence.MEDIUM, Confidence.HIGH)
+
+
+def _strength(finding: Finding) -> tuple[int, int]:
+    return finding.severity.rank, _CONFIDENCE_ORDER.index(finding.confidence)
+
+
 def redacted(value: str) -> str:
     preview = value[:4] if len(value) > 8 else value[:1]
     return f"{preview}… ({len(value)} characters)"
@@ -423,10 +505,17 @@ class SecretDetector(Plugin):
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         findings: list[Finding] = []
-        for value, name, span, function in literals(ctx.module):
-            finding = self.judge(value, name, span, function)
-            if finding is not None:
-                findings.append(finding)
+        for literal, pieces in literal_groups(ctx.module):
+            found = self.judge(*literal)
+            parts = [finding for finding in (self.judge(*piece) for piece in pieces) if finding is not None]
+            if found is None:
+                findings.extend(parts)
+            else:
+                # A piece may be the stronger finding: two pieces that touch leave the
+                # whole value matching no provider pattern. It is reported at the whole,
+                # so that a baseline digests every line of it.
+                strongest = max((found, *parts), key=_strength)
+                findings.append(strongest if strongest is found else replace(strongest, span=found.span))
         return findings
 
     def judge(self, value: str, name: str | None, span: Location, function: str | None) -> Finding | None:
