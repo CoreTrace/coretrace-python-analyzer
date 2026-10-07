@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import ClassVar
 
 from coretrace_python.abstract.strings import ModuleStringsAnalysis, leading_text
@@ -362,16 +362,28 @@ _INTERPRETER = re.compile(r"(python|pypy|perl|ruby|php|node|py)(?:js)?[0-9.]*w?(
 _PYTHON_EXECUTABLE = SymbolId("python.sys.executable")
 
 
+# What the attacker's input is in the command, when the rule establishes it (#220).
+_COMMAND, _OPTION = "command", "option"
+_OPTION_TITLE = "Option injection"
+
+
 @dataclass(frozen=True)
 class _Reading:
     """What one tainted element of a command lets the attacker do: run a ``command``
     (``high``), give an option at ``severity``, possibly only ``to_review``, or nothing,
-    with ``severity`` None."""
+    with ``severity`` None. ``injection`` says what the input is there, when established:
+    ``command`` (it runs, or chooses what runs) or ``option`` (an option, or the value of
+    one the model does not establish to run it)."""
 
     reason: str
     severity: Severity | None
     command: bool = False
     to_review: bool = False
+    injection: str | None = None
+
+    @property
+    def kind(self) -> str | None:
+        return _COMMAND if self.command else self.injection
 
 
 @dataclass(frozen=True)
@@ -407,7 +419,7 @@ class CommandInjectionPlugin(TaintDetector):
             return default
         shell = _shell(arguments)
         if shell is True:
-            return default
+            return _of_kind(default, _COMMAND)
         if shell is None:
             reason = "an expression chooses whether a shell runs the command"
             return Assessment(_to_review(default.verdict, reason), Severity.HIGH)
@@ -428,8 +440,10 @@ class CommandInjectionPlugin(TaintDetector):
             if flow.source in taint.taint(part.value).sources
             and taint.taint(part.value).kinds & TaintKind.COMMAND
         ]
-        if not readings or any(reading.command for reading in readings):
+        if not readings:
             return default
+        if any(reading.command for reading in readings):
+            return _of_kind(default, _COMMAND)
         injected = [reading for reading in readings if reading.severity is not None]
         if not injected:
             return Assessment(
@@ -441,9 +455,11 @@ class CommandInjectionPlugin(TaintDetector):
         )
         decisive = [r for r in injected if r.severity is severity]
         established = [reading for reading in decisive if not reading.to_review]
+        kinds = {reading.kind for reading in established or decisive}
+        kind = kinds.pop() if len(kinds) == 1 else None
         if not established:
-            return Assessment(_to_review(default.verdict, decisive[0].reason), severity)
-        return Assessment(_explained(default.verdict, established[0].reason), severity)
+            return _of_kind(Assessment(_to_review(default.verdict, decisive[0].reason), severity), kind)
+        return _of_kind(Assessment(_explained(default.verdict, established[0].reason), severity), kind)
 
 
 class _Command:
@@ -510,7 +526,7 @@ class _Command:
         if self.program is None:
             free = self.free(index, "the input is an element")
             return self.review(
-                f"the program is unknown and may run its operands; {free.reason}", free
+                f"the program is unknown and may run its operands; {free.reason}", free, None
             )
         for position in range(1, index):
             option = self.option(self.text(position) or "", position)
@@ -529,6 +545,7 @@ class _Command:
                 return _Reading(
                     f"the input follows {self.program} {option.option}, which {option.runs}",
                     Severity.HIGH,
+                    injection=_COMMAND,
                 )
         if index >= 2:
             before = self.text(index - 1)
@@ -537,6 +554,7 @@ class _Command:
                 return self.review(
                     f"cannot tell what the element before the input is; if not an option, {free.reason}",
                     free,
+                    None,
                 )
             if before not in ("-", "--") and self.option_like(before):
                 taker = self.taker(before, index)
@@ -546,9 +564,11 @@ class _Command:
                     return self.value_of(taker, before)
                 if taker is None:
                     free = self.free(index, "the input is a whole element")
+                    # Its value or an option of its own: an option either way.
                     return self.review(
                         f"cannot tell whether {before} takes the input as its value; if not, {free.reason}",
                         free,
+                        _OPTION,
                     )
         if not self.parts[index].known:
             return self.free(index, "the input gives whole elements")
@@ -558,6 +578,7 @@ class _Command:
                 return _Reading(
                     f"the input follows {self.program} {option.option}, which {option.runs}",
                     Severity.HIGH,
+                    injection=_COMMAND,
                 )
         if prefix.startswith("--") and "=" in prefix:
             return self.option_value(index, prefix[: prefix.index("=")])
@@ -651,6 +672,7 @@ class _Command:
                 f"the input follows {before}, an option of the script it may be the value of",
                 Severity.MEDIUM,
                 to_review=True,
+                injection=_OPTION,
             )
         prefix = self.prefix(index)
         if self.parts[index].known and prefix and not prefix.startswith("-"):
@@ -661,6 +683,7 @@ class _Command:
         return _Reading(
             "the input is an argument of the script, which it may read as an option",
             Severity.MEDIUM,
+            injection=_OPTION,
         )
 
     def inside(self, start: int, end: int | None, index: int) -> _Reading:
@@ -681,6 +704,7 @@ class _Command:
             reading.severity,
             reading.command,
             reading.to_review,
+            reading.injection,
         )
 
     def operands(self, index: int, enough: int, assignments: bool = False) -> _Operands | None:
@@ -789,8 +813,8 @@ class _Command:
     def named(self, written: str, names: tuple[str, ...]) -> bool:
         return any(self.same(written, name) for name in names)
 
-    def review(self, reason: str, free: _Reading) -> _Reading:
-        return _Reading(reason, free.severity, to_review=True)
+    def review(self, reason: str, free: _Reading, injection: str | None) -> _Reading:
+        return _Reading(reason, free.severity, to_review=True, injection=injection)
 
     def same(self, written: str, option: str) -> bool:
         return written.lower() == option.lower() if self.program in _ANY_CASE else written == option
@@ -819,15 +843,18 @@ class _Command:
             return _Reading(
                 f"{how}, and an option such as {self.program} {_spelled(option.option)} {option.runs}",
                 Severity.HIGH,
+                injection=_OPTION,
             )
-        return _Reading(f"{how}, so it may be read as an option", Severity.MEDIUM)
+        return _Reading(f"{how}, so it may be read as an option", Severity.MEDIUM, injection=_OPTION)
 
     def option_value(self, index: int, name: str) -> _Reading:
         """The element starts with the option ``name`` and goes on with the input."""
 
         option = self.option(name, index)
         if option is None:
-            return _Reading(f"the input is the value of the option {name}", Severity.MEDIUM)
+            return _Reading(
+                f"the input is the value of the option {name}", Severity.MEDIUM, injection=_OPTION
+            )
         if not option.takes_value:
             return self.free(
                 index, f"the input follows {name}, which takes no value, as more options"
@@ -845,12 +872,15 @@ class _Command:
             return _Reading(
                 f"the input is the value of {self.program} {given}, which {option.runs}",
                 Severity.HIGH,
+                injection=_COMMAND,
             )
         if option.inert is not None:
             return _Reading(
                 f"the input is the value of {self.program} {given}, which {option.inert}", None
             )
-        return _Reading(f"the input is the value of {self.program} {given}", Severity.MEDIUM)
+        return _Reading(
+            f"the input is the value of {self.program} {given}", Severity.MEDIUM, injection=_OPTION
+        )
 
     def taker(self, before: str, index: int) -> CommandOption | bool | None:
         """The option ``before`` whose value is the element at ``index``; False when the
@@ -984,6 +1014,19 @@ def _shell(arguments: Arguments) -> bool | None:
     if value in _SHELL:
         return True
     return False if value in _NO_SHELL else None
+
+
+def _of_kind(assessment: Assessment, kind: str | None) -> Assessment:
+    """``assessment`` saying what kind of injection it is, when established: an option
+    injection is titled so; the rule id stays ``command-injection`` either way."""
+
+    if kind is None:
+        return assessment
+    return replace(
+        assessment,
+        title=_OPTION_TITLE if kind == _OPTION else None,
+        metadata={**assessment.metadata, "injection": kind},
+    )
 
 
 def _explained(verdict: Verdict, reason: str) -> Verdict:
