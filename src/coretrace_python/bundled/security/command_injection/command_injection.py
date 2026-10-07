@@ -73,6 +73,10 @@ class CommandOption:
     opens: bool = False
     examine: bool = False
 
+    def __post_init__(self) -> None:
+        if self.rest and not self.takes_value:
+            raise ValueError(f"{self.program} {self.option}: a rest option takes the elements after it")
+
 
 @dataclass(frozen=True)
 class CommandOperands:
@@ -748,7 +752,10 @@ class _Command:
 
         if index <= given:
             return None
-        for position in range(1, given + 1):
+        # Not ``given`` itself: it holds the value of the code option (the script after
+        # ``pwsh -File``, whatever it is spelled like), or that option when it takes no
+        # value, which is then no ``rest`` option, since every element after one is its value.
+        for position in range(1, given):
             option = self.option(self.text(position) or "", position)
             if option is not None and option.rest:
                 # Every element after it is the command (``pwsh -Command``).
