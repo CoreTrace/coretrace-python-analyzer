@@ -15,9 +15,11 @@ class HIRBuildError(Exception):
 
 # The frontend and the analyses after it recurse once per level of nesting: syntax nested
 # deeper, which Python parses in left-nested chains (``"a" + "b" + …``, ``x.f().g()…``)
-# and only generated code reaches, would exhaust Python's recursion limit (#233). The
-# bound leaves the later stages room below that limit, whatever the call stack.
-MAX_NESTING = 500
+# and only generated code reaches, would exhaust Python's recursion limit (#233). Under
+# the default limit the whole analysis follows about 480 levels on Python 3.11 and 970
+# on 3.12 and later; the bound, CPython's own for nested parentheses, leaves twice that
+# room, whatever the call stack.
+MAX_NESTING = 200
 
 
 _BINARY_OPERATORS = {

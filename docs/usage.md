@@ -85,7 +85,7 @@ calls the analyzer sees, and a module-level `os.system(input())` is a finding in
 A function using syntax outside the supported subset is reported as an
 `unsupported-syntax` note and the other functions are still analysed; a file Python
 itself cannot parse is reported as a `syntax-error`, and so is a file whose syntax is
-nested more than 500 levels deep (a chain of hundreds of `+` or chained calls, which only
+nested more than 200 levels deep (a chain of hundreds of `+` or chained calls, which only
 generated code writes), which the analyzer does not follow; the other files are still
 analysed. The coverage line and the JSON
 report's per-file detail tell "no findings" from "nothing analysed".

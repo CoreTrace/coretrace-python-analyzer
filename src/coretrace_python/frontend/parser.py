@@ -17,6 +17,9 @@ def parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
         column = error.offset or 0
         message = error.msg or "invalid syntax"
         raise ParseError(f"{filename}:{line}:{column}: {message}") from error
+    except RecursionError as error:
+        # Python 3.11 builds the AST of a long left-nested chain recursively (#233).
+        raise ParseError(f"{filename}:1:1: syntax nested too deeply for Python's parser") from error
 
 
 def parse_source_file(source: SourceFile) -> ast.Module:
