@@ -39,8 +39,13 @@ def file_location(source_id: SourceId, path: Pointer, value: str) -> FileLocatio
     pointer, and a digest of the value, so that a baseline tells a changed value apart
     without recording it."""
 
-    digest = hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()[:16]
-    return FileLocation(source_id, pointer_text(path), f"sha256:{digest}")
+    return FileLocation(source_id, pointer_text(path), text_digest(value))
+
+
+def text_digest(text: str) -> str:
+    """A short digest of ``text``, which tells a changed text apart without holding it."""
+
+    return "sha256:" + hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()[:16]
 
 
 def pointer_text(path: Pointer) -> str:

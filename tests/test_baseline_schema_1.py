@@ -97,4 +97,4 @@ def test_a_schema_1_baseline_of_python_findings_matches_as_before(
     captured = capsys.readouterr()
 
     assert captured.out.startswith("no findings, 1 baselined\n")
-    assert NOTICE not in captured.err
+    assert NOTICE in captured.err

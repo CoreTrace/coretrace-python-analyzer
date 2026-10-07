@@ -19,7 +19,7 @@ from coretrace_python import engine
 from coretrace_python.cli import main
 from coretrace_python.findings import Finding
 from coretrace_python.source import FileLocation, SourceSpan
-from coretrace_python.source.positions import file_location
+from coretrace_python.source.positions import file_location, text_digest
 
 PLUGINS = Path(__file__).resolve().parent.parent / "src" / "coretrace_python" / "bundled"
 TOKEN = "Zx81kQpLw0RtY7vBn3MsD9cF2hJ6gK4a"
@@ -135,12 +135,12 @@ def test_the_baseline_recognises_a_file_location_by_its_pointer(
     document = json.loads(baseline.read_text(encoding="utf-8"))
     capsys.readouterr()
 
-    assert document["schema"] == 2
+    assert document["schema"] == 3
     assert {
         "path": "settings.toml",
         "rule": "hardcoded-credential",
         "function": "",
-        "pointer": "/a/api_token",
+        "pointer": text_digest("/a/api_token"),
     }.items() <= next(
         e for e in document["findings"] if e["rule"] == "hardcoded-credential"
     ).items()

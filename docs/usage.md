@@ -228,21 +228,30 @@ coretrace-python-analyzer --check src/ --baseline coretrace-baseline.json
 
 The first run writes the file with every current finding and passes. Later runs set the
 recorded findings apart and fail only on new ones. A finding is recognised by its file,
-its rule, its function and the text of its line, not by its line number, so code inserted
-above it does not make it new; a change to the line itself does. Commit the file and
-shrink it as findings are fixed: an entry without a matching finding is simply unused.
+its rule, its function and the text of every line it covers, not by its line number, so
+code inserted above it does not make it new; a change to its text does, on any of its
+lines, such as the body of a key written over several lines. Commit the file and shrink
+it as findings are fixed: an entry without a matching finding is simply unused.
 Baselined findings are counted in the text report, listed under `baselined` in the JSON
 report and marked `baselineState: unchanged` in the SARIF log, where new results are
 marked `new`. A finding with a file location is recognised by the JSON pointer of its
-value and a digest of the value (never the value itself) instead of the text of a line,
-so a new value at the same place is a new finding.
+value and its value instead of the text of a line, so a new value at the same place is a
+new finding. Entries hold a digest of that text, value and pointer, never the text
+itself, so no accepted secret is stored in plain text. That does not make the file
+confidential: a digest does not hide a weak secret from whoever guesses it, since a
+guessed password, hashed with its line, can be checked against the file. Treat the
+baseline as a possibly sensitive file.
 
-Baselines are written in schema 2. A schema 1 file, written by an earlier version, is
-still read and its entries match exactly as they did; but it recorded a finding in a
-JSON, TOML or lock file with the text of its key's first line, which was its own only
-when the key was not repeated. A finding such an entry cannot identify with certainty is
-reported as new, and the check then warns on standard error: review the new findings,
-delete the baseline and run the check again to record it in schema 2.
+Baselines are written in schema 3. A file written by an earlier version, in schema 1 or
+2, is still read and never rewritten, and the check warns on standard error, once per
+run, that it may contain secrets in plain text: its entries hold the text of each
+finding's first line. They match exactly as they did a finding on a single line; a
+finding over several lines, whose other lines they do not hold, is reported as new, and
+so is a finding in a JSON, TOML or lock file that a schema 1 entry, recorded with the
+text of its key's first line, cannot identify with certainty. The exit status depends
+on the findings only. Review such a baseline and its new findings, then migrate it
+explicitly to schema 3: delete it and run the check again. The old file's secrets
+remain in the history of a repository that committed it.
 
 ## Reports
 
