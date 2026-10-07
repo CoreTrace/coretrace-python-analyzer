@@ -215,7 +215,8 @@ The comment also works in requirements files, where a line
 `pyyaml==5.3.1  # coretrace: ignore[vulnerable-dependency]` silences that requirement's
 finding. Suppressed findings are kept apart: the text report counts them, the JSON report
 lists them under `suppressed`, the SARIF log marks them as suppressed in source, and
-they never affect the exit status.
+they never affect the exit status. A comment only suppresses a finding located at a
+verified line; a finding with a file location (see Reports) is never suppressed this way.
 
 ## Adopting the analyzer on an existing code base
 
@@ -232,7 +233,15 @@ above it does not make it new; a change to the line itself does. Commit the file
 shrink it as findings are fixed: an entry without a matching finding is simply unused.
 Baselined findings are counted in the text report, listed under `baselined` in the JSON
 report and marked `baselineState: unchanged` in the SARIF log, where new results are
-marked `new`.
+marked `new`. A finding with a file location is recognised by the JSON pointer of its
+value instead of the text of a line.
+
+Baselines are written in schema 2. A schema 1 file, written by an earlier version, is
+still read and its entries match exactly as they did; but it recorded a finding in a
+JSON, TOML or lock file with the text of its key's first line, which was its own only
+when the key was not repeated. A finding such an entry cannot identify with certainty is
+reported as new, and the check then warns on standard error: review the new findings,
+delete the baseline and run the check again to record it in schema 2.
 
 ## Reports
 
@@ -266,6 +275,15 @@ the directory of the checked file; a path outside it is printed as it is.
   }
 }
 ```
+
+A value of a JSON or TOML file, or a package of a lock file, is located at its own line,
+which a separate component establishes from the value's structural path and checks
+against the value. When it cannot (a dotted TOML key, an inline table, a multi-line
+value), the finding gets a file location instead of a guessed line: `line`, `column`,
+`end_line` and `end_column` are `null`, and `pointer` gives the JSON pointer of the value
+in the file (`"/tool/app/api_token"`). The SARIF log gives such a result no `region`,
+with the pointer under the location's `properties`, and the text report shows the file
+alone (`settings.toml: high hardcoded-credential: …`).
 
 `root` is the directory the paths are relative to. A file's `status` is `analysed`,
 `ambiguous` (analysed, but another file has its module name, see above), `syntax-error`

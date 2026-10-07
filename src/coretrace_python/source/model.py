@@ -46,6 +46,23 @@ class SourceSpan:
 
 
 @dataclass(frozen=True)
+class FileLocation:
+    """A place in a file whose line could not be established: the file, and the JSON
+    pointer of the value in it (``/a/api_token``). It is never given a guessed line,
+    which a report or an inline suppression would then take for a verified one."""
+
+    source_id: SourceId
+    pointer: str = ""
+
+    def display(self) -> str:
+        return f"{self.source_id}{self.pointer and '#' + self.pointer}"
+
+
+# Where a finding is: a verified range of lines, or a file location.
+Location = SourceSpan | FileLocation
+
+
+@dataclass(frozen=True)
 class SourceFile:
     """Decoded source text, its identity and its dotted module name."""
 

@@ -6,23 +6,23 @@ import json
 
 from coretrace_python.findings import FINDING_SCHEMA_VERSION, Component, Finding
 from coretrace_python.reporters.report import Report
+from coretrace_python.source import SourceSpan
 
 
 def finding_record(finding: Finding, report: Report | None = None) -> dict[str, object]:
     span = finding.span
     path = str(span.source_id)
+    location: dict[str, object] = {"path": report.locate(path) if report is not None else path}
+    if isinstance(span, SourceSpan):
+        location.update(line=span.start_line, column=span.start_column, end_line=span.end_line, end_column=span.end_column)
+    else:
+        location.update(line=None, column=None, end_line=None, end_column=None, pointer=span.pointer)
     return {
         "rule_id": finding.rule_id,
         "message": finding.message,
         "severity": finding.severity.value,
         "confidence": finding.confidence.value,
-        "location": {
-            "path": report.locate(path) if report is not None else path,
-            "line": span.start_line,
-            "column": span.start_column,
-            "end_line": span.end_line,
-            "end_column": span.end_column,
-        },
+        "location": location,
         "function": finding.function,
         "metadata": dict(finding.metadata),
     }

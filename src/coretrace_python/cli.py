@@ -274,7 +274,11 @@ def main(argv: list[str] | None = None) -> int:
             baselined = None
             if args.baseline is not None:
                 if args.baseline.is_file():
-                    findings, baselined = Baseline.load(args.baseline).partition(findings, root)
+                    baseline = Baseline.load(args.baseline)
+                    findings, baselined = baseline.partition(findings, root)
+                    notice = baseline.transition_notice(findings)
+                    if notice is not None:
+                        print(f"coretrace: {args.baseline}: {notice}", file=sys.stderr)
                 else:
                     Baseline.of(findings, root).save(args.baseline)
                     findings, baselined = (), findings

@@ -28,9 +28,12 @@ from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.interprocedural import discover_files
 from coretrace_python.plugins.api import Plugin, PluginContext
-from coretrace_python.source import SourceId, SourceSpan, decode_text
+from coretrace_python.source import FileLocation, Location, SourceId, SourceSpan, decode_text
+from coretrace_python.source.positions import JsonPositions, Pointer, TomlPositions, pointer_text
 
-Literal = tuple[str, str | None, SourceSpan, str | None]
+# A value, the name it is bound to, where it is, and its enclosing function. A value of
+# a JSON or TOML file whose line cannot be established is at a file location.
+Literal = tuple[str, str | None, Location, str | None]
 
 _HEX = re.compile(r"^[0-9a-fA-F]+$")
 _TOKEN = re.compile(r"^[A-Za-z0-9+/=_-]+$")
@@ -293,9 +296,9 @@ def config_literals(root: Path) -> Iterator[Literal]:
         source = SourceId(str(path))
         if path.suffix == ".json":
             maps = _NPM_NAME_MAPS if path.name in _NPM_LOCK_FILES else frozenset()
-            yield from _structured(source, text, _load_json(text), maps)
+            yield from _structured(source, _load_json(text), JsonPositions(text), maps)
         elif path.suffix == ".toml":
-            yield from _structured(source, text, _load_toml(text))
+            yield from _structured(source, _load_toml(text), TomlPositions(text))
         else:
             yield from _pairs(source, text)
 
@@ -315,30 +318,30 @@ def _load_toml(text: str) -> object:
 
 
 def _structured(
-    source: SourceId, text: str, data: object, name_maps: frozenset[str] = frozenset()
+    source: SourceId,
+    data: object,
+    positions: JsonPositions | TomlPositions,
+    name_maps: frozenset[str] = frozenset(),
 ) -> Iterator[Literal]:
-    """Every string value of ``data`` with its key, except that a value directly under
-    one of ``name_maps`` is bound to no name: its key names a package or a command."""
+    """Every string value of ``data`` with its key, where ``positions`` places it from
+    its structural path, except that a value directly under one of ``name_maps`` is
+    bound to no name: its key names a package or a command."""
 
-    lines = text.splitlines()
-
-    def line_of(key: str) -> int:
-        for number, line in enumerate(lines, start=1):
-            if re.match(rf'^\s*"?{re.escape(key)}"?\s*[:=]', line) or f'"{key}"' in line:
-                return number
-        return 1
-
-    def walk(node: object, key: str | None, named: bool = True) -> Iterator[Literal]:
+    def walk(node: object, path: Pointer, key: str | None, named: bool = True) -> Iterator[Literal]:
         if isinstance(node, dict):
             for name, value in node.items():
-                yield from walk(value, str(name), key not in name_maps)
+                yield from walk(value, (*path, str(name)), str(name), key not in name_maps)
         elif isinstance(node, list):
-            for item in node:
-                yield from walk(item, key, named)
+            for index, item in enumerate(node):
+                yield from walk(item, (*path, index), key, named)
         elif isinstance(node, str) and key is not None:
-            yield node, key if named else None, SourceSpan(source, line_of(key), 1), None
+            place = positions.locate(path, node)
+            location: Location = (
+                SourceSpan(source, *place) if place is not None else FileLocation(source, pointer_text(path))
+            )
+            yield node, key if named else None, location, None
 
-    yield from walk(data, None)
+    yield from walk(data, (), None)
 
 
 def _pairs(source: SourceId, text: str) -> Iterator[Literal]:
@@ -385,7 +388,7 @@ class SecretDetector(Plugin):
                 findings.append(finding)
         return findings
 
-    def judge(self, value: str, name: str | None, span: SourceSpan, function: str | None) -> Finding | None:
+    def judge(self, value: str, name: str | None, span: Location, function: str | None) -> Finding | None:
         where = f"in {name}" if name is not None else "in a string literal"
         for pattern in self.patterns:
             if pattern.matches(value):

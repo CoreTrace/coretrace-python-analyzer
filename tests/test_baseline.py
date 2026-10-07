@@ -56,13 +56,13 @@ def test_fingerprint_ignores_the_line_number_but_not_the_line_text(tmp_path: Pat
     source.write_text(EVAL.replace("eval(code)", "eval(code.strip())"), encoding="utf-8")
     changed = fingerprint(finding(str(source), 4), tmp_path)
 
-    assert before == after == ("app.py", "dangerous-eval", "run", "eval(code)")
+    assert before == after == ("app.py", "dangerous-eval", "run", "eval(code)", "")
     assert changed != before
     assert fingerprint(finding(str(source), 4, "weak-crypto"), tmp_path) != before
 
 
 def test_fingerprint_falls_back_to_the_line_number_without_the_file(tmp_path: Path) -> None:
-    assert fingerprint(finding(str(tmp_path / "gone.py"), 7), tmp_path) == ("gone.py", "dangerous-eval", "run", "7")
+    assert fingerprint(finding(str(tmp_path / "gone.py"), 7), tmp_path) == ("gone.py", "dangerous-eval", "run", "7", "")
 
 
 def test_baseline_round_trips_and_partitions_with_counts(tmp_path: Path) -> None:
@@ -75,7 +75,7 @@ def test_baseline_round_trips_and_partitions_with_counts(tmp_path: Path) -> None
     loaded = Baseline.load(path)
     new, baselined = loaded.partition((first, second), tmp_path)
 
-    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 1
+    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 2
     assert baselined == (first,) and new == (second,)
 
 

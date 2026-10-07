@@ -320,8 +320,12 @@ any analysis result: `SSAAnalysis` (`coretrace_python.ir.ssa`) for the code,
 ## Findings
 
 A `Finding` (`coretrace_python.findings`) has a `rule_id`, a `message`, a `Severity`, a
-`Confidence`, a `SourceSpan` (file, start and end line and column), the enclosing
-`function` and string `metadata`. Rule ids are lower-case words joined by dashes.
+`Confidence`, a location, the enclosing `function` and string `metadata`. Rule ids are
+lower-case words joined by dashes. The location (`span`) is a `SourceSpan` (file, start
+and end line and column) when the line is established, or a `FileLocation` (file and the
+JSON pointer of a value) for a value of a structured file whose line cannot be: a plugin
+that reads a finding's line checks which it has, and never invents a line for a
+`FileLocation` (`coretrace_python.source.positions` places JSON and TOML values).
 
 ## Testing a plugin
 

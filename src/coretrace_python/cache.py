@@ -41,9 +41,9 @@ from coretrace_python.interprocedural import (
     UnknownTarget,
 )
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.source import SourceId, SourceSpan
+from coretrace_python.source import FileLocation, Location, SourceId, SourceSpan
 
-CACHE_FORMAT = 13
+CACHE_FORMAT = 14
 
 
 @dataclass(frozen=True)
@@ -185,6 +185,18 @@ def _encode_span(span: SourceSpan) -> list[Any]:
     return [str(span.source_id), span.start_line, span.start_column, span.end_line, span.end_column]
 
 
+def _encode_location(location: Location) -> Any:
+    if isinstance(location, FileLocation):
+        return {"file": str(location.source_id), "pointer": location.pointer}
+    return _encode_span(location)
+
+
+def _decode_location(data: Any) -> Location:
+    if isinstance(data, Mapping):
+        return FileLocation(SourceId(_string(data["file"])), _string(data["pointer"]))
+    return _decode_span(data)
+
+
 def _decode_span(data: Any) -> SourceSpan:
     file, line, column, end_line, end_column = data
     return SourceSpan(
@@ -217,7 +229,7 @@ def _encode_finding(finding: Finding) -> dict[str, Any]:
         "message": finding.message,
         "severity": finding.severity.value,
         "confidence": finding.confidence.value,
-        "span": _encode_span(finding.span),
+        "span": _encode_location(finding.span),
         "function": finding.function,
         "metadata": dict(finding.metadata),
     }
@@ -230,7 +242,7 @@ def _decode_finding(data: Mapping[str, Any]) -> Finding:
         _string(data["message"]),
         Severity(data["severity"]),
         Confidence(data["confidence"]),
-        _decode_span(data["span"]),
+        _decode_location(data["span"]),
         None if function is None else _string(function),
         {_string(k): _string(v) for k, v in data["metadata"].items()},
     )

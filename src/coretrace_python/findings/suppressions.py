@@ -14,7 +14,7 @@ import tokenize
 from collections.abc import Callable, Iterable, Mapping
 
 from coretrace_python.findings.model import Finding
-from coretrace_python.source import SourceId
+from coretrace_python.source import SourceId, SourceSpan
 
 MARKER = re.compile(r"#\s*coretrace:\s*ignore(?:\[([^\]]*)\])?")
 
@@ -59,6 +59,10 @@ def partition(
     kept: list[Finding] = []
     suppressed: list[Finding] = []
     for finding in findings:
+        if not isinstance(finding.span, SourceSpan):
+            # A suppression names a line; a file location has no verified one.
+            kept.append(finding)
+            continue
         source_id = finding.span.source_id
         if source_id not in cache:
             text = text_of(source_id)
