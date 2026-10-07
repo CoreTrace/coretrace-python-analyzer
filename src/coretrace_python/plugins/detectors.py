@@ -10,7 +10,7 @@ by reading the SSA form.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
@@ -27,10 +27,14 @@ from coretrace_python.taint import TaintAnalysis, TaintFlow, TaintKind
 
 @dataclass(frozen=True)
 class Assessment:
-    """A rule's verdict on one flow and the severity it reports the flow at."""
+    """A rule's verdict on one flow and the severity it reports the flow at; a ``title``
+    for the finding's message instead of the rule's, and ``metadata`` the finding carries
+    besides the flow's, when the rule tells cases of its sinks apart."""
 
     verdict: Verdict
     severity: Severity
+    title: str | None = None
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
 
 class TaintDetector(Plugin):
@@ -57,13 +61,15 @@ class TaintDetector(Plugin):
                 verdict = assessment.verdict
                 if verdict.status is Status.REFUTED:
                     continue
-                message = f"{self.title}: {flow.source.label} input reaches {flow.sink.symbol}"
+                title = assessment.title or self.title
+                message = f"{title}: {flow.source.label} input reaches {flow.sink.symbol}"
                 metadata = {
                     "source": str(flow.source.symbol),
                     "source_label": flow.source.label,
                     "sink": str(flow.sink.symbol),
                     "verdict": verdict.status.value,
                     "evidence": verdict.evidence,
+                    **assessment.metadata,
                 }
                 if flow.through is not None and flow.sink_location is not None:
                     message += f" through {flow.through}"

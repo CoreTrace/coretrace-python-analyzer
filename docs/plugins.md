@@ -130,10 +130,15 @@ not change; a rule reading more analyses declares them in its `requires`.
 A rule that tells cases of its sinks apart by severity too overrides `assess(ctx,
 function, flow, verdict)`, which returns an `Assessment` of the verdict and the
 severity; by default it pairs `judge`'s verdict with the rule's `severity`. A `hotspot`
-verdict lowers the confidence of the finding, never its severity. `command-injection`
+verdict lowers the confidence of the finding, never its severity. An `Assessment` may
+also carry a `title` for the finding's message instead of the rule's, and `metadata`
+the finding carries besides the flow's; the rule id never changes, so suppressions and
+baselines keep matching. `command-injection`
 reads there the command a flow reaches (`coretrace_python.taint.commands`): a shell
 string or the program is `high`; an element of an argument list run without a shell is
 an option, `medium` unless a documented option of the program runs a command it chooses.
+It sets the `injection` metadata (`command` or `option`, the latter titled `Option
+injection`) only when it establishes what the input is.
 
 ### Security models: `ModelPlugin`
 
