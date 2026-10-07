@@ -21,7 +21,8 @@ from typing import Any, ClassVar
 from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.findings import Severity
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.source import SourceFile, SourceId, SourceSpan
+from coretrace_python.source import FileLocation, Location, SourceFile, SourceId, SourceSpan
+from coretrace_python.source.positions import TomlPositions, pointer_text
 
 _REQUIREMENT = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$")
 _CLAUSE = re.compile(r"^(===|==|!=|<=|>=|~=|<|>|\^)\s*([0-9][0-9A-Za-z.*+!-]*)$")
@@ -115,11 +116,16 @@ def _lower_bounds(specifier: str) -> list[Version]:
 
 @dataclass(frozen=True)
 class Requirement:
+    """``span`` is where the requirement is written: a verified line, or, for a locked
+    package whose entry cannot be placed, a file location. ``locked`` is the version a
+    lock file pins, as it writes it; None for a declared requirement."""
+
     name: str
     specifier: str
-    span: SourceSpan
+    span: Location
     pinned: Version | None = None
     optional: bool = False
+    locked: str | None = None
 
     @classmethod
     def parse(cls, text: str, source_id: SourceId, line: int, optional: bool = False) -> Requirement | None:
@@ -313,12 +319,14 @@ class DependencyGraph:
             if current is None:
                 merged[name] = requirement
                 continue
+            declared = current if current.specifier else requirement
             merged[name] = Requirement(
                 name,
                 current.specifier or requirement.specifier,
-                current.span if current.specifier else requirement.span,
+                declared.span,
                 requirement.pinned or current.pinned,
                 current.optional and requirement.optional,
+                declared.locked,
             )
         dependents = dict(self._dependents)
         for name, found in other._dependents.items():
@@ -398,14 +406,24 @@ def _pyproject_requirements(data: Mapping[str, Any], source: SourceFile) -> list
 
 
 def _lock_requirements(data: Mapping[str, Any], source: SourceFile) -> list[Requirement]:
+    """The packages a lock file pins, each located at the ``name`` of its own
+    ``[[package]]`` entry, which the position component checks."""
+
     found: list[Requirement] = []
-    for package in data.get("package", []) or []:
+    positions = TomlPositions(source.text)
+    for index, package in enumerate(data.get("package", []) or []):
         name, version = package.get("name"), package.get("version")
         if not isinstance(name, str) or not isinstance(version, str):
             continue
-        line = _line_of(source, f'name = "{name}"')
+        path = ("package", index, "name")
+        place = positions.locate(path, name)
+        location: Location = (
+            SourceSpan(source.source_id, *place)
+            if place is not None
+            else FileLocation(source.source_id, pointer_text(path))
+        )
         found.append(
-            Requirement(normalize(name), "", SourceSpan(source.source_id, line, 1), Version.parse(version))
+            Requirement(normalize(name), "", location, Version.parse(version), locked=version)
         )
     return found
 
