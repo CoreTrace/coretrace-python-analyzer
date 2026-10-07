@@ -14,7 +14,7 @@ import tokenize
 from collections.abc import Callable, Iterable, Mapping
 
 from coretrace_python.findings.model import Finding
-from coretrace_python.source import SourceId, SourceSpan
+from coretrace_python.source import SourceId, SourceSpan, lines_of
 
 MARKER = re.compile(r"#\s*coretrace:\s*ignore(?:\[([^\]]*)\])?")
 
@@ -38,10 +38,14 @@ def suppressions_in(text: str) -> Suppressions:
 
 
 def _comments(text: str) -> Iterable[tuple[int, str]]:
+    """Every comment of ``text`` with its line, lines counted as every line number of the
+    engine counts them (``lines_of``)."""
+
+    lines = lines_of(text)
     try:
-        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+        tokens = list(tokenize.generate_tokens(io.StringIO("".join(f"{line}\n" for line in lines)).readline))
     except (tokenize.TokenError, SyntaxError):
-        for number, line in enumerate(text.splitlines(), 1):
+        for number, line in enumerate(lines, 1):
             if "#" in line:
                 yield number, line[line.index("#") :]
         return

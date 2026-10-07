@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import tomllib
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePath, PurePosixPath
 from types import MappingProxyType
 from typing import Any, ClassVar
@@ -21,8 +21,8 @@ from typing import Any, ClassVar
 from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.findings import Severity
 from coretrace_python.semantic.symbols import SymbolId
-from coretrace_python.source import Location, SourceFile, SourceId, SourceSpan
-from coretrace_python.source.positions import TomlPositions, file_location
+from coretrace_python.source import Location, SourceFile, SourceId, SourceSpan, lines_of
+from coretrace_python.source.positions import Pointer, TomlPositions, file_location
 
 _REQUIREMENT = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$")
 _CLAUSE = re.compile(r"^(===|==|!=|<=|>=|~=|<|>|\^)\s*([0-9][0-9A-Za-z.*+!-]*)$")
@@ -349,7 +349,7 @@ def parse_dependencies(source: SourceFile) -> DependencyGraph:
 
 def _parse_requirements_txt(source: SourceFile) -> DependencyGraph:
     found: dict[str, Requirement] = {}
-    for number, line in enumerate(source.text.splitlines(), start=1):
+    for number, line in enumerate(lines_of(source.text), start=1):
         stripped = line.strip()
         if not stripped or stripped.startswith(("#", "-")):
             continue
@@ -370,25 +370,32 @@ def _parse_toml(source: SourceFile, extract: Any, dependents: Any = None) -> Dep
     return DependencyGraph(found, dependents=None if dependents is None else dependents(data))
 
 
-def _line_of(source: SourceFile, key: str, default: int = 1) -> int:
-    for number, line in enumerate(source.text.splitlines(), start=1):
-        if key in line:
-            return number
-    return default
-
-
 def _pyproject_requirements(data: Mapping[str, Any], source: SourceFile) -> list[Requirement]:
-    found: list[Requirement] = []
+    """The requirements ``pyproject.toml`` declares (PEP 621 and Poetry), each located at
+    its own array element or key, which the position component checks, or given a file
+    location when it cannot be placed."""
+
+    positions = TomlPositions(source.text)
+
+    def declared(text: str, path: Pointer, value: object, optional: bool = False) -> Requirement | None:
+        requirement = Requirement.parse(text, source.source_id, 1, optional)
+        if requirement is None:
+            return None
+        place = positions.locate(path, value)
+        location: Location = (
+            SourceSpan(source.source_id, *place)
+            if place is not None
+            else file_location(source.source_id, path, text)
+        )
+        return replace(requirement, span=location)
+
+    found: list[Requirement | None] = []
     project = data.get("project", {})
-    for text in project.get("dependencies", []) or []:
-        requirement = Requirement.parse(text, source.source_id, _line_of(source, text))
-        if requirement is not None:
-            found.append(requirement)
-    for group in (project.get("optional-dependencies", {}) or {}).values():
-        for text in group or []:
-            requirement = Requirement.parse(text, source.source_id, _line_of(source, text), True)
-            if requirement is not None:
-                found.append(requirement)
+    for index, text in enumerate(project.get("dependencies", []) or []):
+        found.append(declared(text, ("project", "dependencies", index), text))
+    for group, texts in (project.get("optional-dependencies", {}) or {}).items():
+        for index, text in enumerate(texts or []):
+            found.append(declared(text, ("project", "optional-dependencies", group, index), text, True))
     poetry = data.get("tool", {}).get("poetry", {})
     for section, optional in (("dependencies", False), ("dev-dependencies", True)):
         for name, spec in (poetry.get(section, {}) or {}).items():
@@ -397,12 +404,8 @@ def _pyproject_requirements(data: Mapping[str, Any], source: SourceFile) -> list
             specifier = spec.get("version", "") if isinstance(spec, dict) else str(spec)
             if specifier == "*":
                 specifier = ""
-            requirement = Requirement.parse(
-                f"{name}{specifier}", source.source_id, _line_of(source, name), optional
-            )
-            if requirement is not None:
-                found.append(requirement)
-    return found
+            found.append(declared(f"{name}{specifier}", ("tool", "poetry", section, name), spec, optional))
+    return [requirement for requirement in found if requirement is not None]
 
 
 def _lock_requirements(data: Mapping[str, Any], source: SourceFile) -> list[Requirement]:

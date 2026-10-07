@@ -28,7 +28,7 @@ from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.interprocedural import discover_files
 from coretrace_python.plugins.api import Plugin, PluginContext
-from coretrace_python.source import Location, SourceId, SourceSpan, decode_text
+from coretrace_python.source import Location, SourceId, SourceSpan, decode_text, lines_of
 from coretrace_python.source.positions import JsonPositions, Pointer, TomlPositions, file_location
 
 # A value, the name it is bound to, where it is, and its enclosing function. A value of
@@ -347,7 +347,7 @@ def _structured(
 
 
 def _pairs(source: SourceId, text: str) -> Iterator[Literal]:
-    for number, line in enumerate(text.splitlines(), start=1):
+    for number, line in enumerate(lines_of(text), start=1):
         stripped = line.strip()
         if not stripped or stripped[0] in "#;[":
             continue

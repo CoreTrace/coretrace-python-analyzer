@@ -18,6 +18,7 @@ import re
 import tomllib
 from bisect import bisect_right
 
+from coretrace_python.source.manager import LINE_BREAK, lines_of
 from coretrace_python.source.model import FileLocation, SourceId
 
 Pointer = tuple[str | int, ...]
@@ -48,7 +49,7 @@ def pointer_text(path: Pointer) -> str:
 
 class _Lines:
     def __init__(self, text: str) -> None:
-        self._starts = [0, *(match.end() for match in re.finditer("\n", text))]
+        self._starts = [0, *(match.end() for match in LINE_BREAK.finditer(text))]
 
     def position(self, offset: int) -> tuple[int, int]:
         """The one-based line and column of ``offset``."""
@@ -158,7 +159,7 @@ class JsonPositions:
 class TomlPositions:
     """The key lines of each section of a TOML document, by the structural path of its
     table: the root, ``[a.b]``, or the element ``[[a]]`` opens, numbered in order. Lines
-    are counted by line feeds, as the rest of the engine counts them; a line that starts
+    are counted as the rest of the engine counts them (``lines_of``); a line that starts
     inside a multi-line string or an open array or inline table is a continuation, never
     a header or a key."""
 
@@ -167,9 +168,9 @@ class TomlPositions:
         self._keys: dict[Pointer, dict[str, list[tuple[int, int, str]]]] = {(): {}}
         arrays: dict[Pointer, int] = {}
         current: Pointer = ()
+        self._lines = lines_of(text)
         state = _LexState()
-        for number, line in enumerate(text.split("\n"), start=1):
-            line = line.removesuffix("\r")
+        for number, line in enumerate(self._lines, start=1):
             continued = state.inside()
             state.read(line)
             if continued:
@@ -205,15 +206,34 @@ class TomlPositions:
         """The line and column ``value`` starts at under ``path``, or None when the
         section its path names has no line setting that key to that value."""
 
-        if not path or isinstance(path[-1], int):
+        if not path:
             return None
+        if isinstance(path[-1], int):
+            return self._element(path, value)
         for number, column, written in self._keys.get(path[:-1], {}).get(path[-1], ()):
-            try:
-                found = tomllib.loads(f"v = {written}")["v"]
-            except tomllib.TOMLDecodeError:
-                continue
-            if _same(found, value):
+            if _same(_value(written), value):
                 return number, column
+        return None
+
+    def _element(self, path: Pointer, value: object) -> tuple[int, int] | None:
+        """An element of an array a key holds, written over one or several lines:
+        ``dependencies = [\\n  "a",\\n  "b",\\n]``."""
+
+        if len(path) < 2 or isinstance(path[-2], int):
+            return None
+        index = path[-1]
+        assert isinstance(index, int)
+        for number, column, _ in self._keys.get(path[:-2], {}).get(path[-2], ()):
+            text = "\n".join(self._lines[number - 1 :])[column - 1 :]
+            elements = _array_elements(text)
+            if index >= len(elements):
+                continue
+            start, end = elements[index]
+            if not _same(_value(text[start:end]), value):
+                continue
+            before = text[:start]
+            line = number + before.count("\n")
+            return line, (start - before.rfind("\n") if "\n" in before else column + start)
         return None
 
 
@@ -264,6 +284,75 @@ class _LexState:
                 elif character in "]}" and self.depth > 0:
                     self.depth -= 1
                 position += 1
+
+
+def _value(written: str) -> object:
+    """The value TOML text denotes, or None when it is not one value."""
+
+    try:
+        return tomllib.loads(f"v = {written}")["v"]
+    except tomllib.TOMLDecodeError:
+        return None
+
+
+def _array_elements(text: str) -> list[tuple[int, int]]:
+    """The start and end offsets of the elements of the array ``text`` opens, skipping
+    strings and comments; empty when ``text`` does not open an array."""
+
+    if not text.startswith("["):
+        return []
+    elements: list[tuple[int, int]] = []
+    depth, start, position = 0, -1, 0
+    while position < len(text):
+        character = text[position]
+        if character in "\"'":
+            if depth == 1 and start < 0:
+                start = position
+            position = _string_end(text, position)
+            continue
+        if character == "#":
+            newline = text.find("\n", position)
+            position = len(text) if newline < 0 else newline
+            continue
+        if character in "[{":
+            if depth == 1 and start < 0:
+                start = position
+            depth += 1
+        elif character in "]}":
+            depth -= 1
+            if depth == 0:
+                if start >= 0:
+                    elements.append((start, position))
+                return elements
+        elif character == "," and depth == 1:
+            if start >= 0:
+                elements.append((start, position))
+            start = -1
+        elif depth == 1 and start < 0 and not character.isspace():
+            start = position
+        position += 1
+    return []
+
+
+def _string_end(text: str, start: int) -> int:
+    """The offset just past the TOML string that starts at ``start``."""
+
+    quote = text[start]
+    if text.startswith(quote * 3, start):
+        position = start + 3
+        while position < len(text):
+            if quote == '"' and text[position] == "\\":
+                position += 2
+            elif text.startswith(quote * 3, position):
+                run = len(text[position:]) - len(text[position:].lstrip(quote))
+                return position + min(run, 5)
+            else:
+                position += 1
+        return len(text)
+    position = start + 1
+    while position < len(text) and text[position] not in (quote, "\n"):
+        position += 2 if quote == '"' and text[position] == "\\" else 1
+    return position + 1
 
 
 def _resolve(keys: tuple[str, ...], arrays: dict[Pointer, int]) -> Pointer:

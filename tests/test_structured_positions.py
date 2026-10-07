@@ -156,6 +156,23 @@ def test_toml_lines_are_counted_by_line_feeds_only() -> None:
     assert positions.locate(("port",), 1) == (3, 8)
 
 
+def test_an_element_of_a_toml_array_is_found_and_checked() -> None:
+    text = (
+        '[project]\ndependencies = [\n    "a",  # first, ["x"]\n    { n = [1, 2] },\n'
+        '    \'lit, "b"\', "c"\n]\noptional = ["d", "e"]\nname = "app"\n'
+    )
+    positions = TomlPositions(text)
+
+    assert positions.locate(("project", "dependencies", 0), "a") == (3, 5)
+    assert positions.locate(("project", "dependencies", 1), {"n": [1, 2]}) == (4, 5)
+    assert positions.locate(("project", "dependencies", 2), 'lit, "b"') == (5, 5)
+    assert positions.locate(("project", "dependencies", 3), "c") == (5, 17)
+    assert positions.locate(("project", "optional", 1), "e") == (7, 18)
+    assert positions.locate(("project", "dependencies", 0), "b") is None
+    assert positions.locate(("project", "dependencies", 4), "c") is None
+    assert positions.locate(("project", "name", 0), "app") is None
+
+
 def test_a_structural_path_is_written_as_a_json_pointer() -> None:
     assert pointer_text(("packages", "node_modules/a", "dependencies", "js-tokens")) == (
         "/packages/node_modules~1a/dependencies/js-tokens"

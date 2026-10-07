@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from coretrace_python.source.model import SourceFile, SourceId
@@ -28,6 +29,21 @@ def decode_text(data: bytes) -> str:
         if data.startswith(mark):
             return data.decode(encoding)
     return data.decode("utf-8")
+
+
+# A line break as Python reads one.
+LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
+def lines_of(text: str) -> list[str]:
+    """The lines of ``text`` as Python counts them: broken by ``\\n``, ``\\r\\n`` or a lone
+    ``\\r``, never by U+2028, U+0085, a form feed or the other separators
+    ``str.splitlines`` also breaks on. Every line number of the engine counts by it."""
+
+    lines = LINE_BREAK.split(text)
+    if lines[-1] == "":
+        lines.pop()
+    return lines
 
 
 class SourceManager:

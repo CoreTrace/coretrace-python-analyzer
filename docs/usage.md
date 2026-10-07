@@ -277,7 +277,9 @@ the directory of the checked file; a path outside it is printed as it is.
 }
 ```
 
-A value of a JSON or TOML file, or a package of a lock file, is located at its own line,
+Lines are counted as Python counts them, by `\n`, `\r\n` or a lone `\r` (never U+2028
+or a form feed), in every report, suppression and baseline. A value of a JSON or TOML
+file, a package of a lock file, or a requirement of `pyproject.toml`, is located at its own line,
 which a separate component establishes from the value's structural path and checks
 against the value. When it cannot (a dotted TOML key, an inline table, a multi-line
 value), the finding gets a file location instead of a guessed line: `line`, `column`,

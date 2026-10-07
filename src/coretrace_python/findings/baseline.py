@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from coretrace_python.findings.model import Finding
-from coretrace_python.source import SourceSpan, decode_text
+from coretrace_python.source import SourceSpan, decode_text, lines_of
 
 BASELINE_SCHEMA = 2
 _LEGACY_SCHEMA = 1
@@ -53,11 +53,11 @@ def fingerprint(finding: Finding, root: Path) -> Fingerprint:
 
 
 def _line_text(path: Path, line: int) -> str:
-    """The text of ``line``, lines counted by line feeds as the parser and the position
-    component count them (``splitlines`` also breaks on U+2028 and other separators)."""
+    """The text of ``line``, lines counted as every line number of the engine counts
+    them (``lines_of``)."""
 
     try:
-        lines = [text.removesuffix("\r") for text in decode_text(path.read_bytes()).split("\n")]
+        lines = lines_of(decode_text(path.read_bytes()))
     except (OSError, UnicodeDecodeError):
         return str(line)
     if not 1 <= line <= len(lines):
