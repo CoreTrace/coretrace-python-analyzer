@@ -56,6 +56,8 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 | `--import-advisories SRC OUT` | Convert an OSV dump into the local advisory file `OUT`, then exit. |
 | `--fail-on SEVERITY` | Exit with status 1 only when a finding of this severity or above was reported: `info`, `low`, `medium`, `high` or `critical`. Default: any finding. |
 | `--baseline PATH` | The accepted findings: written on the first run, then only findings not recorded there fail the check. |
+| `--baseline-key-file FILE` | With `--baseline`, the file holding the key of a keyed baseline (schema 4), kept out of the analysed directory; read before `CORETRACE_BASELINE_KEY`. |
+| `--record-baseline` | With `--baseline`, record the current findings as the baseline, replacing the file only once the check succeeded. |
 | `--emit-ir` | Print the intermediate representation of `path` instead of checking it. |
 | `--ssa` | With `--emit-ir`, print the static single assignment form. |
 | `--help` | Show the options and exit. |
@@ -240,18 +242,50 @@ new finding. Entries hold a digest of that text, value and pointer, never the te
 itself, so no accepted secret is stored in plain text. That does not make the file
 confidential: a digest does not hide a weak secret from whoever guesses it, since a
 guessed password, hashed with its line, can be checked against the file. Treat the
-baseline as a possibly sensitive file.
+baseline as a possibly sensitive file, or key it.
 
-Baselines are written in schema 3. A file written by an earlier version, in schema 1 or
-2, is still read and never rewritten, and the check warns on standard error, once per
-run, that it may contain secrets in plain text: its entries hold the text of each
+A keyed baseline does not let candidate values be tested without its key. The key comes
+from the file `--baseline-key-file` names, or else from the `CORETRACE_BASELINE_KEY`
+environment variable, as a CI secret; the file comes first when both are given. The check
+refuses a key file inside the analysed directory, however its path is spelled, or the
+baseline itself; keep it out of the whole repository too, which the check cannot tell
+(a hard link escapes it as well). Generate the key at random, for instance with
+`python -c "import secrets; print(secrets.token_hex(32))"`, and share it as a secret
+(a CI secret, a password manager): a key a person chooses can be guessed from the
+baseline. It is at least 16 bytes long, and trailing line breaks are not part of it, from
+the file or the variable alike; an empty variable is an error, as a CI job whose secret
+is missing passes one. Every process of the check, plugins and `--jobs` workers included,
+can read the variable. With a key, the
+baseline is recorded in schema 4: every digest is an HMAC-SHA-256 under the key, and a
+check value, never the key, tells which key recorded it. The key appears in no report,
+message or file the check writes. A schema 4 baseline needs its key: without it, or
+with another, the check stops with an explicit error, exit status 2, and records
+nothing. Recording over a schema 4 baseline without its key is refused too, rather than
+turning it back into an unkeyed one: delete the file to do that explicitly. Without a
+key, baselines are recorded in schema 3, with the guarantee above.
+
+`--record-baseline` records the current findings as the baseline even when the file
+exists, under the key given, if any; the file (the target of a symbolic link) is
+replaced at once, keeping its permissions, only once the analysis succeeded and its
+report is rendered, so the previous baseline stays in place when the check fails. Review the findings
+before recording: they all become accepted. Rotating the key is such a record under the
+new key, once the findings are reviewed; the old key then no longer reads the baseline.
+
+Baselines are written in schema 3, or in schema 4 with a key. A file written by an
+earlier version, in schema 1 or 2, is still read and never rewritten, and the check warns
+on standard error, once per run, that it may contain secrets in plain text: its entries
+hold the text of each
 finding's first line. They match exactly as they did a finding on a single line; a
 finding over several lines, whose other lines they do not hold, is reported as new, and
 so is a finding in a JSON, TOML or lock file that a schema 1 entry, recorded with the
 text of its key's first line, cannot identify with certainty. The exit status depends
 on the findings only. Review such a baseline and its new findings, then migrate it
-explicitly to schema 3: delete it and run the check again. The old file's secrets
-remain in the history of a repository that committed it.
+explicitly with `--record-baseline`, to schema 3, or to schema 4 with a key. While a key
+is given, only a schema 4 baseline is read: an unkeyed one (schema 1, 2 or 3) stops the
+check with an error, so that it cannot stand in for the keyed one; review it, then record
+it in schema 4 with `--record-baseline`. No baseline is ever converted or rewritten
+without `--record-baseline`. The
+old file's secrets remain in the history of a repository that committed it.
 
 ## Reports
 
