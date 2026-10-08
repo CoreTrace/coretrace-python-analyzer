@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import zipfile
 from datetime import UTC, datetime
@@ -18,7 +19,13 @@ from coretrace_python.dependency import (
     render_vex,
 )
 from coretrace_python.findings import Severity
-from coretrace_python.findings.baseline import Baseline, BaselineError
+from coretrace_python.findings.baseline import (
+    KEY_ENVIRONMENT,
+    Baseline,
+    BaselineError,
+    baseline_key,
+    ensure_recordable,
+)
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.ir.lowering import LoweringError, lower_module
 from coretrace_python.ir.printer import format_module
@@ -149,6 +156,20 @@ def build_parser() -> argparse.ArgumentParser:
         "findings not recorded there fail the check",
     )
     parser.add_argument(
+        "--baseline-key-file",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=f"with --baseline, the file holding the key of a keyed (schema 4) baseline, kept out "
+        f"of the analysed directory; read before {KEY_ENVIRONMENT}",
+    )
+    parser.add_argument(
+        "--record-baseline",
+        action="store_true",
+        help="with --baseline, record the current findings as the baseline, replacing the "
+        "file only once the check succeeded",
+    )
+    parser.add_argument(
         "--fail-on",
         choices=[severity.value for severity in Severity],
         default=None,
@@ -215,6 +236,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.baseline is not None and not args.check:
         print("error: --baseline only applies to --check", file=sys.stderr)
         return EXIT_ERROR
+    if (args.baseline_key_file is not None or args.record_baseline) and args.baseline is None:
+        print("error: --baseline-key-file and --record-baseline only apply with --baseline", file=sys.stderr)
+        return EXIT_ERROR
     if args.no_bundled_plugins and not args.check:
         print("error: --no-bundled-plugins only applies to --check", file=sys.stderr)
         return EXIT_ERROR
@@ -225,6 +249,17 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ERROR
 
     try:
+        root = args.path.resolve() if args.path.is_dir() else args.path.resolve().parent
+        # The key and the baseline are read before the analysis: a baseline that cannot be
+        # read stops the check before anything is recorded.
+        key = None
+        previous = None
+        if args.baseline is not None:
+            key = baseline_key(args.baseline_key_file, os.environ, root, args.baseline)
+            if args.record_baseline or not args.baseline.is_file():
+                ensure_recordable(args.baseline, key)
+            else:
+                previous = Baseline.load(args.baseline, key)
         if args.emit_ir:
             source = SourceManager().load_file(args.path)
             print(format_module(lower_module(build_hir(source), ssa=args.ssa)))
@@ -270,20 +305,23 @@ def main(argv: list[str] | None = None) -> int:
                 findings, coverage = file_analysis.findings, file_analysis.coverage
                 suppressed = file_analysis.suppressed
                 components = ()
-            root = args.path.resolve() if args.path.is_dir() else args.path.resolve().parent
             baselined = None
-            if args.baseline is not None:
-                if args.baseline.is_file():
-                    baseline = Baseline.load(args.baseline)
-                    findings, baselined = baseline.partition(findings, root)
-                    notice = baseline.transition_notice()
-                    if notice is not None:
-                        print(f"coretrace: {args.baseline}: {notice}", file=sys.stderr)
-                else:
-                    Baseline.of(findings, root).save(args.baseline)
-                    findings, baselined = (), findings
+            recorded = None
+            if previous is not None:
+                findings, baselined = previous.partition(findings, root)
+                notice = previous.transition_notice()
+                if notice is not None:
+                    print(f"coretrace: {args.baseline}: {notice}", file=sys.stderr)
+            elif args.baseline is not None:
+                recorded = Baseline.of(findings, root, key)
+                findings, baselined = (), findings
             report = engine.report(findings, coverage, root, suppressed, baselined, components)
-            print(render(args.format or "text", report), end="")
+            text = render(args.format or "text", report)
+            # Recorded once the report is rendered, so that a failed check keeps the
+            # previous baseline.
+            if recorded is not None:
+                recorded.save(args.baseline)
+            print(text, end="")
             threshold = Severity(args.fail_on).rank if args.fail_on is not None else 0
             failing = any(finding.severity.rank >= threshold for finding in findings)
             return EXIT_FINDINGS if failing else EXIT_CLEAN
