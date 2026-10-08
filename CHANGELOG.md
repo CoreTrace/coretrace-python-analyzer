@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.22.0 (2026-10-08)
+
+### Compatibility and migration
+
+- Baselines change format twice in this release, and no baseline is ever converted or rewritten on its own. Without a key, baselines are recorded in schema 3, whose entries hold digests of the text a finding covers instead of that text (#226); with a key, in schema 4, keyed with HMAC-SHA-256 (#235). Schema 1 and 2 files are still read without a key, with exact matching only: an entry identifies a finding on a single line as before, a finding over several lines is reported new, and every run warns on standard error that the file may contain secrets in plain text. While a key is given, only a schema 4 baseline is read: an unkeyed one (schema 1, 2 or 3) stops the check with exit status 2. To migrate, review the findings, then record the baseline explicitly with `--record-baseline` (schema 3, or schema 4 with a key); the old file's secrets remain in the history of a repository that committed it.
+- A keyed baseline needs its key: from the file `--baseline-key-file` names, which must lie outside the analysed directory and be another file than the baseline, or else from `CORETRACE_BASELINE_KEY`; the file comes first. The key is at least 16 bytes, trailing line breaks are not part of it, and an empty variable is an error. Without the key, or with another one, the check stops with exit status 2 and records nothing; recording over a schema 4 baseline without its key is refused too. Rotating the key is an explicit `--record-baseline` under the new key. Generate the key at random (`python -c "import secrets; print(secrets.token_hex(32))"`) and keep it out of the repository: a key a person chooses can be guessed from the baseline (#225).
+- Findings may move or reappear once: dependency and configuration findings of a check given a relative root are now located relative to that root (`uv.lock`, not `proj/uv.lock`) (#212); findings in JSON, TOML and lock files are located at their own line or by a JSON pointer (#222); a vulnerable package pinned in a lock file is located at its own `[[package]]` entry. Baselines recorded before should be recorded again after review.
+- A finding whose line cannot be established has a file location: in the JSON report its `line`, `column`, `end_line` and `end_column` are `null` and a `pointer` field names the value (RFC 6901); its SARIF location has no `region`, the pointer under the location's `properties`; the text report shows `path:` without a line. Inline suppressions apply only to findings at a verified line (#222).
+- `command-injection` severities change: an element of an argument list run without a shell is reported by what the input controls there, `medium` by default, `high` when an option of the program runs it, refuted when a constant prefix keeps it from being an option or an option keeps it as data (#217). The rule id is unchanged; the message of an option injection is titled `Option injection` (#232). Existing suppressions and baselines of the rule keep matching by rule id; baselined findings whose severity changed are still baselined.
+- A file whose syntax is nested more than 200 levels deep (a long chain of `+` or chained calls, which only generated code writes) is reported as a `syntax-error` and not analysed, instead of aborting the whole scan (#234).
+- The cache format changes (14): caches built by an earlier version miss once.
+- Plugin API: `Finding.span` is a `Location`, a `SourceSpan` or a `FileLocation` (#222); `Assessment` gains optional `title` and `metadata` fields (#232). Plugins that read `finding.span.start_line` should check for a `SourceSpan` first.
+
+### Baseline
+
+- `--record-baseline` records the current findings as the baseline even when the file exists; the file (the target of a symbolic link) is replaced atomically, keeping its permissions, only once the analysis succeeded and the report is rendered, so the previous baseline stays in place when the check fails (#235).
+- `--baseline-key-file FILE` gives the key of a schema 4 baseline; `CORETRACE_BASELINE_KEY` gives it otherwise. The key never appears in a report, message or file; a `key_check` value in the baseline tells the key apart without revealing it (#235).
+- An entry is recognised by a digest of the text of every line its finding covers: a secret written over several lines, whose first line does not hold it, is new once its body changes (#223, #226). A finding at a file location is recognised by digests of its value and of its pointer, whose keys may themselves be secrets (#222, #226).
+- Line numbers follow one rule everywhere, as Python counts lines (`\n`, `\r\n` or a lone `\r`, never U+2028 or a form feed), so a fingerprint or a suppression never refers to another line (#222).
+
+### Secrets
+
+- A string expression whose parts are all constant (`+` of strings, `sep.join` of a list or tuple of strings, an f-string whose parts are all constant) is judged as one value, reported once at the whole expression with the strongest finding of the value and its pieces; `PASSWORD = "Zx81kQpL" + "w0RtY7vB" + …` and `TOKEN = "ghp_" + "…"` are now reported. When the whole value is no secret, its pieces are judged on their own, as before (#231).
+- A `.env`, YAML, INI or properties value that continues past its key's line (an open quote, a trailing backslash, deeper indentation) is located over every line it continues on (#226).
+- Password hashes are no longer reported as hardcoded credentials: modular crypt and PHC strings, bcrypt, Werkzeug's `scrypt:`/`pbkdf2:` and Django's encodings; an identifier followed by text of another shape is still a plaintext password (#214).
+- The `url` pattern no longer reports placeholders (`?token=...`, `<token>`) nor an IP address or `localhost` and a port before `@` (proxy specifications); a password runs to the last `@` before the host. A `SecretPattern` may name a `secret` group, which the placeholder check then judges (#215).
+- In `package-lock.json` and `npm-shrinkwrap.json`, the keys of dependency, `requires` and `bin` maps are package or command names, not credential names (#216).
+
+### Command injection
+
+- The command a process starter runs (`subprocess.run`, `call`, `check_call`, `check_output`, `Popen`) is read element by element, with a documented option model for git, ssh, tar, rsync, find, rm, cmd, PowerShell, the shells and the interpreters, wrappers such as sudo, env, xargs and timeout read again with their program's model; the evidence says what the input controls (#217).
+- The finding's `injection` metadata says what the input is when the rule establishes it: `command` (it runs or chooses what runs) or `option` (an option, or the value of an option not established to run it), in the JSON report and as the only `properties` of the SARIF result; it is absent when the kind cannot be established (#232, #236).
+- The script after `pwsh -File` is a file name, however it is spelled (#229). `gtar` is read as GNU tar, `bsdtar` as libarchive's (`-I` names a file of patterns), and a bare `tar`'s `-I`, `--to-command` and `--checkpoint-action` are `high` and kept for review (#230).
+
+### Dependencies
+
+- A vulnerable package pinned in `uv.lock` or `poetry.lock` is located at its own entry, and the message states the evidence: `werkzeug 3.1.5, pinned in uv.lock, is in <3.1.6 (required by flask)` (#222). Requirements of `pyproject.toml` are located at their own element or key, or given a file location.
+- `--advisories` and `--policy` paths, and the root itself, are resolved once, so their findings and notes are located relative to the root whatever the working directory (#212).
+
+### Frontend
+
+- Syntax nested deeper than the analysis follows is rejected before PyHIR is built, and Python 3.11's parser recursion is a parse error of the file, so the rest of the project is still analysed (#234).
+
+### Documentation
+
+- `docs/usage.md` documents keyed baselines, `--record-baseline`, `--baseline-key-file`, file locations and the `injection` metadata; `docs/plugins.md` documents `FileLocation`, `Assessment.title` and `metadata`, and the `secret` group of a `SecretPattern`. Repository governance files (contributing, conduct, authors, security) are added (#204).
+
 ## 0.21.0 (2026-09-30)
 
 ### Advisories
