@@ -731,7 +731,10 @@ module is served from the cache, so editing one file re-analyses that file and i
 importers only. Entries are plain data; an unreadable entry is recomputed.
 
 `--jobs N` (`-j N`) analyses independent modules in `N` processes; `0` takes one per core
-the process may run on, as `runtime.jobs` of `ctrace` does, and the default is one.
+the process may run on, as `runtime.jobs` of `ctrace` does (its CPU affinity, read from
+Python 3.13 on, and on Linux before; the cores of the machine otherwise), and the default
+is one. On Windows, a pool holds at most 61 processes, the limit of Python's process pool
+there, whatever `N`.
 Modules are scheduled imports first, so the result is the same whatever `N`: the report,
 the order of its findings, `--fail-on`, the cache, the baseline and the SBOM and VEX
 documents. The command always waits for the complete report. There is no `--async`

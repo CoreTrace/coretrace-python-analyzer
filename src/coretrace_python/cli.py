@@ -340,8 +340,23 @@ def _processes(jobs: int | None) -> int:
     if jobs is None:
         return 1
     if jobs == 0:
-        return getattr(os, "process_cpu_count", os.cpu_count)() or 1
+        return _available_cores()
     return jobs
+
+
+def _available_cores() -> int:
+    """The cores the process may run on, where Python can tell its affinity
+    (``os.process_cpu_count`` from 3.13, ``os.sched_getaffinity`` on Linux before), else
+    the cores of the machine."""
+
+    process_cpu_count = getattr(os, "process_cpu_count", None)
+    if process_cpu_count is not None:
+        cores: int | None = process_cpu_count()
+    elif hasattr(os, "sched_getaffinity"):
+        cores = len(os.sched_getaffinity(0))
+    else:
+        cores = os.cpu_count()
+    return cores or 1
 
 
 if __name__ == "__main__":
