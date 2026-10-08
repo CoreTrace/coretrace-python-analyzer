@@ -9,6 +9,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import multiprocessing
+import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -360,6 +361,20 @@ def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
     return graph
 
 
+# ``ProcessPoolExecutor`` refuses more workers on Windows, where it waits on at most 63
+# handles.
+_WINDOWS_POOL_LIMIT = 61
+
+
+def process_pool_size(jobs: int, platform: str | None = None) -> int:
+    """The processes a pool asked for ``jobs`` holds: no more than ``platform`` (this one
+    by default) allows."""
+
+    if (platform or sys.platform) == "win32":
+        return min(jobs, _WINDOWS_POOL_LIMIT)
+    return jobs
+
+
 def analyze_project(
     root: Path,
     plugin_roots: Sequence[Path] = (),
@@ -495,7 +510,7 @@ def analyze_project(
     pool = None
     if jobs > 1:
         pool = concurrent.futures.ProcessPoolExecutor(
-            max_workers=jobs, mp_context=multiprocessing.get_context("spawn")
+            max_workers=process_pool_size(jobs), mp_context=multiprocessing.get_context("spawn")
         )
     try:
         for wave in graph.schedule():

@@ -48,7 +48,7 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 | `--plugins DIR` | Load the plugins found under `DIR` on top of the bundled ones. Repeatable. |
 | `--no-bundled-plugins` | Do not load the plugins shipped with the package. |
 | `--cache DIR` | Keep per-module results under `DIR` and reuse them for unchanged modules. |
-| `--jobs N` | Analyse independent modules in `N` processes. |
+| `-j N`, `--jobs N` | Analyse independent modules in `N` processes, `0` for one per available core. Default: `1`. |
 | `--sbom PATH` | Write a CycloneDX bill of materials of the dependencies to `PATH`. |
 | `--vex PATH` | Write an OpenVEX document to `PATH`: whether each advisory affecting a requirement affects the project. |
 | `--advisories FILE` | Read a local advisory file in addition to `advisories.json` at the root. Repeatable. |
@@ -730,8 +730,15 @@ graph and the modules it imports. On the next run an unchanged
 module is served from the cache, so editing one file re-analyses that file and its
 importers only. Entries are plain data; an unreadable entry is recomputed.
 
-`--jobs N` analyses independent modules in `N` processes. Modules are scheduled imports
-first, so the result is the same whatever `N`.
+`--jobs N` (`-j N`) analyses independent modules in `N` processes; `0` takes one per core
+the process may run on, as `runtime.jobs` of `ctrace` does (its CPU affinity, read from
+Python 3.13 on, and on Linux before; the cores of the machine otherwise), and the default
+is one. On Windows, a pool holds at most 61 processes, the limit of Python's process pool
+there, whatever `N`.
+Modules are scheduled imports first, so the result is the same whatever `N`: the report,
+the order of its findings, `--fail-on`, the cache, the baseline and the SBOM and VEX
+documents. The command always waits for the complete report. There is no `--async`
+option: `ctrace` deprecated its own for `-j`/`--jobs`, which this follows.
 
 ```bash
 coretrace-python-analyzer --check src/ --cache .coretrace --jobs 4

@@ -109,11 +109,13 @@ def build_parser() -> argparse.ArgumentParser:
         "them for modules unchanged since the previous run",
     )
     parser.add_argument(
+        "-j",
         "--jobs",
         type=int,
         default=None,
         metavar="N",
-        help="with --check on a directory, analyse independent modules in N processes",
+        help="with --check on a directory, analyse independent modules in N processes, "
+        "0 for one per available core; default: 1",
     )
     parser.add_argument(
         "--sbom",
@@ -214,8 +216,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.jobs is not None and not (args.check and args.path.is_dir()):
         print("error: --jobs only applies to --check on a directory", file=sys.stderr)
         return EXIT_ERROR
-    if args.jobs is not None and args.jobs < 1:
-        print("error: --jobs must be at least 1", file=sys.stderr)
+    if args.jobs is not None and args.jobs < 0:
+        print("error: --jobs must be 0 (one per available core) or more", file=sys.stderr)
         return EXIT_ERROR
     if args.sbom is not None and not (args.check and args.path.is_dir()):
         print("error: --sbom only applies to --check on a directory", file=sys.stderr)
@@ -270,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.path,
                     plugin_roots,
                     cache=cache,
-                    jobs=args.jobs or 1,
+                    jobs=_processes(args.jobs),
                     advisory_files=args.advisories,
                     policy_file=args.policy,
                 )
@@ -329,6 +331,32 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return EXIT_ERROR
     return EXIT_CLEAN
+
+
+def _processes(jobs: int | None) -> int:
+    """The number of processes ``--jobs`` asks for: 0 is one per core the process may run
+    on, as ``runtime.jobs`` of ``ctrace``; none is one."""
+
+    if jobs is None:
+        return 1
+    if jobs == 0:
+        return _available_cores()
+    return jobs
+
+
+def _available_cores() -> int:
+    """The cores the process may run on, where Python can tell its affinity
+    (``os.process_cpu_count`` from 3.13, ``os.sched_getaffinity`` on Linux before), else
+    the cores of the machine."""
+
+    process_cpu_count = getattr(os, "process_cpu_count", None)
+    if process_cpu_count is not None:
+        cores: int | None = process_cpu_count()
+    elif hasattr(os, "sched_getaffinity"):
+        cores = len(os.sched_getaffinity(0))
+    else:
+        cores = os.cpu_count()
+    return cores or 1
 
 
 if __name__ == "__main__":
