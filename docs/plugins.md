@@ -85,7 +85,10 @@ class SensitiveLoggingPlugin(SymbolCallDetector):
     message_template: ClassVar[str] = "call to {symbol} may log sensitive data"
 ```
 
-The shipped `dangerous-eval` and `weak-crypto` plugins are of this kind.
+The shipped `dangerous-eval` and `weak-crypto` plugins are of this kind. `accepts(call, symbol, defs)`
+keeps only some calls; `describe(ctx, call, symbol, defs)` returns the `CallReport` (message and
+confidence) of one call, the rule's `message_template` and `confidence` by default, for a rule that
+tells its calls apart, as `unsafe-xml` does.
 
 ### A detector of taint flows: `TaintDetector`
 

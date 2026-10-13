@@ -11,7 +11,12 @@ from coretrace_python.plugins.api import (
     apply_refinement,
     run_plugins,
 )
-from coretrace_python.plugins.detectors import Assessment, SymbolCallDetector, TaintDetector
+from coretrace_python.plugins.detectors import (
+    Assessment,
+    CallReport,
+    SymbolCallDetector,
+    TaintDetector,
+)
 from coretrace_python.plugins.loader import (
     IncompatiblePluginError,
     LoadedPlugin,
@@ -36,6 +41,7 @@ from coretrace_python.plugins.secrets import (
 __all__ = [
     "PLUGIN_API_VERSION",
     "Assessment",
+    "CallReport",
     "Entrypoint",
     "IncompatiblePluginError",
     "LoadedPlugin",
