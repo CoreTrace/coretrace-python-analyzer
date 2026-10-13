@@ -1,7 +1,8 @@
-"""Where the code of a finding lives, by its path in the project (#244): test code, which
-a project runs to check itself and does not ship. The context is a fact about the file,
-shown in the finding's metadata; what it changes, if anything, is the rule's decision, or
-a refiner plugin's."""
+"""Where the code of a finding lives, by its path in the project, as two separate facts:
+its context, test code a project runs to check itself and does not ship (#244), and its
+origin, vendored code, someone else's kept in the project (#243). A vendored project's
+tests are both. Both are shown in the finding's metadata; what they change, if
+anything, is the rule's decision, or a refiner plugin's."""
 
 from __future__ import annotations
 
@@ -9,6 +10,9 @@ import re
 from pathlib import PurePosixPath
 
 TEST = "test"
+VENDORED = "vendored"
+
+_VENDORED_DIRECTORIES = frozenset({"third_party", "third-party", "vendor", "vendored"})
 
 _TEST_DIRECTORIES = frozenset({"test", "tests", "testing", "fixtures", "__tests__"})
 _TEST_FILE = re.compile(r"^(test_.*|.*_test|conftest)\.py$")
@@ -30,3 +34,11 @@ def code_context(path: str) -> str | None:
     does not count."""
 
     return TEST if is_test_code(path) else None
+
+
+def code_origin(path: str) -> str | None:
+    """The origin a finding at ``path`` carries: ``"vendored"`` under a ``third_party``,
+    ``third-party``, ``vendor`` or ``vendored`` directory of the project, ``None`` for the
+    project's own code."""
+
+    return VENDORED if any(part in _VENDORED_DIRECTORIES for part in PurePosixPath(path).parts[:-1]) else None

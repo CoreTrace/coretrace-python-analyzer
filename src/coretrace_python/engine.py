@@ -72,7 +72,7 @@ from coretrace_python.findings import (
     Finding,
     Severity,
 )
-from coretrace_python.findings.context import code_context
+from coretrace_python.findings.context import code_context, code_origin
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.findings.suppressions import partition
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -709,16 +709,21 @@ def _path_from(source_id: object, root: Path) -> str | None:
 
 
 def _situated(finding: Finding, path: str | None) -> Finding:
-    """``finding`` with the context of its code in its metadata (``code_context``), judged
-    on ``path``, its file's path from the root of the report. A context the rule gave the
-    finding stays: it is the rule's (#244)."""
+    """``finding`` with the context (``code_context``) and the origin (``code_origin``) of
+    its code in its metadata, judged on ``path``, its file's path from the root of the
+    report. A context the rule gave the finding stays: it is the rule's (#244). The origin
+    is told apart from the context, so vendored test code is both (#243)."""
 
-    if path is None or "context" in finding.metadata:
+    if path is None:
         return finding
-    situation = code_context(path)
-    if situation is None:
-        return finding
-    return replace(finding, metadata={**finding.metadata, "context": situation})
+    added: dict[str, str] = {}
+    context = code_context(path)
+    if context is not None and "context" not in finding.metadata:
+        added["context"] = context
+    origin = code_origin(path)
+    if origin is not None:
+        added["origin"] = origin
+    return replace(finding, metadata={**finding.metadata, **added}) if added else finding
 
 
 def _sourced(finding: Finding, origins: Origins) -> Finding:
