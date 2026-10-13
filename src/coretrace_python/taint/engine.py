@@ -226,8 +226,9 @@ class _TaintProblem(DataflowProblem[State]):
 
     def looked_up(self, instruction: Call | GetItem, state: Mapping[Key, Taint]) -> Taint | None:
         """What a lookup in a dict display gives, ``d[key]``, ``d.get(key)`` or
-        ``d.get(key, default)``: one of its values, whatever was stored in it since, or the
-        default, never the key, which only selects (#239). ``None`` for anything else."""
+        ``d.get(key, default)``: one of its values, of the mappings it unpacks, of whatever
+        was stored in it since, or the default; never a key, its own or the one looked up,
+        which only select (#239). ``None`` for anything else."""
 
         if isinstance(instruction, GetItem):
             mapping, default = instruction.object, None
@@ -239,9 +240,16 @@ class _TaintProblem(DataflowProblem[State]):
                 return None
             mapping = method.object
             default = instruction.arguments[1] if len(instruction.arguments) == 2 else None
-        if not isinstance(self.defs.get(mapping), BuildDict):
+        display = self.defs.get(mapping)
+        if not isinstance(display, BuildDict):
             return None
-        taint = self.deep(mapping, state)
+        taint = Taint.none()
+        for _, value in display.items:
+            taint = taint.join(state.get(value, Taint.none()))
+        for unpacked in display.unpacked:
+            taint = taint.join(self.deep(unpacked, state))
+        for location in self.heap.locations(mapping, ELEMENTS):
+            taint = taint.join(state.get(location, Taint.none()))
         return taint if default is None else taint.join(self.deep(default, state))
 
     def keyed(self, value: Value, state: Mapping[Key, Taint]) -> Taint:

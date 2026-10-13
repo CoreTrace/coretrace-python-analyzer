@@ -77,8 +77,10 @@ from coretrace_python.taint import (
 VALIDATORS = frozenset(
     {"isdigit", "isnumeric", "isdecimal", "isalnum", "isalpha", "isidentifier", "isascii"}
 )
-# The builtins that make a collection of the members of the one collection they are given.
-_CONVERSIONS = frozenset(SymbolId(f"python.builtins.{name}") for name in ("frozenset", "set", "tuple", "list"))
+# The builtins that make a collection of the members of the one collection they are given;
+# a ``set`` or a ``list`` they make can still change afterwards.
+_IMMUTABLE_CONVERSIONS = frozenset(SymbolId(f"python.builtins.{name}") for name in ("frozenset", "tuple"))
+_CONVERSIONS = _IMMUTABLE_CONVERSIONS | frozenset(SymbolId(f"python.builtins.{name}") for name in ("set", "list"))
 # The methods of a list, a set or a dict that read it without changing it.
 _READING_METHODS = frozenset(
     {
@@ -371,9 +373,9 @@ class _Judge:
         test: a string constant, a display whose members are constants
         (``constant_members``), the keys of a dict display (``.keys()``), ``frozenset``,
         ``set``, ``tuple`` or ``list`` of such a collection, or a module-level name bound
-        once to an immutable one, read where ``collection_loads`` says. A collection that
-        may change after it is built, such as a module-level list, set or dict, is not
-        (#239)."""
+        once to an immutable one, read where ``collection_loads`` says. A list, set or
+        dict counts only while the function only reads it (``only_read``); a module-level
+        one may change anywhere, so it never counts (#239)."""
 
         definition = self.defs.get(value)
         if isinstance(definition, Constant):
@@ -383,7 +385,11 @@ class _Judge:
         if isinstance(definition, Call):
             argument = converts(definition, self.defs, _CONVERSIONS)
             if argument is not None:
-                return self.is_constant_collection(argument)
+                if not self.is_constant_collection(argument):
+                    return False
+                callee = self.defs.get(definition.callee)
+                immutable = isinstance(callee, Symbol) and callee.symbol_id in _IMMUTABLE_CONVERSIONS
+                return immutable or self.only_read(value)
             callee = self.defs.get(definition.callee)
             if not isinstance(callee, GetAttr) or callee.attribute != "keys":
                 return False

@@ -159,15 +159,16 @@ that cannot change before the test:
   module and never rebound there, by another assignment, an augmented assignment or a
   `global` statement.
 
-A list, set or dict display of the function counts only while the function only reads it:
-changed by a method, stored, or passed to a call before the test, it may hold anything. A
+A list, set or dict of the function, a display or the `set` or `list` of one, counts only
+while the function only reads it: changed by a method, stored, or passed to a call before
+the test, it may hold anything. A
 module-level list, set or dict can be changed from any module, so it never counts, and
 the guard leaves a hotspot. Rebinding a module-level name from another module
 (`settings.ALLOWED = ...`) is not seen, as for the module-level strings that fix a URL.
 
 A lookup in a dict display, `{"list": "ls"}[key]` or `.get(key, default)`, gives one of
-its values or the default, never the key: input that only selects the entry is not
-passed on. The same lookup in a module-level dict passes the key on, as any other
+its values, of what was stored in it since, or the default, never a key: input that only
+selects the entry, or that is itself a key of the display, is not passed on. The same lookup in a module-level dict passes the key on, as any other
 subscript does.
 
 Django's `render_to_string(name, context)` returns HTML in which autoescaping escaped

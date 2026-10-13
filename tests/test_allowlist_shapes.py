@@ -283,6 +283,43 @@ def local_dict_value_written():
     commands = {"list": "ls"}
     commands["custom"] = request.args["x"]
     os.system(commands[request.args["c"]])
+
+@app.route("/converted-list")
+def converted_list():
+    cmd = request.args["c"]
+    allowed = list(("ls", "date"))
+    if cmd in allowed:
+        os.system(cmd)
+
+
+@app.route("/converted-list-appended")
+def converted_list_appended():
+    allowed = list(("ls",))
+    allowed.append(request.args["extra"])
+    cmd = request.args["c"]
+    if cmd in allowed:
+        os.system(cmd)
+
+
+@app.route("/converted-set-added")
+def converted_set_added():
+    allowed = set(("ls",))
+    allowed.add(request.args["extra"])
+    cmd = request.args["c"]
+    if cmd in allowed:
+        os.system(cmd)
+
+
+@app.route("/literal-dict-input-key")
+def literal_dict_input_key():
+    os.system({request.args["k"]: "ls"}[request.args["c"]])
+
+
+@app.route("/local-dict-updated")
+def local_dict_updated():
+    commands = {"list": "ls"}
+    commands.update(request.args)
+    os.system(commands[request.args["c"]])
 """
 
 NOT_REPORTED = None
@@ -321,13 +358,20 @@ EXPECTED = {
     # A display of the function that is only read.
     "local_list": NOT_REPORTED,
     "local_dict_keys_read": NOT_REPORTED,
+    # A ``list`` or ``set`` built from constants and only read.
+    "converted_list": NOT_REPORTED,
+    # A key that is input only selects the value of a dict display.
+    "literal_dict_input_key": NOT_REPORTED,
     # A display mutated, or passed on, before the test.
+    "converted_list_appended": HOTSPOT,
+    "converted_set_added": HOTSPOT,
     "local_list_appended": HOTSPOT,
     "local_set_added": HOTSPOT,
     "local_list_passed": HOTSPOT,
     "local_dict_key_written": HOTSPOT,
     # A lookup whose result may be input.
     "local_dict_value_written": VULNERABILITY,
+    "local_dict_updated": VULNERABILITY,
     "literal_dict_non_constant_value": VULNERABILITY,
     "literal_dict_get_tainted_default": VULNERABILITY,
 }
