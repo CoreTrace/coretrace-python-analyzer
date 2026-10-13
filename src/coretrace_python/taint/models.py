@@ -94,13 +94,15 @@ class Sink:
         return self.kinds & ~(restricted & ~allowed)
 
     def merged(self, other: Sink) -> Sink:
-        """This sink with ``other``'s kinds, positions and keywords added."""
+        """This sink with ``other``'s kinds, positions and keywords added; it selects code
+        by name when either does, whatever the order the declarations merge in."""
 
         return Sink(
             self.symbol,
             self.kinds | other.kinds,
             self.positions + other.positions,
             self.keywords + other.keywords,
+            self.selects or other.selects,
         )
 
 
