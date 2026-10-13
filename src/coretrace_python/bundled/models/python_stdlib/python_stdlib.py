@@ -65,7 +65,7 @@ class PythonStdlibModels(ModelPlugin):
         # The module or the file the call imports or runs; its globals, its run name and
         # the package of a relative name are data (#240).
         *(
-            Sink(_sym(symbol), TaintKind.CODE, ((TaintKind.CODE, (0,)),), ((TaintKind.CODE, (keyword,)),))
+            Sink(_sym(symbol), TaintKind.CODE, ((TaintKind.CODE, (0,)),), ((TaintKind.CODE, (keyword,)),), selects=True)
             for symbol, keyword in (
                 ("importlib.import_module", "name"),
                 ("builtins.__import__", "name"),

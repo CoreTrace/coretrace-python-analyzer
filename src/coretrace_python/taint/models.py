@@ -65,12 +65,16 @@ class Sink:
     """A callable whose arguments must not carry the given taint kinds. ``positions`` and
     ``keywords`` restrict some kinds to the arguments they list: a SQL statement is the
     first argument of ``execute``, its parameter tuple is not a statement; the target of
-    ``requests.get`` is its first argument or ``url=``, its body is no destination."""
+    ``requests.get`` is its first argument or ``url=``, its body is no destination.
+    ``selects`` marks a sink whose argument chooses by name the code that runs, a module
+    or a file: only a check that limits the value to constants proves it, not a check of
+    its shape (#240)."""
 
     symbol: SymbolId
     kinds: TaintKind
     positions: tuple[tuple[TaintKind, tuple[int, ...]], ...] = ()
     keywords: tuple[tuple[TaintKind, tuple[str, ...]], ...] = ()
+    selects: bool = False
 
     def kinds_at(self, position: int | None, keyword: str | None = None) -> TaintKind:
         """The kinds that must not reach the argument at ``position`` or passed as

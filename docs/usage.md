@@ -135,7 +135,12 @@ variable is not treated that way yet.
 Each flow is judged before it is reported. A dominating guard that proves the value
 safe (`isdigit()`, membership in a constant allowlist, equality with a constant, a
 numeric value proven by `int()`, `len()` or bounded arithmetic, a validator such as
-`re.fullmatch`) refutes it and nothing is reported. A hotspot is reported at medium
+`re.fullmatch`) refutes it and nothing is reported. A sink that selects code by name,
+the module of `importlib.import_module`, `__import__` or `runpy.run_module` and the file
+of `runpy.run_path`, is proven only by a check that limits the value to constants:
+membership in a constant allowlist or equality with a constant. A check of its shape
+(`isidentifier()`, `isalnum()`, `re.fullmatch`) limits its characters, not the modules
+or files it can name, and leaves a hotspot. A hotspot is reported at medium
 confidence. Two things make a flow a hotspot:
 
 - A guard that examines the data without proving it safe. That covers a test of the value
