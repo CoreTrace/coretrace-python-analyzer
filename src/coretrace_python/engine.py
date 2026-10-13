@@ -72,7 +72,7 @@ from coretrace_python.findings import (
     Finding,
     Severity,
 )
-from coretrace_python.findings.context import code_context
+from coretrace_python.findings.context import VENDORED, code_context
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.findings.suppressions import partition
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -692,17 +692,15 @@ def _located(path: Path, root: Path) -> str:
 
 def _situated(finding: Finding, root: Path) -> Finding:
     """``finding`` with the context of its code in its metadata (``code_context``), judged
-    on its path in the project at ``root``. A context the rule gave the finding stays: it
-    is the rule's (#244)."""
+    on its path in the project at ``root``. A context the rule gave the finding stays
+    (#244), unless the code is vendored: whose code it is comes first (#243)."""
 
-    if "context" in finding.metadata:
-        return finding
     try:
         path = Path(str(finding.span.source_id)).resolve().relative_to(root)
     except ValueError:
         return finding
     situation = code_context(path.as_posix())
-    if situation is None:
+    if situation is None or ("context" in finding.metadata and situation != VENDORED):
         return finding
     return replace(finding, metadata={**finding.metadata, "context": situation})
 

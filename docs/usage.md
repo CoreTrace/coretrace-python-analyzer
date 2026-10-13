@@ -360,10 +360,14 @@ A finding in test code carries `context: test` in its metadata, in the JSON repo
 a property of its SARIF result. Test code is a file under a `test`, `tests`, `testing`,
 `fixtures` or `__tests__` directory of the project, or a file named `test_*.py`,
 `*_test.py` or `conftest.py`, judged on its path from the root, not on where the
-project sits. The context changes no verdict: it is there for baselines, `--fail-on`
-wrappers, readers and refiner plugins, which see it. A rule may still give its own
-context, as `hardcoded-credential` does with `example` for template files, and the
-SARIF result carries that context too.
+project sits. A finding in vendored code, under a `third_party`, `third-party`, `vendor`
+or `vendored` directory, carries `context: vendored` instead, the test code of a vendored
+project included: whose code it is comes first. Vendored code is still analysed and its
+findings reported, so that a flow from the project through a vendored module is not
+lost. The context changes no verdict: it is there for baselines, `--fail-on` wrappers,
+readers and refiner plugins, which see it. A rule may still give its own context, as
+`hardcoded-credential` does with `example` for template files, and the SARIF result
+carries that context too, unless the code is vendored.
 
 `root` is the directory the paths are relative to. A file's `status` is `analysed`,
 `ambiguous` (analysed, but another file has its module name, see above), `syntax-error`

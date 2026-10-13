@@ -23,7 +23,7 @@ _LEVELS = {
 # a result exports: other metadata, such as evidence, may quote what the analysed code
 # holds.
 _INJECTIONS = frozenset({"option", "command"})
-_CONTEXTS = frozenset({"test", "example"})
+_CONTEXTS = frozenset({"test", "example", "vendored"})
 
 
 def _artifact(report: Report, path: str) -> dict[str, str]:
