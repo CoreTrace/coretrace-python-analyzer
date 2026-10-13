@@ -757,10 +757,23 @@ Measured on one core of a laptop, single process, cold start, with the bundled p
 
 Time grows a little faster than linearly with the size of the project, because the
 interprocedural summaries are iterated to a fixpoint over the module graph. A warm
-`--cache` brings an unchanged healthchecks to about one second, `--jobs 4` saves a
-quarter of the cold time at the cost of one process's memory per job. The
+`--cache` brings an unchanged healthchecks to about one second. The
 `healthchecks` repository is part of the regression corpus, so the analysis time of a
 real 45 000-line project is exercised on every change.
+
+`--jobs` pays when a wave of the module graph holds many components: each process
+prepares the project once and reads the summaries of the modules a component imports
+from a directory of finished modules, the cache or one of the run's own, at the cost of
+one process's memory per job. Measured on a laptop with 8 cores (4 performance, 4
+efficiency), macOS, Python 3.14, bundled plugins, cold start (October 2026):
+
+| Project | Python files | `-j 1` | `-j 8` |
+|---|---:|---:|---:|
+| healthchecks | 653 | 15.3–15.5 s | 7.9–9.2 s |
+| mitmproxy | 583 | 51.6 s | 45.6 s |
+
+The modules of a strongly connected import cycle are analysed together by one process,
+and a wave waits for its slowest component: a project whose cycles are large gains less.
 
 ## Plugins
 

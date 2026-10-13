@@ -35,7 +35,6 @@ from coretrace_python.interprocedural import (
     Mutation,
     NonlocalWrite,
     PriorCall,
-    SummaryIndex,
     SymbolRead,
     Target,
     UnknownTarget,
@@ -153,16 +152,6 @@ def decode(data: Mapping[str, Any]) -> CachedModule:
         tuple(_decode_finding(finding) for finding in data["findings"]),
         tuple(_decode_read(read) for read in data["reads"]),
     )
-
-
-def encode_index(index: SummaryIndex) -> dict[str, Any]:
-    """A summary index as plain data, to hand a worker process what it imports."""
-
-    return {str(symbol): _encode_summary(index.summaries[symbol]) for symbol in index.symbols}
-
-
-def decode_index(data: Mapping[str, Any]) -> SummaryIndex:
-    return SummaryIndex({SymbolId(_string(k)): _decode_summary(v) for k, v in data.items()})
 
 
 def _string(value: Any) -> str:
