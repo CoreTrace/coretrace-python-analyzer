@@ -133,7 +133,7 @@ variable is not treated that way yet.
 | `exploitable-vulnerability` | An API affected by an advisory of a vulnerable requirement, see Dependencies. |
 
 Each flow is judged before it is reported. A dominating guard that proves the value
-safe (`isdigit()`, membership in a constant collection, equality with a constant, a
+safe (`isdigit()`, membership in a constant allowlist, equality with a constant, a
 numeric value proven by `int()`, `len()` or bounded arithmetic, a validator such as
 `re.fullmatch`) refutes it and nothing is reported. A hotspot is reported at medium
 confidence. Two things make a flow a hotspot:
@@ -148,6 +148,27 @@ that data. `if request.method == 'POST':` before `os.system(request.POST['cmd'])
 a vulnerability. When the flow passes the object whole, to the sink or to a function,
 a guard on any of its attributes still counts. The verdict and its evidence are in the
 finding's metadata.
+
+A membership test (`in`, `not in`) is a constant allowlist when every member is a constant
+that cannot change before the test:
+
+- a tuple, list or set display written in the function, or a dict display by its keys,
+  tested directly or through `.keys()`;
+- `frozenset`, `set`, `tuple` or `list` of one of these;
+- a module-level tuple, or `frozenset` of a display, of constants, bound once in its
+  module and never rebound there, by another assignment, an augmented assignment or a
+  `global` statement.
+
+A list, set or dict display of the function counts only while the function only reads it:
+changed by a method, stored, or passed to a call before the test, it may hold anything. A
+module-level list, set or dict can be changed from any module, so it never counts, and
+the guard leaves a hotspot. Rebinding a module-level name from another module
+(`settings.ALLOWED = ...`) is not seen, as for the module-level strings that fix a URL.
+
+A lookup in a dict display, `{"list": "ls"}[key]` or `.get(key, default)`, gives one of
+its values or the default, never the key: input that only selects the entry is not
+passed on. The same lookup in a module-level dict passes the key on, as any other
+subscript does.
 
 Django's `render_to_string(name, context)` returns HTML in which autoescaping escaped
 every variable, so data reaching a response through it is no `xss`, if the template really

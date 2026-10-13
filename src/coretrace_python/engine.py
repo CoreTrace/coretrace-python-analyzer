@@ -19,6 +19,7 @@ from typing import Any, ClassVar
 
 from coretrace_python import __version__
 from coretrace_python.abstract import ConstantPropagation, HeapAnalysis, RangeAnalysis
+from coretrace_python.abstract.module_constants import ModuleCollectionsAnalysis
 from coretrace_python.abstract.strings import ModuleStringsAnalysis
 from coretrace_python.analysis import (
     AnalysisContext,
@@ -158,6 +159,7 @@ ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     ConstantPropagation,
     RangeAnalysis,
     ModuleStringsAnalysis,
+    ModuleCollectionsAnalysis,
     HeapAnalysis,
     CallGraphAnalysis,
     SummaryAnalysis,

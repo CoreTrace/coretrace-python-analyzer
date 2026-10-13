@@ -26,9 +26,15 @@ from types import MappingProxyType
 from typing import ClassVar
 
 from coretrace_python.abstract import ConstantPropagation, RangeAnalysis, RangeFacts
+from coretrace_python.abstract.module_constants import (
+    ModuleCollectionsAnalysis,
+    constant_members,
+    converts,
+)
 from coretrace_python.analysis import AnalysisContext, AnyAnalysis, FunctionAnalysis
 from coretrace_python.cfg import CFG, BlockId, CFGAnalysis, DominanceAnalysis, DominatorTree
 from coretrace_python.hir import nodes
+from coretrace_python.hir.visitors import Node, children
 from coretrace_python.interprocedural import (
     CallGraph,
     CallGraphAnalysis,
@@ -36,9 +42,10 @@ from coretrace_python.interprocedural import (
     project_symbol,
 )
 from coretrace_python.ir.model import (
+    BinaryOp,
     BoolOp,
     Branch,
-    BuildList,
+    BuildDict,
     BuildTuple,
     Call,
     Compare,
@@ -46,13 +53,17 @@ from coretrace_python.ir.model import (
     FunctionIR,
     GetAttr,
     GetItem,
+    GetIter,
+    Global,
     Instruction,
+    Symbol,
     UnaryOp,
     Value,
 )
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.semantic.scopes import ScopeAnalysis, ScopeTable
 from coretrace_python.semantic.symbols import SymbolAnalysis, SymbolId, SymbolTable
+from coretrace_python.source import SourceSpan
 from coretrace_python.taint import (
     AuthorizationGuard,
     ModelTable,
@@ -65,6 +76,17 @@ from coretrace_python.taint import (
 
 VALIDATORS = frozenset(
     {"isdigit", "isnumeric", "isdecimal", "isalnum", "isalpha", "isidentifier", "isascii"}
+)
+# The builtins that make a collection of the members of the one collection they are given.
+_CONVERSIONS = frozenset(SymbolId(f"python.builtins.{name}") for name in ("frozenset", "set", "tuple", "list"))
+# The methods of a list, a set or a dict that read it without changing it.
+_READING_METHODS = frozenset(
+    {
+        "copy", "count", "index",
+        "difference", "intersection", "isdisjoint", "issubset", "issuperset",
+        "symmetric_difference", "union",
+        "get", "items", "keys", "values",
+    }
 )
 
 
@@ -115,6 +137,7 @@ class _Judge:
         models: ModelTable | None = None,
         symbols: Mapping[Value, SymbolId] | None = None,
         authorization: AuthorizationGuard | None = None,
+        collection_loads: frozenset[SourceSpan] = frozenset(),
     ) -> None:
         self.function = function
         self.cfg = cfg
@@ -124,11 +147,13 @@ class _Judge:
         self.models = models or ModelTable((), (), ())
         self.symbols = symbols or {}
         self.authorization = authorization
+        self.collection_loads = collection_loads
         self.blocks = {block.id: block for block in function.blocks}
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
         }
         self._closures: dict[Value, frozenset[Value]] = {}
+        self._uses: dict[Value, list[Instruction]] | None = None
 
     # ------------------------------------------------------------------ dependencies
 
@@ -342,12 +367,55 @@ class _Judge:
         return None
 
     def is_constant_collection(self, value: Value) -> bool:
+        """Whether every member of ``value`` is a constant that cannot change before the
+        test: a string constant, a display whose members are constants
+        (``constant_members``), the keys of a dict display (``.keys()``), ``frozenset``,
+        ``set``, ``tuple`` or ``list`` of such a collection, or a module-level name bound
+        once to an immutable one, read where ``collection_loads`` says. A collection that
+        may change after it is built, such as a module-level list, set or dict, is not
+        (#239)."""
+
         definition = self.defs.get(value)
         if isinstance(definition, Constant):
             return isinstance(definition.value, str | bytes)
-        if isinstance(definition, BuildList | BuildTuple):
-            return all(isinstance(self.defs.get(e), Constant) for e in definition.elements)
-        return False
+        if isinstance(definition, Global | Symbol):
+            return definition.location in self.collection_loads
+        if isinstance(definition, Call):
+            argument = converts(definition, self.defs, _CONVERSIONS)
+            if argument is not None:
+                return self.is_constant_collection(argument)
+            callee = self.defs.get(definition.callee)
+            if not isinstance(callee, GetAttr) or callee.attribute != "keys":
+                return False
+            plain = not (definition.arguments or definition.keywords or definition.starred)
+            return plain and isinstance(self.defs.get(callee.object), BuildDict) and self.is_constant_collection(callee.object)
+        if not constant_members(definition, self.defs):
+            return False
+        return isinstance(definition, BuildTuple) or self.only_read(value)
+
+    def only_read(self, value: Value) -> bool:
+        """Whether every use of the list, set or dict ``value`` reads it: a comparison, an
+        item or an iteration, an operator, a method that does not change it, or a
+        conversion such as ``frozenset(value)``. Stored, passed on, merged or changed by a
+        method, it may hold anything by the test."""
+
+        if self._uses is None:
+            uses: dict[Value, list[Instruction]] = {}
+            for block in self.function.blocks:
+                for instruction in block.instructions:
+                    for operand in instruction.operands():
+                        uses.setdefault(operand, []).append(instruction)
+            self._uses = uses
+        for use in self._uses.get(value, ()):
+            if isinstance(use, GetAttr):
+                if use.attribute not in _READING_METHODS:
+                    return False
+            elif isinstance(use, Call):
+                if converts(use, self.defs, _CONVERSIONS) != value:
+                    return False
+            elif not isinstance(use, Compare | GetItem | GetIter | BinaryOp | UnaryOp):
+                return False
+        return True
 
     # ------------------------------------------------------------------ authorization
 
@@ -442,13 +510,44 @@ def judge_flows(
     models: ModelTable | None = None,
     symbols: Mapping[Value, SymbolId] | None = None,
     authorization: AuthorizationGuard | None = None,
+    collection_loads: frozenset[SourceSpan] = frozenset(),
 ) -> Verdicts:
-    judge = _Judge(function, cfg, tree, taint, ranges, models, symbols, authorization)
+    judge = _Judge(function, cfg, tree, taint, ranges, models, symbols, authorization, collection_loads)
     verdicts = []
     for flow in taint.flows:
         sink = judge.sink_block(flow)
         verdicts.append(judge.judge(flow, sink is not None and sink in reachable))
     return Verdicts(tuple(verdicts))
+
+
+def module_collection_loads(
+    function: nodes.Function, collections: frozenset[str], scopes: ScopeTable
+) -> frozenset[SourceSpan]:
+    """Where the body of ``function`` reads a module-level name of ``collections``
+    (``ModuleCollectionsAnalysis``): the spans of those names. The IR loads such a name as
+    a ``Global``, or, when the semantic tables know it as an instance
+    (``ALLOWED = frozenset(...)``), as the ``Symbol`` of what built it, which no longer
+    names it. Nested definitions are functions of their own; decorators and defaults are
+    read by the enclosing one."""
+
+    if not collections:
+        return frozenset()
+    scope = scopes.scope_for(function).id
+    module = scopes.module_scope.id
+    found: set[SourceSpan] = set()
+    pending: list[Node] = list(function.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, nodes.Function | nodes.Class | nodes.Lambda):
+            continue
+        if (
+            isinstance(node, nodes.Name)
+            and node.identifier in collections
+            and scopes.resolve(scope, node.identifier).scope == module
+        ):
+            found.add(node.span)
+        pending.extend(children(node))
+    return frozenset(found)
 
 
 def authorization_of(
@@ -480,6 +579,7 @@ class RefutationAnalysis(FunctionAnalysis[Verdicts]):
             CallGraphAnalysis,
             ScopeAnalysis,
             SymbolAnalysis,
+            ModuleCollectionsAnalysis,
         }
     )
 
@@ -500,6 +600,7 @@ class RefutationAnalysis(FunctionAnalysis[Verdicts]):
             models,
             _with_project_callees(ssa, graph, name, ctx.module.name),
             authorization_of(function, models, ctx.get(ScopeAnalysis), ctx.get(SymbolAnalysis)),
+            module_collection_loads(function, ctx.get(ModuleCollectionsAnalysis), ctx.get(ScopeAnalysis)),
         )
 
 
