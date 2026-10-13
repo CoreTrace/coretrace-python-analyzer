@@ -72,6 +72,7 @@ from coretrace_python.findings import (
     Finding,
     Severity,
 )
+from coretrace_python.findings.context import code_context
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.findings.suppressions import partition
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -603,6 +604,8 @@ def analyze_project(
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
+    # The context comes first, so that a refiner can read it.
+    findings = [_situated(finding, root) for finding in findings]
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings = list(apply_refinement(plugin, findings, plugin.refine(context, tuple(findings))))
@@ -685,6 +688,23 @@ def _located(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return str(path)
+
+
+def _situated(finding: Finding, root: Path) -> Finding:
+    """``finding`` with the context of its code in its metadata (``code_context``), judged
+    on its path in the project at ``root``. A context the rule gave the finding stays: it
+    is the rule's (#244)."""
+
+    if "context" in finding.metadata:
+        return finding
+    try:
+        path = Path(str(finding.span.source_id)).resolve().relative_to(root)
+    except ValueError:
+        return finding
+    situation = code_context(path.as_posix())
+    if situation is None:
+        return finding
+    return replace(finding, metadata={**finding.metadata, "context": situation})
 
 
 def _sourced(finding: Finding, origins: Origins) -> Finding:
