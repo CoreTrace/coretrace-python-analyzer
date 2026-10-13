@@ -62,6 +62,18 @@ class PythonStdlibModels(ModelPlugin):
         # The code is the first argument; the globals and locals it runs with are data.
         Sink(_sym("builtins.eval"), TaintKind.CODE, ((TaintKind.CODE, (0,)),)),
         Sink(_sym("builtins.exec"), TaintKind.CODE, ((TaintKind.CODE, (0,)),)),
+        # The module or the file the call imports or runs; its globals, its run name and
+        # the package of a relative name are data (#240).
+        *(
+            Sink(_sym(symbol), TaintKind.CODE, ((TaintKind.CODE, (0,)),), ((TaintKind.CODE, (keyword,)),))
+            for symbol, keyword in (
+                ("importlib.import_module", "name"),
+                ("builtins.__import__", "name"),
+                ("importlib.__import__", "name"),
+                ("runpy.run_module", "mod_name"),
+                ("runpy.run_path", "path_name"),
+            )
+        ),
         Sink(_sym("builtins.open"), TaintKind.PATH),
         Sink(_sym("os.remove"), TaintKind.PATH),
         Sink(_sym("os.unlink"), TaintKind.PATH),
