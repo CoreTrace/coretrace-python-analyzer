@@ -10,6 +10,7 @@ import concurrent.futures
 import hashlib
 import multiprocessing
 import sys
+import tempfile
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -31,10 +32,8 @@ from coretrace_python.cache import (
     CachedModule,
     ProjectCache,
     decode,
-    decode_index,
     directory_fingerprint,
     encode,
-    encode_index,
     fingerprint,
     module_keys,
 )
@@ -510,9 +509,30 @@ def analyze_project(
     module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
     suffixes = suffix_index(affected, analysable)
     pool = None
+    spooled: tempfile.TemporaryDirectory[str] | None = None
+    # Where finished modules are kept for the next waves: the cache, else a directory of
+    # this run's own. Workers read from it what a component imports (#245).
+    spool = cache
     if jobs > 1:
+        if spool is None:
+            spooled = tempfile.TemporaryDirectory(prefix="coretrace-")
+            spool = ProjectCache(Path(spooled.name))
+        project = _Project(
+            root,
+            tuple(plugin_roots),
+            tuple(plugins),
+            advisory_paths,
+            _encode_routes(routes),
+            tuple(sorted(escaped)),
+            template_calls,
+            tuple(sorted(analysable)),
+            spool.directory,
+        )
         pool = concurrent.futures.ProcessPoolExecutor(
-            max_workers=process_pool_size(jobs), mp_context=multiprocessing.get_context("spawn")
+            max_workers=process_pool_size(jobs),
+            mp_context=multiprocessing.get_context("spawn"),
+            initializer=_start_worker,
+            initargs=(project,),
         )
     try:
         for wave in graph.schedule():
@@ -531,29 +551,27 @@ def analyze_project(
                     pool.submit(
                         _analyse_batch,
                         _Batch(
-                            root,
-                            tuple(plugin_roots),
-                            tuple(plugins),
                             {name: _path_of(files[name]) for name in sorted(component)},
-                            encode_index(_seed(results, graph, component)),
-                            advisory_paths,
-                            _encode_routes(routes),
-                            tuple(sorted(escaped)),
-                            template_calls,
-                            project=tuple(sorted(analysable)),
+                            {
+                                name: (import_name, keys[name])
+                                for name, import_name in _imported_names(graph, component, results).items()
+                            },
                         ),
                     )
                     for component in pending
                 ]
                 for future in futures:
                     computed.update({name: decode(data) for name, data in future.result().items()})
+            store = cache if pool is None else spool
             for name, entry in computed.items():
-                if cache is not None:
-                    cache.store(keys[name], entry)
+                if store is not None:
+                    store.store(keys[name], entry)
             results.update(computed)
     finally:
         if pool is not None:
             pool.shutdown()
+        if spooled is not None:
+            spooled.cleanup()
 
     index = _index(results, {name: name for name in results})
     call_graphs: dict[str, CallGraph] = {}
@@ -722,12 +740,20 @@ def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: 
 
 
 def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: frozenset[str]) -> SummaryIndex:
-    """The summaries a component starts from: those of every module it imports,
-    transitively, all final by the time its wave runs, each under the import name the
-    component's code refers to it by. Of several files with one import name, only the
-    one a member imports directly, resolved in its own root, goes under that name: the
-    others are reached through summaries that inline them already, and a name no
-    member's root resolved is followed into neither file."""
+    """The summaries a component starts from (``_imported_names``)."""
+
+    return _index(results, _imported_names(graph, component, results))
+
+
+def _imported_names(
+    graph: ModuleGraph, component: frozenset[str], results: Mapping[str, CachedModule]
+) -> dict[str, str]:
+    """The modules whose summaries a component starts from, each with the import name the
+    component's code refers to it by: every module it imports, transitively, all final
+    by the time its wave runs. Of several files with one import name, only the one a
+    member imports directly, resolved in its own root, goes under that name: the others
+    are reached through summaries that inline them already, and a name no member's root
+    resolved is followed into neither file."""
 
     wanted: set[str] = set()
     pending = list(component)
@@ -745,7 +771,7 @@ def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: fr
         chosen = modules if len(modules) == 1 else [name for name in modules if name in direct]
         if len(chosen) == 1:
             names[chosen[0]] = import_name
-    return _index(results, names)
+    return names
 
 
 def _index(results: Mapping[str, CachedModule], names: Mapping[str, str]) -> SummaryIndex:
@@ -799,57 +825,118 @@ def _analyse_managers(
 
 
 @dataclass(frozen=True)
-class _Batch:
-    """One component handed to a worker process, its files under the engine's module
-    names: it rebuilds the configuration from the project root and the plugin roots, so
-    only paths and the imported summaries travel."""
+class _Project:
+    """What every worker process needs of the project, whatever the component it
+    analyses: it rebuilds the configuration from the project root and the plugin roots
+    once, when the pool starts it (``_start_worker``), and reads the finished modules
+    from ``spool``, a ``ProjectCache`` directory the parent writes after each wave."""
 
     root: Path
     plugin_roots: tuple[Path, ...]
     plugins: tuple[Plugin, ...]
-    paths: Mapping[str, Path]
-    seed: Mapping[str, Any]
-    advisory_paths: tuple[Path, ...] = ()
-    routes: tuple[tuple[str, str, str, int], ...] = ()
-    escaped: tuple[str, ...] = ()
-    template_calls: TemplateCalls = field(default_factory=TemplateCalls)
-    # Every analysable module of the project, not only the component's: a curated
+    advisory_paths: tuple[Path, ...]
+    routes: tuple[tuple[str, str, str, int], ...]
+    escaped: tuple[str, ...]
+    template_calls: TemplateCalls
+    # Every analysable module of the project, not only a component's: a curated
     # entry-point suffix matches derived symbols of any project module.
-    project: tuple[str, ...] = ()
+    modules: tuple[str, ...]
+    spool: Path
 
 
-def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
+@dataclass(frozen=True)
+class _Batch:
+    """One component handed to a worker process: its files under the engine's module
+    names, and the modules its summaries start from, each with its import name and the
+    key of its entry in the spool. Only these travel, not the summaries themselves."""
+
+    paths: Mapping[str, Path]
+    imported: Mapping[str, tuple[str, str]]
+
+
+@dataclass
+class _Worker:
+    """The configuration a worker process prepared once, and the finished modules it has
+    read from the spool so far, by key."""
+
+    managed: Callable[[AnalysisManager], None]
+    plugins: tuple[Plugin, ...]
+    affected: Affected
+    suffixes: SuffixIndex
+    spool: ProjectCache
+    read: dict[str, CachedModule] = field(default_factory=dict)
+
+    def entries(self, imported: Mapping[str, tuple[str, str]]) -> dict[str, CachedModule]:
+        found: dict[str, CachedModule] = {}
+        for name, (_, key) in imported.items():
+            entry = self.read.get(key)
+            if entry is None:
+                entry = self.spool.load(key)
+                if entry is None:
+                    raise RuntimeError(f"the summaries of {name} are missing from {self.spool.directory}")
+                self.read[key] = entry
+            found[name] = entry
+        return found
+
+
+# The state of a worker process, set by ``_start_worker`` when the pool starts it.
+_WORKER: _Worker | None = None
+
+
+def _start_worker(project: _Project) -> None:
+    """Prepare this worker process for every component it will analyse (#245)."""
+
+    global _WORKER
     sources = SourceManager()
-    managers = {name: _register_all(build_hir(sources.load_file(path))) for name, path in batch.paths.items()}
-    registry = load_plugins(batch.plugin_roots, next(iter(managers.values())))
-    all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *batch.plugins)
-    dependencies = resolve_dependencies(batch.root, sources)
+    probe = _register_all(build_hir(sources.add_source("<empty>", "")))
+    registry = load_plugins(project.plugin_roots, probe)
+    all_plugins: tuple[Plugin, ...] = (*(loaded.plugin for loaded in registry), *project.plugins)
+    dependencies = resolve_dependencies(project.root, sources)
     file_advisories: list[tuple[Path, tuple[Advisory, ...]]] = []
-    for path in batch.advisory_paths:
+    for path in project.advisory_paths:
         try:
             file_advisories.append((path, load_advisories(path)))
         except AdvisoryFileError:
             continue
-    advisories, _ = _merge_advisories(_contributions(registry, batch.plugins, batch.root, file_advisories))
+    advisories, _ = _merge_advisories(_contributions(registry, project.plugins, project.root, file_advisories))
     affected = affected_symbols(dependencies, advisories)
-    models = plugin_models(all_plugins, batch.root).extended(
+    models = plugin_models(all_plugins, project.root).extended(
         *advisory_sinks(affected), suffixes=advisory_suffix_sinks(affected)
     )
-    routes = _decode_routes(batch.routes)
-    escaped = frozenset(batch.escaped)
+    routes = _decode_routes(project.routes)
+    escaped = frozenset(project.escaped)
     members = models.members_by_class()
-    for manager in managers.values():
+    signatures = models.signatures()
+    clearing = models.clearing(escaped)
+
+    def managed(manager: AnalysisManager) -> None:
         manager.provide(SecurityModelAnalysis, models)
         manager.provide(MembersAnalysis, members)
-        manager.provide(SignaturesAnalysis, models.signatures())
+        manager.provide(SignaturesAnalysis, signatures)
         manager.provide(DependencyAnalysis, dependencies)
         manager.provide(RegisteredRoutes, routes)
         manager.provide(EscapedTemplates, escaped)
-        manager.provide(ClearingAnalysis, models.clearing(escaped))
-        manager.provide(TemplateCallsAnalysis, batch.template_calls)
-    module_plugins = tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin))
-    suffixes = suffix_index(affected, batch.project)
-    results = _analyse_managers(managers, decode_index(batch.seed), module_plugins, affected, suffixes)
+        manager.provide(ClearingAnalysis, clearing)
+        manager.provide(TemplateCallsAnalysis, project.template_calls)
+
+    _WORKER = _Worker(
+        managed,
+        tuple(p for p in all_plugins if not isinstance(p, ProjectPlugin)),
+        affected,
+        suffix_index(affected, project.modules),
+        ProjectCache(project.spool),
+    )
+
+
+def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
+    worker = _WORKER
+    assert worker is not None, "the pool starts every worker with _start_worker"
+    sources = SourceManager()
+    managers = {name: _register_all(build_hir(sources.load_file(path))) for name, path in batch.paths.items()}
+    for manager in managers.values():
+        worker.managed(manager)
+    seed = _index(worker.entries(batch.imported), {name: import_name for name, (import_name, _) in batch.imported.items()})
+    results = _analyse_managers(managers, seed, worker.plugins, worker.affected, worker.suffixes)
     return {name: encode(entry) for name, entry in results.items()}
 
 
