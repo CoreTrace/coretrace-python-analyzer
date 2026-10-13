@@ -181,7 +181,7 @@ reads no template.
 | `debug-enabled` | `app.run(debug=True)` on a Flask application. |
 | `missing-timeout` | A Requests or httpx call without a `timeout`. |
 | `insecure-tls` | `verify=False` on a Requests or httpx call, or `ssl._create_unverified_context()`. |
-| `unsafe-xml` | A standard-library or lxml XML parser, which expands entities; `defusedxml` is the safe replacement. |
+| `unsafe-xml` | An XML parser of the standard library or of lxml, reported for what it risks; `defusedxml` is the safe replacement. The standard library's parsers run on Expat, which reads no local file but expands the entities a document declares: a crafted document can exhaust memory with Expat older than 2.7.2, which depends on the Python build at run time (`pyexpat.EXPAT_VERSION`). lxml resolves external entities by default before 5.0, and in `iterparse` and `ETCompatXMLParser` before 6.1 (CVE-2026-41066), which lets a crafted document read local files; `resolve_entities=True` does so whatever the version, while a parser given `resolve_entities=False` or `'internal'` is not reported. A document the project wrote itself, a string constant or a module-level string bound once, is reported at low confidence. |
 | `unsafe-archive-extraction` | `tarfile` or `zipfile` extraction, or `shutil.unpack_archive`, without a member `filter`. |
 | `insecure-temp-file` | `tempfile.mktemp`, which names a file without creating it. |
 | `weak-random` | A `random` function whose result is assigned to a credential-like name, or produced by a function named like one. Medium confidence. |

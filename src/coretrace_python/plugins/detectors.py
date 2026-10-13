@@ -4,7 +4,8 @@
 detector is a few class attributes on top of it, and a rule that knows more about its
 sinks refines the verdict (``judge``) or the severity too (``assess``). ``SymbolCallDetector`` reports calls
 whose callee resolves to a canonical symbol, through imports and local aliases alike,
-by reading the SSA form.
+by reading the SSA form; a rule that tells its calls apart words each finding itself
+(``describe``).
 """
 
 from __future__ import annotations
@@ -35,6 +36,14 @@ class Assessment:
     severity: Severity
     title: str | None = None
     metadata: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CallReport:
+    """What a ``SymbolCallDetector`` reports of one call: its message and confidence."""
+
+    message: str
+    confidence: Confidence
 
 
 class TaintDetector(Plugin):
@@ -128,6 +137,14 @@ class SymbolCallDetector(Plugin):
     def accepts(self, call: Call, symbol: SymbolId, defs: Mapping[Value, Instruction]) -> bool:
         return True
 
+    def describe(
+        self, ctx: PluginContext, call: Call, symbol: SymbolId, defs: Mapping[Value, Instruction]
+    ) -> CallReport:
+        """The message and confidence of the finding for ``call``: the rule's own, unless
+        the rule tells its calls apart."""
+
+        return CallReport(self.message_template.format(symbol=symbol), self.confidence)
+
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         findings: list[Finding] = []
         graph = ctx.get(CallGraphAnalysis) if CallGraphAnalysis in self.requires else None
@@ -150,12 +167,13 @@ class SymbolCallDetector(Plugin):
                         continue
                     if not self.accepts(instruction, symbol, defs):
                         continue
+                    described = self.describe(ctx, instruction, symbol, defs)
                     findings.append(
                         Finding(
                             rule_id=self.rule_id,
-                            message=self.message_template.format(symbol=symbol),
+                            message=described.message,
                             severity=self.severity,
-                            confidence=self.confidence,
+                            confidence=described.confidence,
                             span=instruction.location,
                             function=function.name,
                             metadata={"symbol": str(symbol)},
