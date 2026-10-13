@@ -224,6 +224,34 @@ class _TaintProblem(DataflowProblem[State]):
             taint = taint.join(state.get(location, Taint.none()))
         return taint
 
+    def looked_up(self, instruction: Call | GetItem, state: Mapping[Key, Taint]) -> Taint | None:
+        """What a lookup in a dict display gives, ``d[key]``, ``d.get(key)`` or
+        ``d.get(key, default)``: one of its values, of the mappings it unpacks, of whatever
+        was stored in it since, or the default; never a key, its own or the one looked up,
+        which only select (#239). ``None`` for anything else."""
+
+        if isinstance(instruction, GetItem):
+            mapping, default = instruction.object, None
+        else:
+            method = self.defs.get(instruction.callee)
+            if not isinstance(method, GetAttr) or method.attribute != "get":
+                return None
+            if instruction.keywords or instruction.starred or not 1 <= len(instruction.arguments) <= 2:
+                return None
+            mapping = method.object
+            default = instruction.arguments[1] if len(instruction.arguments) == 2 else None
+        display = self.defs.get(mapping)
+        if not isinstance(display, BuildDict):
+            return None
+        taint = Taint.none()
+        for _, value in display.items:
+            taint = taint.join(state.get(value, Taint.none()))
+        for unpacked in display.unpacked:
+            taint = taint.join(self.deep(unpacked, state))
+        for location in self.heap.locations(mapping, ELEMENTS):
+            taint = taint.join(state.get(location, Taint.none()))
+        return taint if default is None else taint.join(self.deep(default, state))
+
     def keyed(self, value: Value, state: Mapping[Key, Taint]) -> Taint:
         """The taint of the keys of the mappings ``value`` points to."""
 
@@ -281,12 +309,19 @@ class _TaintProblem(DataflowProblem[State]):
                         taint = taint.join(incoming[predecessor].get(value, Taint.none()))
             elif isinstance(instruction, Call):
                 taint = self.call(instruction, state, flows)
+                looked_up = self.looked_up(instruction, state)
+                if looked_up is not None:
+                    taint = looked_up
             elif isinstance(instruction, NonlocalResult):
                 taint = self.nonlocal_result(instruction, state)
             else:
-                taint = self.instruction(instruction, state)
-                if isinstance(instruction, GetAttr | GetItem | GetIter):
-                    taint = taint.join(self.loaded(instruction, state))
+                looked_up = self.looked_up(instruction, state) if isinstance(instruction, GetItem) else None
+                if looked_up is not None:
+                    taint = looked_up
+                else:
+                    taint = self.instruction(instruction, state)
+                    if isinstance(instruction, GetAttr | GetItem | GetIter):
+                        taint = taint.join(self.loaded(instruction, state))
             state[instruction.result] = taint
         terminator = block.terminator
         if isinstance(terminator, ForNext) and terminator.result is not None:
