@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import warnings
 
 from coretrace_python.source import SourceFile
 
@@ -11,7 +12,12 @@ class ParseError(Exception):
 
 def parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
     try:
-        return ast.parse(source, filename=filename)
+        with warnings.catch_warnings():
+            # A warning raised while parsing (an invalid escape sequence: a SyntaxWarning
+            # from 3.12, a DeprecationWarning on 3.11) is about the analysed source, not
+            # the analyzer, and would reach its stderr once per process that parses (#241).
+            warnings.simplefilter("ignore")
+            return ast.parse(source, filename=filename)
     except SyntaxError as error:
         line = error.lineno or 0
         column = error.offset or 0
