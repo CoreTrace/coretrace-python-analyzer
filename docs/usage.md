@@ -359,8 +359,11 @@ alone (`settings.toml: high hardcoded-credential: …`).
 A finding in test code carries `context: test` in its metadata, in the JSON report and as
 a property of its SARIF result. Test code is a file under a `test`, `tests`, `testing`,
 `fixtures` or `__tests__` directory of the project, or a file named `test_*.py`,
-`*_test.py` or `conftest.py`, judged on its path from the root, not on where the
-project sits. The context changes no verdict: it is there for baselines, `--fail-on`
+`*_test.py` or `conftest.py`, judged on its path from the root of the report, not on
+where the project sits. For a file checked alone, that root is the file's own directory,
+as the report gives it, so a `test_*.py` module is test code either way, while a test
+directory above the file is seen only when its directory is checked. The context
+changes no verdict: it is there for baselines, `--fail-on`
 wrappers, readers and refiner plugins, which see it. A rule may still give its own
 context, as `hardcoded-credential` does with `example` for template files, and the
 SARIF result carries that context too.
