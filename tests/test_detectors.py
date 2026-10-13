@@ -202,8 +202,15 @@ def test_shipped_plugins_load_with_their_manifests() -> None:
     }
     for rule in ("sql-injection", "command-injection", "code-injection", "nosql-injection", "path-traversal", "ssrf", "xss"):
         assert by_name[rule].provides == (f"vulnerability.{rule}",)
-    for rule in ("sql-injection", "code-injection", "nosql-injection", "path-traversal", "xss"):
+    for rule in ("sql-injection", "nosql-injection", "path-traversal", "xss"):
         assert by_name[rule].requires == ("taint.flows", "findings.refutation")
+    # ``code-injection`` also reads how the name a dynamic import receives is built (#240).
+    assert by_name["code-injection"].requires == (
+        "taint.flows",
+        "findings.refutation",
+        "ir.ssa",
+        "abstract.module_strings",
+    )
     # ``ssrf`` also reads how the URL of each flow is built.
     assert by_name["ssrf"].requires == ("taint.flows", "findings.refutation", "ir.ssa", "abstract.module_strings")
     # ``command-injection`` also reads the command each flow reaches, element by element.

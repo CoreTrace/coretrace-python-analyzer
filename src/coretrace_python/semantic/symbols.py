@@ -14,7 +14,8 @@ from coretrace_python.semantic.identity import SymbolId
 from coretrace_python.semantic.imports import ImportAnalysis, ImportTable
 from coretrace_python.semantic.scopes import ResolutionKind, ScopeAnalysis, ScopeId, ScopeTable
 
-BUILTIN_NAMES = frozenset(name for name in dir(builtins) if not name.startswith("_"))
+# ``__import__`` is the one dunder of the builtins a program calls by name (#240).
+BUILTIN_NAMES = frozenset(name for name in dir(builtins) if not name.startswith("_")) | {"__import__"}
 
 
 @dataclass(frozen=True)
