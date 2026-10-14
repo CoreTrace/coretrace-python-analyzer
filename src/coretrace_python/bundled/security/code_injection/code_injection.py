@@ -1,13 +1,17 @@
 """Code injection: attacker-controlled input reaching a CODE sink, such as the code
 ``eval`` or ``exec`` runs, the module ``importlib.import_module``, ``__import__`` or
-``runpy.run_module`` imports, or the file ``runpy.run_path`` runs. ``dangerous-eval``
-reports every ``eval`` or ``exec``; this rule reports the calls attacker input reaches.
+``runpy.run_module`` imports, the file ``runpy.run_path`` runs, or the directory
+``sys.path`` and ``site.addsitedir`` load code from. ``dangerous-eval`` reports every
+``eval`` or ``exec``; this rule reports the calls attacker input reaches.
 
 An import runs the top-level code of a module the input chooses among those that can be
 found, and a script path runs the file the input chooses: execution is possible, and
 how far it goes depends on what the input can reach. Their findings are titled for
 that. A constant package prefix (``"app.plugins." + name``) confines an import to the
-modules of that package: a hotspot."""
+modules of that package: a hotspot. A directory added to ``sys.path`` runs code only
+when a later import resolves there: a hotspot. ``site.addsitedir`` runs the import lines
+of the directory's ``.pth`` files during the call: a vulnerability, exploitable when the
+directory holds files the attacker controls, as the finding states."""
 
 from __future__ import annotations
 
@@ -28,6 +32,8 @@ _IMPORTS = frozenset(
     for name in ("importlib.import_module", "builtins.__import__", "importlib.__import__", "runpy.run_module")
 )
 _RUN_PATH = SymbolId("python.runpy.run_path")
+_IMPORT_PATHS = frozenset(SymbolId(f"python.sys.path.{name}") for name in ("insert", "append", "extend"))
+_SITE_DIRECTORY = SymbolId("python.site.addsitedir")
 
 
 class CodeInjectionPlugin(TaintDetector):
@@ -44,6 +50,24 @@ class CodeInjectionPlugin(TaintDetector):
         symbol = flow.sink.symbol
         if symbol == _RUN_PATH:
             return Assessment(verdict, self.severity, "Untrusted script execution")
+        if symbol in _IMPORT_PATHS:
+            if verdict.status is Status.VULNERABILITY:
+                verdict = Verdict(
+                    flow,
+                    Status.HOTSPOT,
+                    "the input chooses a directory imports are looked up in: code runs only when a later "
+                    "import resolves to a module the attacker placed there",
+                )
+            return Assessment(verdict, self.severity, "Untrusted import path")
+        if symbol == _SITE_DIRECTORY:
+            if verdict.status is Status.VULNERABILITY:
+                verdict = Verdict(
+                    flow,
+                    Status.VULNERABILITY,
+                    f"{verdict.evidence}; the import lines of the .pth files of the directory run during the "
+                    "call: exploitable when the input chooses a directory holding files the attacker controls",
+                )
+            return Assessment(verdict, self.severity, "Untrusted site directory")
         if symbol not in _IMPORTS:
             return Assessment(verdict, self.severity)
         if verdict.status is Status.VULNERABILITY and flow.through is None:
