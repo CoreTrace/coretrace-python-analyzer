@@ -373,6 +373,13 @@ wrappers, readers and refiner plugins, which see it. A rule may still give its o
 context, as `hardcoded-credential` does with `example` for template files, and the
 SARIF result carries that context too.
 
+A finding in vendored code, under a `third_party`, `third-party`, `vendor` or `vendored`
+directory, carries `origin: vendored`, in the JSON report and as a property of its SARIF
+result. The origin is told apart from the context: the tests of a vendored project
+carry both `context: test` and `origin: vendored`. Vendored code is still analysed and
+its findings reported, so that a flow from the project through a vendored module is
+not lost; the origin changes no verdict either.
+
 `root` is the directory the paths are relative to. A file's `status` is `analysed`,
 `ambiguous` (analysed, but another file has its module name, see above), `syntax-error`
 or `unreadable`; only `analysed` files count in `files_analysed`.
