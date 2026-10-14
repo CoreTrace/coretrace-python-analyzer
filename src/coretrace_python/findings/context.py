@@ -7,7 +7,7 @@ anything, is the rule's decision, or a refiner plugin's."""
 from __future__ import annotations
 
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 TEST = "test"
 VENDORED = "vendored"
@@ -42,3 +42,16 @@ def code_origin(path: str) -> str | None:
     project's own code."""
 
     return VENDORED if any(part in _VENDORED_DIRECTORIES for part in PurePosixPath(path).parts[:-1]) else None
+
+
+def path_in_project(source_id: object, root: Path | None) -> str | None:
+    """The path of the file ``source_id`` names from ``root``, the root of the analysis,
+    as the classifications above read it; ``None`` for a file outside ``root``. Without a
+    root, the source is taken as named: a source that is no file has no other path."""
+
+    if root is None:
+        return Path(str(source_id)).as_posix()
+    try:
+        return Path(str(source_id)).resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None

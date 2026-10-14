@@ -503,9 +503,12 @@ class SecretDetector(Plugin):
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
         findings: list[Finding] = []
+        path = ctx.path(ctx.module.span.source_id)
         for literal, pieces in literal_groups(ctx.module):
-            found = self.judge(*literal)
-            parts = [finding for finding in (self.judge(*piece) for piece in pieces) if finding is not None]
+            found = self.judge(*literal, path=path)
+            parts = [
+                finding for finding in (self.judge(*piece, path=path) for piece in pieces) if finding is not None
+            ]
             if found is None:
                 findings.extend(parts)
             else:
@@ -516,7 +519,12 @@ class SecretDetector(Plugin):
                 findings.append(strongest if strongest is found else replace(strongest, span=found.span))
         return findings
 
-    def judge(self, value: str, name: str | None, span: Location, function: str | None) -> Finding | None:
+    def judge(
+        self, value: str, name: str | None, span: Location, function: str | None, path: str | None = None
+    ) -> Finding | None:
+        """The finding for one literal, if any. ``path`` is its file's path in the project,
+        which tells test code and template files apart; ``None`` tells neither (#253)."""
+
         where = f"in {name}" if name is not None else "in a string literal"
         for pattern in self.patterns:
             if pattern.matches(value):
@@ -537,7 +545,7 @@ class SecretDetector(Plugin):
         ):
             # A password in a test fixture or a template file is rarely a leak; a name
             # is a hint, so the finding stays, at low confidence.
-            context = credential_context(str(span.source_id))
+            context = None if path is None else credential_context(path)
             metadata = {"name": name, "length": str(len(value))}
             if context is not None:
                 metadata["context"] = context

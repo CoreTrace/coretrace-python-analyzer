@@ -72,7 +72,7 @@ from coretrace_python.findings import (
     Finding,
     Severity,
 )
-from coretrace_python.findings.context import code_context, code_origin
+from coretrace_python.findings.context import code_context, code_origin, path_in_project
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.findings.suppressions import partition
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -342,11 +342,9 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path], root: Path | 
     manager.provide(ClearingAnalysis, table.clearing())
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
-    findings, supported = _check_module(manager, tuple(loaded.plugin for loaded in registry))
-    if source.path is None:
-        path: str | None = Path(str(source.source_id)).as_posix()
-    else:
-        path = _path_from(source.path, source.path.resolve().parent if root is None else root)
+    reference = None if source.path is None else root or source.path.resolve().parent
+    findings, supported = _check_module(manager, tuple(loaded.plugin for loaded in registry), reference)
+    path = path_in_project(source.source_id, reference)
     findings = tuple(_situated(f, path if f.span.source_id == source.source_id else None) for f in findings)
     functions = len(analyzable_functions(manager.module))
     coverage = Coverage((FileCoverage(str(source.source_id), "analysed", functions, len(supported)),))
@@ -551,7 +549,9 @@ def analyze_project(
                 for component in pending:
                     batch = {name: analysable[name] for name in sorted(component)}
                     computed.update(
-                        _analyse_managers(batch, _seed(results, graph, component), module_plugins, affected, suffixes)
+                        _analyse_managers(
+                            batch, _seed(results, graph, component), module_plugins, affected, suffixes, root
+                        )
                     )
                     for manager in batch.values():
                         manager.run(ResultsEvicted)
@@ -613,7 +613,7 @@ def analyze_project(
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
     # The context comes first, so that a refiner can read it.
-    findings = [_situated(finding, _path_from(finding.span.source_id, root)) for finding in findings]
+    findings = [_situated(finding, path_in_project(finding.span.source_id, root)) for finding in findings]
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings = list(apply_refinement(plugin, findings, plugin.refine(context, tuple(findings))))
@@ -696,16 +696,6 @@ def _located(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return str(path)
-
-
-def _path_from(source_id: object, root: Path) -> str | None:
-    """The path of the file ``source_id`` names from ``root``, the root of the report;
-    ``None`` for a file outside it."""
-
-    try:
-        return Path(str(source_id)).resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return None
 
 
 def _situated(finding: Finding, path: str | None) -> Finding:
@@ -832,6 +822,7 @@ def _analyse_managers(
     plugins: tuple[Plugin, ...],
     affected: Affected,
     suffixes: SuffixIndex,
+    root: Path,
 ) -> dict[str, CachedModule]:
     """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
     then extract what the rest of the run needs from each module. Each member registers
@@ -860,7 +851,7 @@ def _analyse_managers(
         for manager in managers.values():
             manager.run(ProjectSummariesUpdated)
             manager.provide(ProjectSummaries, index)
-    return {name: _analyse_module(manager, plugins, affected, suffixes) for name, manager in managers.items()}
+    return {name: _analyse_module(manager, plugins, affected, suffixes, root) for name, manager in managers.items()}
 
 
 @dataclass(frozen=True)
@@ -903,6 +894,7 @@ class _Worker:
     affected: Affected
     suffixes: SuffixIndex
     spool: ProjectCache
+    root: Path
     read: dict[str, CachedModule] = field(default_factory=dict)
 
     def entries(self, imported: Mapping[str, tuple[str, str]]) -> dict[str, CachedModule]:
@@ -964,6 +956,7 @@ def _start_worker(project: _Project) -> None:
         affected,
         suffix_index(affected, project.modules),
         ProjectCache(project.spool),
+        project.root,
     )
 
 
@@ -975,7 +968,7 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     for manager in managers.values():
         worker.managed(manager)
     seed = _index(worker.entries(batch.imported), {name: import_name for name, (import_name, _) in batch.imported.items()})
-    results = _analyse_managers(managers, seed, worker.plugins, worker.affected, worker.suffixes)
+    results = _analyse_managers(managers, seed, worker.plugins, worker.affected, worker.suffixes, worker.root)
     return {name: encode(entry) for name, entry in results.items()}
 
 
@@ -1025,12 +1018,12 @@ def _configuration_key(
 
 
 def _analyse_module(
-    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Affected, suffixes: SuffixIndex
+    manager: AnalysisManager, plugins: tuple[Plugin, ...], affected: Affected, suffixes: SuffixIndex, root: Path
 ) -> CachedModule:
     """One module's findings, summaries, call sites and symbol reads: what the cache
     keeps (§11)."""
 
-    findings, supported = _check_module(manager, plugins)
+    findings, supported = _check_module(manager, plugins, root)
     graph = manager.get(CallGraphAnalysis)
     correlated: list[Finding] = []
     if affected:
@@ -1067,10 +1060,11 @@ def _summaries_of(manager: AnalysisManager) -> dict[str, FunctionSummary]:
 
 
 def _check_module(
-    manager: AnalysisManager, plugins: tuple[Plugin, ...]
+    manager: AnalysisManager, plugins: tuple[Plugin, ...], root: Path | None
 ) -> tuple[tuple[Finding, ...], tuple[nodes.Function, ...]]:
     """Findings of the module plugins plus notes for unsupported functions, and the
-    functions that could be analysed."""
+    functions that could be analysed; ``root`` is the root of the analysis the plugins
+    read a file's path in the project from (``PluginContext.path``)."""
 
     supported: list[nodes.Function] = []
     notes: list[Finding] = []
@@ -1090,7 +1084,7 @@ def _check_module(
             )
         else:
             supported.append(function)
-    findings = run_plugins(manager, plugins, tuple(supported))
+    findings = run_plugins(manager, plugins, tuple(supported), root)
     return (*findings, *notes), tuple(supported)
 
 

@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from typing import ClassVar
 
 from coretrace_python.findings import Finding
+from coretrace_python.findings.context import path_in_project
 from coretrace_python.plugins import PluginContext, ProjectContext, ProjectPlugin
 from coretrace_python.plugins.secrets import (
     DEFAULT_CREDENTIAL_NAMES,
@@ -32,7 +33,7 @@ class ConfigSecrets(SecretDetector, ProjectPlugin):
             return ()
         findings: list[Finding] = []
         for value, name, span, function in config_literals(ctx.root):
-            finding = self.judge(value, name, span, function)
+            finding = self.judge(value, name, span, function, path=path_in_project(span.source_id, ctx.root))
             if finding is not None:
                 findings.append(finding)
         return findings
