@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings.context import is_test_code
 from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.interprocedural import discover_files
@@ -100,19 +101,16 @@ def looks_like_digest(value: str, name: str | None) -> bool:
     return name is not None and any(word in name.lower() for word in _DIGEST_WORDS)
 
 
-_TEST_DIRECTORIES = frozenset({"test", "tests", "testing", "fixtures", "__tests__"})
-_TEST_FILE = re.compile(r"^(test_.*|.*_test|conftest)\.py$")
 _EXAMPLE_SUFFIXES = (".example", ".sample", ".dist", ".tpl")
 
 
 def credential_context(path: str) -> str | None:
-    """``"test"`` for test code and fixtures, ``"example"`` for template configuration
-    files (``.env.example``), ``None`` for anything else."""
+    """``"test"`` for test code and fixtures (``is_test_code``), ``"example"`` for
+    template configuration files (``.env.example``), ``None`` for anything else."""
 
-    parts = Path(path).parts
-    if any(part in _TEST_DIRECTORIES for part in parts[:-1]) or _TEST_FILE.match(parts[-1]):
+    if is_test_code(Path(path).as_posix()):
         return "test"
-    if parts[-1].endswith(_EXAMPLE_SUFFIXES):
+    if Path(path).name.endswith(_EXAMPLE_SUFFIXES):
         return "example"
     return None
 

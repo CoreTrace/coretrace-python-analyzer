@@ -303,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
                         encoding="utf-8",
                     )
             else:
-                file_analysis = engine.analyze_file(SourceManager().load_file(args.path), plugin_roots)
+                file_analysis = engine.analyze_file(SourceManager().load_file(args.path), plugin_roots, root)
                 findings, coverage = file_analysis.findings, file_analysis.coverage
                 suppressed = file_analysis.suppressed
                 components = ()

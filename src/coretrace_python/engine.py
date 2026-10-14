@@ -72,6 +72,7 @@ from coretrace_python.findings import (
     Finding,
     Severity,
 )
+from coretrace_python.findings.context import code_context
 from coretrace_python.findings.refutation import RefutationAnalysis
 from coretrace_python.findings.suppressions import partition
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -326,8 +327,11 @@ def check(source: SourceFile, plugin_roots: Sequence[Path]) -> tuple[Finding, ..
     return analyze_file(source, plugin_roots).findings
 
 
-def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalysis:
-    """One file's findings and coverage, with every plugin found under ``plugin_roots``."""
+def analyze_file(source: SourceFile, plugin_roots: Sequence[Path], root: Path | None = None) -> FileAnalysis:
+    """One file's findings and coverage, with every plugin found under ``plugin_roots``.
+    The context of its findings is judged on its path from ``root``, the root of its
+    report: by default its own directory, as the command line reports a file checked
+    alone. A source that is not a file is judged on its name as given."""
 
     manager = _register_all(build_hir(source))
     registry = load_plugins(plugin_roots, manager)
@@ -339,6 +343,11 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path]) -> FileAnalys
     manager.provide(ProjectSummaries, SummaryIndex())
     manager.provide(RegisteredRoutes, _routes_of(manager))
     findings, supported = _check_module(manager, tuple(loaded.plugin for loaded in registry))
+    if source.path is None:
+        path: str | None = Path(str(source.source_id)).as_posix()
+    else:
+        path = _path_from(source.path, source.path.resolve().parent if root is None else root)
+    findings = tuple(_situated(f, path if f.span.source_id == source.source_id else None) for f in findings)
     functions = len(analyzable_functions(manager.module))
     coverage = Coverage((FileCoverage(str(source.source_id), "analysed", functions, len(supported)),))
     kept, suppressed = partition(findings, lambda sid: source.text if sid == source.source_id else None)
@@ -603,6 +612,8 @@ def analyze_project(
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings.extend(plugin.analyze_project(context))
+    # The context comes first, so that a refiner can read it.
+    findings = [_situated(finding, _path_from(finding.span.source_id, root)) for finding in findings]
     for plugin in all_plugins:
         if isinstance(plugin, ProjectPlugin):
             findings = list(apply_refinement(plugin, findings, plugin.refine(context, tuple(findings))))
@@ -685,6 +696,29 @@ def _located(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return str(path)
+
+
+def _path_from(source_id: object, root: Path) -> str | None:
+    """The path of the file ``source_id`` names from ``root``, the root of the report;
+    ``None`` for a file outside it."""
+
+    try:
+        return Path(str(source_id)).resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _situated(finding: Finding, path: str | None) -> Finding:
+    """``finding`` with the context of its code in its metadata (``code_context``), judged
+    on ``path``, its file's path from the root of the report. A context the rule gave the
+    finding stays: it is the rule's (#244)."""
+
+    if path is None or "context" in finding.metadata:
+        return finding
+    situation = code_context(path)
+    if situation is None:
+        return finding
+    return replace(finding, metadata={**finding.metadata, "context": situation})
 
 
 def _sourced(finding: Finding, origins: Origins) -> Finding:

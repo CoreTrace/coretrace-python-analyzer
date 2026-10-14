@@ -19,9 +19,11 @@ _LEVELS = {
     Severity.LOW: "note",
     Severity.INFO: "note",
 }
-# The kinds of injection a finding may carry, the only metadata a result exports: other
-# metadata, such as evidence, may quote what the analysed code holds.
+# The kinds of injection and the contexts of code a finding may carry, the only metadata
+# a result exports: other metadata, such as evidence, may quote what the analysed code
+# holds.
 _INJECTIONS = frozenset({"option", "command"})
+_CONTEXTS = frozenset({"test", "example"})
 
 
 def _artifact(report: Report, path: str) -> dict[str, str]:
@@ -56,9 +58,15 @@ def _result(
         "message": {"text": finding.message},
         "locations": [location],
     }
+    properties: dict[str, str] = {}
     injection = finding.metadata.get("injection")
     if injection in _INJECTIONS:
-        result["properties"] = {"injection": injection}
+        properties["injection"] = injection
+    context = finding.metadata.get("context")
+    if context in _CONTEXTS:
+        properties["context"] = context
+    if properties:
+        result["properties"] = properties
     if suppressed:
         result["suppressions"] = [{"kind": "inSource"}]
     if baseline_state is not None:
