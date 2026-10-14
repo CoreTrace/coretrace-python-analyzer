@@ -24,6 +24,7 @@ from coretrace_python.analysis import (
 from coretrace_python.analysis.provider import R
 from coretrace_python.dependency import Advisory, DependencyGraph, Policy
 from coretrace_python.findings import Finding
+from coretrace_python.findings.context import path_in_project
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import (
     CallGraph,
@@ -171,17 +172,27 @@ def apply_refinement(plugin: Plugin, original: Sequence[Finding], refined: Seque
 
 
 class PluginContext:
-    """What one plugin may see while analysing one module."""
+    """What one plugin may see while analysing one module. ``root`` is the root of the
+    analysis, when the engine knows one: a file's path in the project is read from it."""
 
     def __init__(
         self,
         manager: AnalysisManager,
         plugin: Plugin,
         functions: tuple[nodes.Function, ...] | None = None,
+        root: Path | None = None,
     ) -> None:
         self._manager = manager
         self._plugin = plugin
         self._functions = analyzable_functions(manager.module) if functions is None else functions
+        self._root = root
+
+    def path(self, source_id: object) -> str | None:
+        """The path of the file ``source_id`` names from the root of the analysis, what
+        tells test code apart (``findings.context``), not where the project sits; ``None``
+        for a file outside it (#253)."""
+
+        return path_in_project(source_id, self._root)
 
     @property
     def module(self) -> nodes.Module:
@@ -215,10 +226,12 @@ def run_plugins(
     manager: AnalysisManager,
     plugins: Iterable[Plugin],
     functions: tuple[nodes.Function, ...] | None = None,
+    root: Path | None = None,
 ) -> tuple[Finding, ...]:
-    """Run every plugin against one shared manager and concatenate their findings."""
+    """Run every plugin against one shared manager and concatenate their findings;
+    ``root`` is the root of the analysis (``PluginContext.path``)."""
 
     findings: list[Finding] = []
     for plugin in plugins:
-        findings.extend(plugin.analyze(PluginContext(manager, plugin, functions)))
+        findings.extend(plugin.analyze(PluginContext(manager, plugin, functions, root)))
     return tuple(findings)

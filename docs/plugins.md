@@ -324,6 +324,10 @@ any analysis result: `SSAAnalysis` (`coretrace_python.ir.ssa`) for the code,
 `TaintAnalysis` (`coretrace_python.taint`) for the flows, `RefutationAnalysis`
 (`coretrace_python.findings.refutation`) for their verdicts, `DependencyAnalysis`
 (`coretrace_python.dependency`) for the requirements. List what you read in `requires`.
+`ctx.path(source_id)` is the path of a file from the root of the analysis, the one
+`coretrace_python.findings.context` classifies (`is_test_code`, `code_context`,
+`code_origin`): judge test code on it, never on the absolute path, which depends on where
+the project sits. It is `None` for a file outside the root.
 
 ## Findings
 
