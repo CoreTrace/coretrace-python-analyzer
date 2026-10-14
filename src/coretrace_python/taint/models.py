@@ -66,9 +66,9 @@ class Sink:
     ``keywords`` restrict some kinds to the arguments they list: a SQL statement is the
     first argument of ``execute``, its parameter tuple is not a statement; the target of
     ``requests.get`` is its first argument or ``url=``, its body is no destination.
-    ``selects`` marks a sink whose argument chooses by name the code that runs, a module
-    or a file: only a check that limits the value to constants proves it, not a check of
-    its shape (#240)."""
+    ``selects`` marks a sink whose argument chooses by name the code that runs, a module,
+    a file or a directory code is loaded from: only a check that limits the value to
+    constants proves it, not a check of its shape (#240)."""
 
     symbol: SymbolId
     kinds: TaintKind

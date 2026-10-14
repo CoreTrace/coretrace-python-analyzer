@@ -74,6 +74,12 @@ class PythonStdlibModels(ModelPlugin):
                 ("runpy.run_path", "path_name"),
             )
         ),
+        # The directory imports are looked up in, and the site directory whose ``.pth``
+        # files run; the index of ``insert`` is data (#240).
+        Sink(_sym("sys.path.insert"), TaintKind.CODE, ((TaintKind.CODE, (1,)),), selects=True),
+        Sink(_sym("sys.path.append"), TaintKind.CODE, ((TaintKind.CODE, (0,)),), selects=True),
+        Sink(_sym("sys.path.extend"), TaintKind.CODE, ((TaintKind.CODE, (0,)),), selects=True),
+        Sink(_sym("site.addsitedir"), TaintKind.CODE, ((TaintKind.CODE, (0,)),), ((TaintKind.CODE, ("sitedir",)),), selects=True),
         Sink(_sym("builtins.open"), TaintKind.PATH),
         Sink(_sym("os.remove"), TaintKind.PATH),
         Sink(_sym("os.unlink"), TaintKind.PATH),
