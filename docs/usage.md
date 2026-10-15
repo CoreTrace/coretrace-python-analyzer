@@ -132,7 +132,11 @@ variable is not treated that way yet.
 | `plaintext-credential-storage` | A parameter named like a password stored in a database without hashing. Medium confidence, since a name is a hint. |
 | `exploitable-vulnerability` | An API affected by an advisory of a vulnerable requirement, see Dependencies. |
 
-Each flow is judged before it is reported. A dominating guard that proves the value
+Each flow is judged before it is reported. Code constant propagation proves can never
+run (under `if False:`, `while False:`) reports nothing, in the function and through the
+project functions that contain it: their summaries keep nothing of such code, neither a
+sink nor a returned, merged or stored value. Code that may run is kept, whatever decides
+it at run time, a parameter or a module-level name. A dominating guard that proves the value
 safe (`isdigit()`, membership in a constant allowlist, equality with a constant, a
 numeric value proven by `int()`, `len()` or bounded arithmetic, a validator such as
 `re.fullmatch`) refutes it and nothing is reported. A sink that selects code by name,
@@ -913,7 +917,10 @@ such as `metaclass=`, `with` targets of any assignable form and `match` with eve
 pattern kind. `finally` is modelled on the normal path only. A
 `nonlocal` write made by a nested function flows back to the enclosing variable when the
 enclosing function calls that nested function directly by name; a nested function passed
-around and called elsewhere keeps its writes to itself. Methods of module-level classes are
+around and called elsewhere keeps its writes to itself. Where the nested function may
+return without writing the name (no write on some path, a write constant propagation
+proves cannot run, or an exception before it), the variable keeps the value it had
+before the call, joined with what may be written; only a write on every path replaces it. Methods of module-level classes are
 analysed like functions.
 
 ## Looking at the intermediate representation

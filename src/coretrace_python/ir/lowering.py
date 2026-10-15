@@ -251,7 +251,8 @@ class _FunctionLowerer:
             return
         bindings = self.scopes.scope_for(nested).bindings
         for name in sorted(n for n, b in bindings.items() if b.kind is BindingKind.NONLOCAL):
-            written = self.emit(NonlocalResult(self.new_value(), node.span, call, name))
+            previous = self.expression(nodes.Name(name, node.span))
+            written = self.emit(NonlocalResult(self.new_value(), node.span, call, name, previous))
             self.store(nodes.Name(name, node.span), written)
 
     # ------------------------------------------------------------------ statements

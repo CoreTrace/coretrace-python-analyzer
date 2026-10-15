@@ -332,11 +332,15 @@ class Mutation:
 @dataclass(frozen=True)
 class NonlocalWrite:
     """What the function stores into its ``nonlocal`` ``name``: data of its parameters
-    and results of external symbols, written back to the caller's variable."""
+    and results of external symbols, written back to the caller's variable. ``kept``
+    says it may also return without writing it, on a path with no reachable write, so
+    the caller's variable may keep the value it had. A function with no record for a
+    ``nonlocal`` never writes it (#258)."""
 
     name: str
     dependencies: Dependencies
     externals: frozenset[SymbolId]
+    kept: bool = False
 
 
 @dataclass(frozen=True)
@@ -509,6 +513,11 @@ class _DependenceProblem(DataflowProblem[State]):
         return MappingProxyType(state)
 
     def flow(self, cfg: CFG, block_id: BlockId, incoming: Mapping[BlockId, State]) -> Mapping[BlockId, State]:
+        # A block constant propagation proves unreachable has no effect: no store, call,
+        # return or write, and nothing it would pass on reaches its successors or their
+        # phis (#258). A block that may run is kept, whatever decides it.
+        if not self.reachable(block_id):
+            return {}
         block = self.blocks[block_id]
         state = self.evaluate(block, incoming)
         exits = {target: state for target in block.exception_targets}
@@ -576,9 +585,9 @@ class _DependenceProblem(DataflowProblem[State]):
             given = self.graph.arguments_at(self.name, call.location)
             self.record(target.symbol, arguments, named, call.location, None, given)
             # Where its result is called: facts the summary keeps whatever the models;
-            # the consumer decides which kinds of a sink apply there (#240). An invocation
-            # is kept only when it and the call can run, by constant propagation.
-            if call.result is not None and self.runs(call):
+            # the consumer decides which kinds of a sink apply there (#240). The call runs,
+            # as its block is evaluated; an invocation is kept only when it can run too.
+            if call.result is not None:
                 for invocation in invocations(self.function, self.uses, call.result):
                     if self.runs(invocation):
                         self.record(target.symbol, arguments, named, call.location, None, given, invocation.location)
@@ -597,14 +606,17 @@ class _DependenceProblem(DataflowProblem[State]):
         return everything | state.get(call.callee, EMPTY)
 
     def nonlocal_result(self, instruction: NonlocalResult, state: dict[Key, Dep]) -> Dep:
-        """What the nested callee left in its nonlocal ``name``, in the caller's terms."""
+        """What the nested callee left in its nonlocal ``name``, in the caller's terms:
+        what it may write, and the value before the call wherever it may leave the name
+        unwritten, or when what it does is not known."""
 
+        previous = self.deep(instruction.previous, state)
         call = self.defs.get(instruction.call)
         if not isinstance(call, Call):
-            return EMPTY
+            return previous
         target = self.graph.target_at(self.name, call.location)
         if not isinstance(target, KnownFunction) or target.name not in self.table:
-            return EMPTY
+            return previous
         callee = self.table[target.name]
         arguments = tuple(self.deep(a, state) for a in call.arguments)
         made = self.defs.get(call.callee)
@@ -615,10 +627,9 @@ class _DependenceProblem(DataflowProblem[State]):
         keywords = EMPTY
         for value in (*call.starred, *(v for _, v in call.keywords)):
             keywords |= self.deep(value, state)
-        deps = EMPTY
-        for write in callee.nonlocal_writes:
-            if write.name != instruction.name:
-                continue
+        written = [write for write in callee.nonlocal_writes if write.name == instruction.name]
+        deps = previous if not written or any(write.kept for write in written) else EMPTY
+        for write in written:
             for index in write.dependencies:
                 deps |= arguments[index] if index < len(arguments) else keywords
             deps |= Dep(externals=write.externals)
@@ -680,6 +691,38 @@ class _DependenceProblem(DataflowProblem[State]):
     @cached_property
     def uses(self) -> DefUse:
         return def_use(self.function)
+
+    def may_return_unwritten(self, name: str) -> bool:
+        """Whether a path from the entry to a return writes no ``nonlocal`` ``name``,
+        through the blocks that can run. An exception edge leaves a block before its
+        write, so its handler is reached unwritten."""
+
+        writes = {
+            block.id
+            for block in self.function.blocks
+            if any(isinstance(i, SetNonlocal) and i.name == name for i in block.instructions)
+        }
+        pending = [self.function.entry]
+        seen: set[BlockId] = set()
+        while pending:
+            block_id = pending.pop()
+            if block_id in seen or not self.reachable(block_id):
+                continue
+            seen.add(block_id)
+            block = self.blocks[block_id]
+            pending.extend(block.exception_targets)
+            if block_id in writes:
+                continue
+            terminator = block.terminator
+            if isinstance(terminator, Return):
+                return True
+            if isinstance(terminator, Branch):
+                pending.extend((terminator.then_block, terminator.else_block))
+            elif isinstance(terminator, Jump):
+                pending.append(terminator.target)
+            elif isinstance(terminator, ForNext):
+                pending.extend((terminator.body, terminator.exit))
+        return False
 
     def runs(self, call: Call) -> bool:
         """Whether ``call`` can run: its block is reachable by constant propagation."""
@@ -769,7 +812,7 @@ def summarize(
     problem.mutated_globals = set()
     problem.nonlocal_stores = {}
     for block in function.blocks:
-        if solution.reached(block.id):
+        if solution.reached(block.id) and problem.reachable(block.id):
             problem.evaluate(block, solution.incoming(block.id))
     mutations: list[Mutation] = []
     for index, parameter in enumerate(function.parameters):
@@ -788,9 +831,8 @@ def summarize(
         mutations=tuple(mutations),
         side_effects=frozenset(problem.mutated_globals),
         nonlocal_writes=tuple(
-            NonlocalWrite(name, deps.parameters, deps.externals)
+            NonlocalWrite(name, deps.parameters, deps.externals, problem.may_return_unwritten(name))
             for name, deps in sorted(problem.nonlocal_stores.items())
-            if deps.parameters or deps.externals
         ),
         static=static,
         return_cleared=problem.returns.cleared,

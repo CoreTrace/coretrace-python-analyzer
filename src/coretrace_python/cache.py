@@ -42,7 +42,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import FileLocation, Location, SourceId, SourceSpan
 
-CACHE_FORMAT = 15
+CACHE_FORMAT = 16
 
 
 @dataclass(frozen=True)
@@ -300,7 +300,12 @@ def _encode_summary(summary: FunctionSummary) -> dict[str, Any]:
         ],
         "side_effects": sorted(summary.side_effects),
         "nonlocal_writes": [
-            {"name": w.name, "dependencies": sorted(w.dependencies), "externals": sorted(str(s) for s in w.externals)}
+            {
+                "name": w.name,
+                "dependencies": sorted(w.dependencies),
+                "externals": sorted(str(s) for s in w.externals),
+                "kept": w.kept,
+            }
             for w in summary.nonlocal_writes
         ],
         "static": summary.static,
@@ -328,7 +333,10 @@ def _decode_summary(data: Mapping[str, Any]) -> FunctionSummary:
         frozenset(_string(name) for name in data["side_effects"]),
         tuple(
             NonlocalWrite(
-                _string(w["name"]), _indices(w["dependencies"]), frozenset(SymbolId(_string(s)) for s in w["externals"])
+                _string(w["name"]),
+                _indices(w["dependencies"]),
+                frozenset(SymbolId(_string(s)) for s in w["externals"]),
+                bool(w["kept"]),
             )
             for w in data["nonlocal_writes"]
         ),

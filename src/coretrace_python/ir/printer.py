@@ -129,7 +129,10 @@ def _instruction(instruction: Instruction) -> str:
         suffix = "" if instruction.value is None else f" {_value(instruction.value)}"
         return f"{_value(instruction.result)} = yield{suffix}"
     if isinstance(instruction, NonlocalResult):
-        return f"{_value(instruction.result)} = nonlocal_result {_value(instruction.call)}, {instruction.name!r}"
+        return (
+            f"{_value(instruction.result)} = nonlocal_result {_value(instruction.call)}, {instruction.name!r}"
+            f" else {_value(instruction.previous)}"
+        )
     if isinstance(instruction, SetAttr):
         return f"set_attr {_value(instruction.object)}, {instruction.attribute!r}, {_value(instruction.value)}"
     if isinstance(instruction, SetItem):
