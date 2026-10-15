@@ -48,7 +48,7 @@ from coretrace_python.interprocedural import (
     cleared_by,
     project_symbol,
 )
-from coretrace_python.ir.defuse import DefUse, def_use
+from coretrace_python.ir.defuse import DefUse, def_use, invocations
 from coretrace_python.ir.lowering import analyzable_functions, is_body_function
 from coretrace_python.ir.model import (
     BasicBlock,
@@ -119,7 +119,11 @@ class Taint:
 @dataclass(frozen=True)
 class TaintFlow:
     """``location`` is the call in the analysed function; when the sink is reached
-    inside a known callee, ``through`` names it and ``sink_location`` points at the sink."""
+    inside a known callee, ``through`` names it and ``sink_location`` points at the sink.
+    A sink kind that requires its call's result to be called (``getattr``'s name) gives one
+    flow per invocation: ``invoked_at`` is that invocation, ``sink_location`` the call that
+    selected what it runs, and ``location`` the invocation itself in the analysed function,
+    so that the checks made before it are judged (#240)."""
 
     source: Source
     sink: Sink
@@ -134,6 +138,7 @@ class TaintFlow:
     # (None, None) unpacked with ``*`` or ``**``; ``f(x, key=x)`` passes it twice. The
     # keyword ``KEYWORD_NAMES`` says the value's keys are the keyword names of the call.
     passed_as: frozenset[tuple[int | None, str | None]] = frozenset()
+    invoked_at: SourceSpan | None = None
 
 
 Key = Value | HeapLocation
@@ -529,19 +534,17 @@ class _TaintProblem(DataflowProblem[State]):
         given = self.graph.arguments_at(self.name, call.location)
         sink = self.guarded(self.models.sink(symbol), given)
         if sink is not None:
-            for position, argument in enumerate(call.arguments):
-                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, position, given)
-            for argument in call.starred:
-                self.report(flows, sink, self.rendered(argument, state), argument, call, None, None, None, given)
-            for name, argument in call.keywords:
-                self.report(
-                    flows, sink, self.rendered(argument, state), argument, call, None, None, None, given, keyword=name
-                )
-                if name is None:
-                    # The keys of a ``**mapping`` are keyword names of the call: only an
-                    # advisory asks who chooses a name, no other sink reads one.
-                    keys = self.keyed(argument, state).without(~TaintKind.ADVISORY)
-                    self.report(flows, sink, keys, argument, call, None, None, None, given, keyword=KEYWORD_NAMES)
+            # The unconditional kinds at the call; those that require its result to be
+            # called at each invocation of it, where the flow is anchored (#240).
+            selection = sink.applying(invoked=False)
+            if selection is not None:
+                self.report_arguments(flows, selection, call, call, None, None, state, given)
+            invoked = sink.applying(invoked=True)
+            if invoked is not None and call.result is not None:
+                for invocation in invocations(self.function, self.uses, call.result):
+                    self.report_arguments(
+                        flows, invoked, call, invocation, call.location, invocation.location, state, given
+                    )
         self.template_filters(symbol, call, given, state, flows)
         cleared = self.clearing.clears(symbol, given)
         if cleared:
@@ -552,6 +555,44 @@ class _TaintProblem(DataflowProblem[State]):
     @cached_property
     def uses(self) -> DefUse:
         return def_use(self.function)
+
+    def report_arguments(
+        self,
+        flows: list[TaintFlow],
+        sink: Sink,
+        call: Call,
+        anchor: Call,
+        sink_location: SourceSpan | None,
+        invoked_at: SourceSpan | None,
+        state: Mapping[Key, Taint],
+        given: Arguments,
+    ) -> None:
+        """The flows of ``call``'s arguments into ``sink``, anchored at ``anchor``: the call
+        itself, or an invocation of its result."""
+
+        for position, argument in enumerate(call.arguments):
+            self.report(
+                flows, sink, self.rendered(argument, state), argument, anchor, None, sink_location, position, given,
+                invoked_at=invoked_at,
+            )
+        for argument in call.starred:
+            self.report(
+                flows, sink, self.rendered(argument, state), argument, anchor, None, sink_location, None, given,
+                invoked_at=invoked_at,
+            )
+        for name, argument in call.keywords:
+            self.report(
+                flows, sink, self.rendered(argument, state), argument, anchor, None, sink_location, None, given,
+                keyword=name, invoked_at=invoked_at,
+            )
+            if name is None:
+                # The keys of a ``**mapping`` are keyword names of the call: only an
+                # advisory asks who chooses a name, no other sink reads one.
+                keys = self.keyed(argument, state).without(~TaintKind.ADVISORY)
+                self.report(
+                    flows, sink, keys, argument, anchor, None, sink_location, None, given,
+                    keyword=KEYWORD_NAMES, invoked_at=invoked_at,
+                )
 
     def template_filters(
         self, symbol: SymbolId, call: Call, given: Arguments, state: Mapping[Key, Taint], flows: list[TaintFlow]
@@ -673,17 +714,24 @@ class _TaintProblem(DataflowProblem[State]):
 
         for reached in summary.external_calls:
             sink = self.guarded(self.models.sink(reached.symbol), reached.arguments)
+            # A record of an invocation carries the kinds that require it, the record of
+            # the call itself the others (#240).
+            sink = None if sink is None else sink.applying(invoked=reached.invoked_at is not None)
             if sink is None:
                 continue
             for position, (deps, cleared) in enumerate(reached.positional()):
                 taint, witness = mapped(deps, cleared)
                 if witness is not None:
-                    self.report(flows, sink, taint, witness, call, through, reached.location, position, reached.arguments)
+                    self.report(
+                        flows, sink, taint, witness, call, through, reached.location, position, reached.arguments,
+                        invoked_at=reached.invoked_at,
+                    )
             for name, deps, cleared in reached.named():
                 taint, witness = mapped(deps, cleared)
                 if witness is not None:
                     self.report(
-                        flows, sink, taint, witness, call, through, reached.location, None, reached.arguments, keyword=name
+                        flows, sink, taint, witness, call, through, reached.location, None, reached.arguments,
+                        keyword=name, invoked_at=reached.invoked_at,
                     )
         for mutation in summary.mutations:
             if mutation.parameter < len(values):
@@ -712,6 +760,7 @@ class _TaintProblem(DataflowProblem[State]):
         position: int | None = None,
         arguments: Arguments | None = None,
         keyword: str | None = None,
+        invoked_at: SourceSpan | None = None,
     ) -> None:
         reaching = taint.kinds & sink.kinds_at(position, keyword)
         if not reaching:
@@ -733,6 +782,7 @@ class _TaintProblem(DataflowProblem[State]):
                     call.location if sink_location is None else sink_location,
                     arguments,
                     frozenset({(position, keyword)}),
+                    invoked_at,
                 )
             )
 

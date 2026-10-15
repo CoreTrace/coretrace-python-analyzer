@@ -15,7 +15,7 @@ values of the context entries it reads.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from types import MappingProxyType
@@ -24,6 +24,7 @@ from typing import ClassVar, TypeVar
 from coretrace_python.abstract import (
     ATTRIBUTES,
     ELEMENTS,
+    ConstantPropagation,
     HeapAnalysis,
     HeapFacts,
     HeapLocation,
@@ -41,7 +42,7 @@ from coretrace_python.interprocedural.callgraph import (
     UnknownTarget,
     _is_staticmethod,
 )
-from coretrace_python.ir.defuse import DefUse, def_use
+from coretrace_python.ir.defuse import DefUse, def_use, invocations
 from coretrace_python.ir.model import (
     BasicBlock,
     Branch,
@@ -301,6 +302,10 @@ class ExternalCall:
     # What was cleared on the way to each argument and keyword, in the same order.
     argument_cleared: tuple[Cleared, ...] = ()
     keyword_cleared: tuple[Cleared, ...] = ()
+    # The call of the result this record is for, ``None`` for the call itself: one record
+    # per invocation, the call at ``location`` (``getattr``'s) staying the selection, so
+    # that a consumer applies a sink's conditional kinds once at each invocation (#240).
+    invoked_at: SourceSpan | None = None
 
     def positional(self) -> Iterable[tuple[Dependencies, Cleared]]:
         """Each positional argument's dependencies, with what was cleared on their way."""
@@ -398,7 +403,7 @@ class SummaryTable:
 
 Key = Value | HeapLocation
 State = Mapping[Key, Dep]
-_CallKey = tuple[SymbolId, SourceSpan, SourceSpan | None]
+_CallKey = tuple[SymbolId, SourceSpan, SourceSpan | None, SourceSpan | None]
 
 
 class _DependenceProblem(DataflowProblem[State]):
@@ -414,9 +419,11 @@ class _DependenceProblem(DataflowProblem[State]):
         heap: HeapFacts | None = None,
         clearing: Clearing | None = None,
         templates: TemplateCalls | None = None,
+        reachable: Callable[[BlockId], bool] | None = None,
     ) -> None:
         self.name = name
         self.function = function
+        self.reachable = reachable or (lambda block: True)
         self.graph = graph
         self.table = table
         self.project = project or {}
@@ -426,6 +433,9 @@ class _DependenceProblem(DataflowProblem[State]):
         self.blocks = {block.id: block for block in function.blocks}
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
+        }
+        self.block_of: dict[int, BlockId] = {
+            id(i): block.id for block in function.blocks for i in block.instructions
         }
         self.external: dict[_CallKey, ExternalCall] = {}
         self.returns: Dep = EMPTY
@@ -565,6 +575,13 @@ class _DependenceProblem(DataflowProblem[State]):
                 return self.known(project, arguments, keywords, everything, call, state, bound)
             given = self.graph.arguments_at(self.name, call.location)
             self.record(target.symbol, arguments, named, call.location, None, given)
+            # Where its result is called: facts the summary keeps whatever the models;
+            # the consumer decides which kinds of a sink apply there (#240). An invocation
+            # is kept only when it and the call can run, by constant propagation.
+            if call.result is not None and self.runs(call):
+                for invocation in invocations(self.function, self.uses, call.result):
+                    if self.runs(invocation):
+                        self.record(target.symbol, arguments, named, call.location, None, given, invocation.location)
             self.record_filters(target.symbol, call, given, state)
             cleared = everything.clearing(self.clearing.clears(target.symbol, given))
             return cleared | Dep(externals=frozenset({target.symbol}))
@@ -650,6 +667,7 @@ class _DependenceProblem(DataflowProblem[State]):
                 reached.location,
                 call.location,
                 reached.arguments,
+                reached.invoked_at,
             )
         made = self.defs.get(call.callee)
         values = (*receiver, *call.arguments, *(made.captured if isinstance(made, MakeFunction) else ()))
@@ -662,6 +680,11 @@ class _DependenceProblem(DataflowProblem[State]):
     @cached_property
     def uses(self) -> DefUse:
         return def_use(self.function)
+
+    def runs(self, call: Call) -> bool:
+        """Whether ``call`` can run: its block is reachable by constant propagation."""
+
+        return self.reachable(self.block_of[id(call)])
 
     def record_filters(self, symbol: SymbolId, call: Call, given: Arguments, state: Mapping[Key, Dep]) -> None:
         """The filter calls a render makes, each at the filter in its template, with what
@@ -692,8 +715,9 @@ class _DependenceProblem(DataflowProblem[State]):
         location: SourceSpan,
         call_site: SourceSpan | None,
         given: Arguments,
+        invoked_at: SourceSpan | None = None,
     ) -> None:
-        key = (symbol, location, call_site)
+        key = (symbol, location, call_site, invoked_at)
         previous = self.external.get(key)
         if previous is not None:
             arguments = tuple(
@@ -713,6 +737,7 @@ class _DependenceProblem(DataflowProblem[State]):
             given,
             tuple(a.cleared for a in arguments),
             tuple(deps.cleared for _, deps in keywords),
+            invoked_at,
         )
 
 
@@ -734,8 +759,9 @@ def summarize(
     static: bool = False,
     clearing: Clearing | None = None,
     templates: TemplateCalls | None = None,
+    reachable: Callable[[BlockId], bool] | None = None,
 ) -> FunctionSummary:
-    problem = _DependenceProblem(name, function, graph, table, project, heap, clearing, templates)
+    problem = _DependenceProblem(name, function, graph, table, project, heap, clearing, templates, reachable)
     solution = solve(problem, cfg)
     problem.external = {}
     problem.returns = EMPTY
@@ -778,6 +804,7 @@ class SummaryAnalysis(Analysis[SummaryTable]):
             CallGraphAnalysis,
             SSAAnalysis,
             CFGAnalysis,
+            ConstantPropagation,
             ProjectSummaries,
             HeapAnalysis,
             ClearingAnalysis,
@@ -792,7 +819,7 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         clearing = ctx.get(ClearingAnalysis)
         templates = ctx.get(TemplateCallsAnalysis)
         table: dict[str, FunctionSummary] = {}
-        supported: dict[str, tuple[FunctionIR, CFG, HeapFacts]] = {}
+        supported: dict[str, tuple[FunctionIR, CFG, HeapFacts, Callable[[BlockId], bool]]] = {}
         for name, function in graph.definitions.items():
             if name in graph.unsupported:
                 count = len(function.parameters)
@@ -802,14 +829,17 @@ class SummaryAnalysis(Analysis[SummaryTable]):
                     ctx.get(SSAAnalysis, function),
                     ctx.get(CFGAnalysis, function),
                     ctx.get(HeapAnalysis, function),
+                    ctx.get(ConstantPropagation, function).reachable,
                 )
                 table[name] = FunctionSummary(name, len(function.parameters), NONE, ())
         changed = True
         while changed:
             changed = False
-            for name, (ssa, cfg, heap) in supported.items():
+            for name, (ssa, cfg, heap, reachable) in supported.items():
                 static = _is_staticmethod(graph.definitions[name])
-                updated = summarize(name, ssa, cfg, graph, table, project, heap, static, clearing, templates)
+                updated = summarize(
+                    name, ssa, cfg, graph, table, project, heap, static, clearing, templates, reachable
+                )
                 if updated != table[name]:
                     table[name] = updated
                     changed = True

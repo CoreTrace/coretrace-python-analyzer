@@ -80,6 +80,15 @@ class PythonStdlibModels(ModelPlugin):
         Sink(_sym("sys.path.append"), TaintKind.CODE, ((TaintKind.CODE, (0,)),), selects=True),
         Sink(_sym("sys.path.extend"), TaintKind.CODE, ((TaintKind.CODE, (0,)),), selects=True),
         Sink(_sym("site.addsitedir"), TaintKind.CODE, ((TaintKind.CODE, (0,)),), ((TaintKind.CODE, ("sitedir",)),), selects=True),
+        # The name of the attribute ``getattr`` selects, when what it selects is called;
+        # the object and the default are data (#240).
+        Sink(
+            _sym("builtins.getattr"),
+            TaintKind.CODE,
+            ((TaintKind.CODE, (1,)),),
+            selects=True,
+            requires_called_result=TaintKind.CODE,
+        ),
         Sink(_sym("builtins.open"), TaintKind.PATH),
         Sink(_sym("os.remove"), TaintKind.PATH),
         Sink(_sym("os.unlink"), TaintKind.PATH),

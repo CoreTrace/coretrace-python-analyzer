@@ -171,6 +171,13 @@
       "function": "safe_extract"
     },
     {
+      "file": "luigi/server.py",
+      "line": 101,
+      "rule": "code-injection",
+      "function": "get",
+      "verdict": "hotspot"
+    },
+    {
       "file": "test/_test_ftp.py",
       "line": 43,
       "rule": "hardcoded-credential",

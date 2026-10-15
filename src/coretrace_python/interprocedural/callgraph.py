@@ -270,6 +270,19 @@ def derive_symbols(
     return symbols
 
 
+def called_symbol(symbol: SymbolId, made: Instruction | None, table: SymbolTable) -> SymbolId:
+    """What calling a value that denotes ``symbol`` calls. A symbol, or an attribute of
+    one, is the callable itself. The result of a call (entered with ``with`` or awaited)
+    and an item denote where they come from, so that their attributes resolve
+    (``tarfile.open(p).extractall``, ``request.files['f'].save``), but calling one calls
+    what the call returned or the container held, not the symbol it comes from: its
+    ``__call__``, so its arguments are never read as the original call's (#240)."""
+
+    if isinstance(made, Call | WithEnter | Await | GetItem):
+        return table.attribute(symbol, "__call__")
+    return symbol
+
+
 # Conditions name short constants (``True``, ``None``, a mode); a log message or a query
 # passed as an argument is not recorded, so call sites stay small in the cache.
 MAX_CONSTANT_LENGTH = 64
@@ -504,7 +517,7 @@ def resolve_targets(
                     inherited[instruction.result] = table.attribute(base, instruction.attribute)
     symbols = derive_symbols(function, table, inherited)
     targets: dict[Value, Target] = {
-        value: ExternalSymbol(symbol) for value, symbol in symbols.items()
+        value: ExternalSymbol(called_symbol(symbol, defs.get(value), table)) for value, symbol in symbols.items()
     }
     for block in function.blocks:
         for instruction in block.instructions:

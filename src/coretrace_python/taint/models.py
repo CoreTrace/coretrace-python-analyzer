@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Flag, auto
 from types import MappingProxyType
 from typing import ClassVar
@@ -68,13 +68,17 @@ class Sink:
     ``requests.get`` is its first argument or ``url=``, its body is no destination.
     ``selects`` marks a sink whose argument chooses by name the code that runs, a module,
     a file or a directory code is loaded from: only a check that limits the value to
-    constants proves it, not a check of its shape (#240)."""
+    constants proves it, not a check of its shape (#240). ``requires_called_result`` holds
+    the kinds that apply only when the call's result is itself called, ``getattr``'s name
+    choosing the attribute the call runs: the engine applies them at each invocation of
+    the result, the other kinds at the call (#240)."""
 
     symbol: SymbolId
     kinds: TaintKind
     positions: tuple[tuple[TaintKind, tuple[int, ...]], ...] = ()
     keywords: tuple[tuple[TaintKind, tuple[str, ...]], ...] = ()
     selects: bool = False
+    requires_called_result: TaintKind = TaintKind.NONE
 
     def kinds_at(self, position: int | None, keyword: str | None = None) -> TaintKind:
         """The kinds that must not reach the argument at ``position`` or passed as
@@ -95,15 +99,29 @@ class Sink:
 
     def merged(self, other: Sink) -> Sink:
         """This sink with ``other``'s kinds, positions and keywords added; it selects code
-        by name when either does, whatever the order the declarations merge in."""
+        by name when either does, and a kind requires the called result only when every
+        declaration carrying it does, whatever the order the declarations merge in."""
 
+        unconditional = (self.kinds & ~self.requires_called_result) | (other.kinds & ~other.requires_called_result)
         return Sink(
             self.symbol,
             self.kinds | other.kinds,
             self.positions + other.positions,
             self.keywords + other.keywords,
             self.selects or other.selects,
+            (self.requires_called_result | other.requires_called_result) & ~unconditional,
         )
+
+    def applying(self, invoked: bool) -> Sink | None:
+        """This sink as it applies to one record of its call: to the call itself
+        (``invoked`` false), its unconditional kinds; to one invocation of the call's
+        result, the kinds that require it. ``None`` when no kind applies."""
+
+        conditional = self.kinds & self.requires_called_result
+        kinds = conditional if invoked else self.kinds & ~self.requires_called_result
+        if not kinds:
+            return None
+        return replace(self, kinds=kinds, requires_called_result=conditional & kinds)
 
 
 @dataclass(frozen=True)
