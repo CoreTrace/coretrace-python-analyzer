@@ -9,7 +9,7 @@ from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import SourceSpan
 
 # Bumped whenever the instruction set or its meaning changes; part of the cache key.
-PYIR_SCHEMA_VERSION = 1
+PYIR_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -245,12 +245,15 @@ class Yield(Operands):
 @dataclass(frozen=True)
 class NonlocalResult(Operands):
     """The value a nested function left in its ``nonlocal`` ``name`` when ``call``
-    returned; the caller stores it back into its own variable."""
+    returned; the caller stores it back into its own variable. ``previous`` is the value
+    that variable held before the call, which it keeps wherever the function may leave
+    the name unwritten (``NonlocalWrite.kept``)."""
 
     result: Value
     location: SourceSpan
     call: Value
     name: str
+    previous: Value
 
 
 @dataclass(frozen=True)

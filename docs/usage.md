@@ -917,7 +917,10 @@ such as `metaclass=`, `with` targets of any assignable form and `match` with eve
 pattern kind. `finally` is modelled on the normal path only. A
 `nonlocal` write made by a nested function flows back to the enclosing variable when the
 enclosing function calls that nested function directly by name; a nested function passed
-around and called elsewhere keeps its writes to itself. Methods of module-level classes are
+around and called elsewhere keeps its writes to itself. Where the nested function may
+return without writing the name (no write on some path, a write constant propagation
+proves cannot run, or an exception before it), the variable keeps the value it had
+before the call, joined with what may be written; only a write on every path replaces it. Methods of module-level classes are
 analysed like functions.
 
 ## Looking at the intermediate representation

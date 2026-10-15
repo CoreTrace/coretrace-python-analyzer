@@ -464,14 +464,17 @@ class _TaintProblem(DataflowProblem[State]):
         return taint
 
     def nonlocal_result(self, instruction: NonlocalResult, state: dict[Key, Taint]) -> Taint:
-        """The taint a nested callee left in its nonlocal ``name``, in the caller's terms."""
+        """The taint a nested callee left in its nonlocal ``name``, in the caller's terms:
+        what it may write, and the value before the call wherever it may leave the name
+        unwritten (``NonlocalWrite.kept``), or when what it does is not known."""
 
+        previous = self.deep(instruction.previous, state)
         call = self.defs.get(instruction.call)
         if not isinstance(call, Call):
-            return Taint.none()
+            return previous
         target = self.graph.target_at(self.name, call.location)
         if not isinstance(target, KnownFunction):
-            return Taint.none()
+            return previous
         summary = self.summaries.summary(target.name)
         arguments = (
             *(self.deep(r, state) for r in (() if summary.static else self.receiver(call, target.name))),
@@ -481,10 +484,9 @@ class _TaintProblem(DataflowProblem[State]):
         keywords = Taint.none()
         for value in (*call.starred, *(v for _, v in call.keywords)):
             keywords = keywords.join(self.deep(value, state))
-        result = Taint.none()
-        for write in summary.nonlocal_writes:
-            if write.name != instruction.name:
-                continue
+        written = [write for write in summary.nonlocal_writes if write.name == instruction.name]
+        result = previous if not written or any(write.kept for write in written) else Taint.none()
+        for write in written:
             for index in sorted(write.dependencies):
                 result = result.join(arguments[index] if index < len(arguments) else keywords)
             for symbol in sorted(write.externals, key=str):
