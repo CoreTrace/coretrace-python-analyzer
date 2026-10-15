@@ -211,9 +211,20 @@ class _Judge:
     # ------------------------------------------------------------------ guards
 
     def sink_block(self, flow: TaintFlow) -> BlockId | None:
+        return self.call_block(flow.location)
+
+    def selection_block(self, flow: TaintFlow) -> BlockId | None:
+        """The block of the call that selected what an invocation runs, when both are in
+        this function (``getattr``'s, #240); ``None`` for any other flow."""
+
+        if flow.invoked_at is None or flow.through is not None or flow.sink_location is None:
+            return None
+        return self.call_block(flow.sink_location)
+
+    def call_block(self, location: SourceSpan) -> BlockId | None:
         for block in self.function.blocks:
             for instruction in block.instructions:
-                if isinstance(instruction, Call) and instruction.location == flow.location:
+                if isinstance(instruction, Call) and instruction.location == location:
                     return block.id
         return None
 
@@ -469,9 +480,14 @@ class _Judge:
         chain = self.closure(flow.argument) | {flow.argument}
         # A sink that selects code by name is proven only by constants (``Sink.selects``).
         selects = flow.sink.selects
+        # A flow anchored at an invocation is judged at its selection too: a check proving
+        # the selected name there proves it for every invocation, past a join (#240).
+        selection = self.selection_block(flow)
+        sites = (sink,) if selection is None else (selection, sink)
         proven: dict[Value, str] = {
             value: f"numeric value within {interval}"
-            for value, interval in self.ranges.at(sink).items()
+            for site in sites
+            for value, interval in self.ranges.at(site).items()
             if value in chain and not selects
         }
         mentions: dict[Value, int] = {}
@@ -480,7 +496,7 @@ class _Judge:
             if self.authorization is not None
             else None
         )
-        for guard in self.guards(sink):
+        for guard in dict.fromkeys(guard for site in sites for guard in self.guards(site)):
             found, mentioned = self.interpret(guard.condition, guard.truth)
             for value, (reason, kinds, exact) in found.items():
                 # A check proving some kinds only leaves the others reaching the sink.
@@ -533,7 +549,10 @@ def judge_flows(
     verdicts = []
     for flow in taint.flows:
         sink = judge.sink_block(flow)
-        verdicts.append(judge.judge(flow, sink is not None and sink in reachable))
+        selection = judge.selection_block(flow)
+        # Both sites of a flow anchored at an invocation must be able to run (#240).
+        runs = sink is not None and sink in reachable and (selection is None or selection in reachable)
+        verdicts.append(judge.judge(flow, runs))
     return Verdicts(tuple(verdicts))
 
 
