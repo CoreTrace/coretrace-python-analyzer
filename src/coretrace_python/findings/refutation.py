@@ -56,6 +56,7 @@ from coretrace_python.ir.model import (
     GetIter,
     Global,
     Instruction,
+    Phi,
     Symbol,
     UnaryOp,
     Value,
@@ -154,6 +155,9 @@ class _Judge:
         self.defs: dict[Value, Instruction] = {
             i.result: i for block in function.blocks for i in block.instructions if i.result
         }
+        self.defined_in: dict[Value, BlockId] = {
+            i.result: block.id for block in function.blocks for i in block.instructions if i.result
+        }
         self._closures: dict[Value, frozenset[Value]] = {}
         self._uses: dict[Value, list[Instruction]] | None = None
 
@@ -222,11 +226,45 @@ class _Judge:
         return self.call_block(flow.sink_location)
 
     def call_block(self, location: SourceSpan) -> BlockId | None:
+        found = self.call_at(location)
+        return None if found is None else found[0]
+
+    def call_at(self, location: SourceSpan) -> tuple[BlockId, Call] | None:
         for block in self.function.blocks:
             for instruction in block.instructions:
                 if isinstance(instruction, Call) and instruction.location == location:
-                    return block.id
+                    return block.id, instruction
         return None
+
+    def carried_across_iterations(self, flow: TaintFlow) -> bool:
+        """Whether the callable an invocation runs reaches it from its selection across a
+        loop's back edge, through the phis that merge it: selected in an earlier iteration,
+        with an earlier instance of the name than the one a check at the invocation tests
+        (#240)."""
+
+        invocation = self.call_at(flow.location)
+        selection = None if flow.sink_location is None else self.call_at(flow.sink_location)
+        if invocation is None or selection is None or selection[1].result is None:
+            return False
+        selected = selection[1].result
+        pending: list[tuple[Value, bool]] = [(invocation[1].callee, False)]
+        seen: set[tuple[Value, bool]] = set()
+        while pending:
+            value, crossed = pending.pop()
+            if (value, crossed) in seen:
+                continue
+            seen.add((value, crossed))
+            if value == selected:
+                if crossed:
+                    return True
+                continue
+            made = self.defs.get(value)
+            if isinstance(made, Phi):
+                header = self.defined_in[value]
+                for incoming, predecessor in made.incoming:
+                    # An edge from a block the phi's block dominates closes a loop.
+                    pending.append((incoming, crossed or self.tree.dominates(header, predecessor)))
+        return False
 
     def reaches(self, start: BlockId, target: BlockId, avoiding: BlockId) -> bool:
         seen: set[BlockId] = set()
@@ -484,9 +522,13 @@ class _Judge:
         # the selected name there proves it for every invocation, past a join (#240).
         selection = self.selection_block(flow)
         sites = (sink,) if selection is None else (selection, sink)
+        # The sites whose checks prove the selected name: both, unless the callable
+        # reaches its invocation across a back edge, where a check tests the name of
+        # another iteration than the one that selected it.
+        proving = (selection,) if selection is not None and self.carried_across_iterations(flow) else sites
         proven: dict[Value, str] = {
             value: f"numeric value within {interval}"
-            for site in sites
+            for site in proving
             for value, interval in self.ranges.at(site).items()
             if value in chain and not selects
         }
@@ -496,11 +538,15 @@ class _Judge:
             if self.authorization is not None
             else None
         )
-        for guard in dict.fromkeys(guard for site in sites for guard in self.guards(site)):
+        guards: dict[_Guard, bool] = {}
+        for site in sites:
+            for guard in self.guards(site):
+                guards[guard] = guards.get(guard, False) or site in proving
+        for guard, proves in guards.items():
             found, mentioned = self.interpret(guard.condition, guard.truth)
             for value, (reason, kinds, exact) in found.items():
                 # A check proving some kinds only leaves the others reaching the sink.
-                if value in chain and not flow.kinds & ~kinds and (exact or not selects):
+                if proves and value in chain and not flow.kinds & ~kinds and (exact or not selects):
                     proven.setdefault(value, reason)
             examined = self.examined(guard.condition, mentioned, flow.argument, chain)
             for origin in origins:
