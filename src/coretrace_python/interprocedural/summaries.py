@@ -509,6 +509,11 @@ class _DependenceProblem(DataflowProblem[State]):
         return MappingProxyType(state)
 
     def flow(self, cfg: CFG, block_id: BlockId, incoming: Mapping[BlockId, State]) -> Mapping[BlockId, State]:
+        # A block constant propagation proves unreachable has no effect: no store, call,
+        # return or write, and nothing it would pass on reaches its successors or their
+        # phis (#258). A block that may run is kept, whatever decides it.
+        if not self.reachable(block_id):
+            return {}
         block = self.blocks[block_id]
         state = self.evaluate(block, incoming)
         exits = {target: state for target in block.exception_targets}
@@ -576,9 +581,9 @@ class _DependenceProblem(DataflowProblem[State]):
             given = self.graph.arguments_at(self.name, call.location)
             self.record(target.symbol, arguments, named, call.location, None, given)
             # Where its result is called: facts the summary keeps whatever the models;
-            # the consumer decides which kinds of a sink apply there (#240). An invocation
-            # is kept only when it and the call can run, by constant propagation.
-            if call.result is not None and self.runs(call):
+            # the consumer decides which kinds of a sink apply there (#240). The call runs,
+            # as its block is evaluated; an invocation is kept only when it can run too.
+            if call.result is not None:
                 for invocation in invocations(self.function, self.uses, call.result):
                     if self.runs(invocation):
                         self.record(target.symbol, arguments, named, call.location, None, given, invocation.location)
@@ -769,7 +774,7 @@ def summarize(
     problem.mutated_globals = set()
     problem.nonlocal_stores = {}
     for block in function.blocks:
-        if solution.reached(block.id):
+        if solution.reached(block.id) and problem.reachable(block.id):
             problem.evaluate(block, solution.incoming(block.id))
     mutations: list[Mutation] = []
     for index, parameter in enumerate(function.parameters):
