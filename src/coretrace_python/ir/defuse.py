@@ -10,7 +10,7 @@ from typing import ClassVar
 from coretrace_python.analysis import AnalysisContext, AnyAnalysis, FunctionAnalysis
 from coretrace_python.cfg import BlockId
 from coretrace_python.hir import nodes
-from coretrace_python.ir.model import ForNext, FunctionIR, Value
+from coretrace_python.ir.model import Call, ForNext, FunctionIR, Phi, Value
 from coretrace_python.ir.ssa import SSAAnalysis
 
 
@@ -63,6 +63,31 @@ def def_use(function: FunctionIR) -> DefUse:
         for operand in terminator.operands():
             uses.setdefault(operand, []).append(Use(block.id, None))
     return DefUse(definitions, {value: tuple(found) for value, found in uses.items()})
+
+
+def invocations(function: FunctionIR, uses: DefUse, value: Value) -> tuple[Call, ...]:
+    """The calls of ``function`` whose callee is ``value``, directly or through the phis
+    that merge it on branches and loops, each once, in source order: where a callable
+    value is invoked. A value stored, returned or passed on is not followed."""
+
+    blocks = {block.id: block for block in function.blocks}
+    found: dict[int, Call] = {}
+    seen = {value}
+    pending = [value]
+    while pending:
+        current = pending.pop()
+        for use in uses.uses(current):
+            if use.index is None:
+                continue
+            instruction = blocks[use.block].instructions[use.index]
+            if isinstance(instruction, Phi) and instruction.result is not None and instruction.result not in seen:
+                seen.add(instruction.result)
+                pending.append(instruction.result)
+            elif isinstance(instruction, Call) and instruction.callee == current:
+                found[id(instruction)] = instruction
+    return tuple(
+        sorted(found.values(), key=lambda call: (call.location.start_line, call.location.start_column))
+    )
 
 
 class DefUseAnalysis(FunctionAnalysis[DefUse]):

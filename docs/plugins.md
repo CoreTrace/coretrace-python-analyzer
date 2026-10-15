@@ -169,7 +169,7 @@ class BottleModels(ModelPlugin):
 | Model | Declares |
 |---|---|
 | `Source(symbol, label, kinds=ALL)` | A call or attribute whose value is attacker-controlled; `label` names it in messages (`http`, `stdin`, `argv`, `http-response`). `kinds` restricts what it can inject. Text input, such as a form field, a header or a URL parameter, carries `TEXT_KINDS`, every kind but `NOSQL`: a string cannot hold a query operator. |
-| `Sink(symbol, kinds, positions=(), keywords=())` | A call dangerous for `kinds`. `positions` limits a kind to the given argument indexes, and `keywords` to the given keyword names; a restricted kind reaches only the arguments listed there. SQL sinks read the statement only, and the SSRF sinks of HTTP clients read the URL, by position or as `url=`. A starred argument or `**kwargs` reaches no restricted kind. |
+| `Sink(symbol, kinds, positions=(), keywords=(), selects=False, requires_called_result=NONE)` | A call dangerous for `kinds`. `positions` limits a kind to the given argument indexes, and `keywords` to the given keyword names; a restricted kind reaches only the arguments listed there. SQL sinks read the statement only, and the SSRF sinks of HTTP clients read the URL, by position or as `url=`. A starred argument or `**kwargs` reaches no restricted kind. `selects` marks an argument that chooses by name the code that runs (a module, a file, a directory, an attribute): only a check limiting it to constants proves it. `requires_called_result` lists the kinds that apply only when the call's result is itself called, as for `getattr`'s name: the engine reports them at each invocation of the result, the other kinds at the call. |
 | `Sanitizer(symbol, kinds)` | A call whose result is safe for `kinds`, including when the call is inside a project function the data goes through. |
 | `EntryPoint(symbol, label, kinds=ALL, inputs=None)` | A decorator or a class base whose functions receive their parameters as `label` input, such as `flask.Flask.route`; or a project function or class named by its own symbol (`python.app.handlers.main`), as an integration reading a deployment declaration names a Lambda handler. `inputs` limits the parameters that are input to those positions, after `self` for a method: a handler's event, not its context. |
 | `TypedParameter(symbol, label, kinds=ALL)` | A class whose annotated parameters carry `label` input, such as Django's `HttpRequest`. |
@@ -187,7 +187,9 @@ class BottleModels(ModelPlugin):
 Two plugins may describe the same symbol. An identical model is registered once; two
 `Sink` models merge their kinds, positions and keywords, so a plugin can add `SQL` to a sink
 another plugin declared for `COMMAND`; any other difference is a conflict that stops
-the analysis with a `ModelError` naming both plugins.
+the analysis with a `ModelError` naming both plugins. A merged sink `selects` when either
+does, and a kind requires the called result only when every declaration carrying it
+does: an unconditional declaration is never weakened, whatever the order.
 
 A plugin may also read models from the project it analyses: `project_models(self, root)`
 returns them, from a file at `root` for instance. It is called once per directory check,

@@ -1,8 +1,9 @@
 """Code injection: attacker-controlled input reaching a CODE sink, such as the code
 ``eval`` or ``exec`` runs, the module ``importlib.import_module``, ``__import__`` or
-``runpy.run_module`` imports, the file ``runpy.run_path`` runs, or the directory
-``sys.path`` and ``site.addsitedir`` load code from. ``dangerous-eval`` reports every
-``eval`` or ``exec``; this rule reports the calls attacker input reaches.
+``runpy.run_module`` imports, the file ``runpy.run_path`` runs, the directory
+``sys.path`` and ``site.addsitedir`` load code from, or the attribute ``getattr`` selects
+when it is called. ``dangerous-eval`` reports every ``eval`` or ``exec``; this rule reports
+the calls attacker input reaches.
 
 An import runs the top-level code of a module the input chooses among those that can be
 found, and a script path runs the file the input chooses: execution is possible, and
@@ -11,7 +12,9 @@ that. A constant package prefix (``"app.plugins." + name``) confines an import t
 modules of that package: a hotspot. A directory added to ``sys.path`` runs code only
 when a later import resolves there: a hotspot. ``site.addsitedir`` runs the import lines
 of the directory's ``.pth`` files during the call: a vulnerability, exploitable when the
-directory holds files the attacker controls, as the finding states."""
+directory holds files the attacker controls, as the finding states. The attribute
+``getattr`` selects runs at each call of its result, where the finding is placed: what
+runs depends on what the object exposes, a hotspot."""
 
 from __future__ import annotations
 
@@ -34,6 +37,7 @@ _IMPORTS = frozenset(
 _RUN_PATH = SymbolId("python.runpy.run_path")
 _IMPORT_PATHS = frozenset(SymbolId(f"python.sys.path.{name}") for name in ("insert", "append", "extend"))
 _SITE_DIRECTORY = SymbolId("python.site.addsitedir")
+_GETATTR = SymbolId("python.builtins.getattr")
 
 
 class CodeInjectionPlugin(TaintDetector):
@@ -59,6 +63,20 @@ class CodeInjectionPlugin(TaintDetector):
                     "import resolves to a module the attacker placed there",
                 )
             return Assessment(verdict, self.severity, "Untrusted import path")
+        if symbol == _GETATTR:
+            if verdict.status is Status.VULNERABILITY:
+                verdict = Verdict(
+                    flow,
+                    Status.HOTSPOT,
+                    "the input chooses the attribute called: what runs depends on what the object exposes",
+                )
+            lines: dict[str, str] = {}
+            if flow.invoked_at is not None and flow.sink_location is not None:
+                lines = {
+                    "selected_line": str(flow.sink_location.start_line),
+                    "invoked_line": str(flow.invoked_at.start_line),
+                }
+            return Assessment(verdict, self.severity, "Untrusted attribute call", lines)
         if symbol == _SITE_DIRECTORY:
             if verdict.status is Status.VULNERABILITY:
                 verdict = Verdict(
