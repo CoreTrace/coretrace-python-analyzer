@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.23.0 (2026-10-16)
+
+### Compatibility and migration
+
+- The cache format changes (16) and the PyIR schema version is 2: caches built by an earlier version miss once. Every cache key also holds the engine version, so this release reanalyses every module of a cached project, which delivers the fixes below to it.
+- `code-injection` reports new sinks (dynamic imports, `runpy`, the import path, `getattr` calls), so findings may appear once; each keeps the rule id `code-injection` and is titled by what the input chooses (#240). Refutation proves more allowlists and fewer mutated collections (#239), `unsafe-xml` messages and confidences change (#242), and a sink in code that cannot run, or a call to a returned callable, is no longer reported (#258, #240). Baselines recorded before should be recorded again after review.
+- Findings carry new metadata, exported in JSON and as SARIF result properties: `context` (`test`, besides a rule's own `example`) for test code (#244), and `origin: vendored` for code under `third_party`, `third-party`, `vendor` or `vendored` (#243). Vendored code is still analysed and reported; the metadata changes no verdict.
+- A project located under a directory named `test`, `tests`, `testing`, `fixtures` or `__tests__` no longer has every credential at low confidence: `hardcoded-credential` and `config-secrets` judge a file's path in the project (#253).
+- Plugin API, all additive:
+  - `SymbolCallDetector.describe` returns a `CallReport` (message and confidence) per call (#242);
+  - `PluginContext.path(source_id)` gives a file's path from the root of the analysis, and `run_plugins` and `analyze_file` take that root (#253, #244);
+  - `Sink` gains `selects` and `requires_called_result`, and `Sink.applying` (#240);
+  - summaries gain `ExternalCall.invoked_at` and `NonlocalWrite.kept`, flows `TaintFlow.invoked_at`, and `NonlocalResult` its `previous` value (#240, #258);
+  - `coretrace_python.findings.context` classifies paths (`is_test_code`, `code_context`, `code_origin`, `path_in_project`).
+
+### Code injection
+
+- The module `importlib.import_module`, `__import__` or `runpy.run_module` imports and the file `runpy.run_path` runs are sinks, by position or keyword; the package of a relative name, the globals and the run name are data. Titled `Untrusted module import` and `Untrusted script execution`; a constant package prefix gives a hotspot (#240).
+- The directory `sys.path.insert`, `append` or `extend` adds is a hotspot, `Untrusted import path`, as code runs only when a later import resolves there; `site.addsitedir` is a vulnerability, `Untrusted site directory`, its evidence stating that it runs the `.pth` files of a directory the attacker must control. Writes to `sys.path` that are not calls are not covered (#240).
+- `getattr(obj, name)(...)` with a name the input chooses is a hotspot, `Untrusted attribute call`, reported at each call of the result, with `selected_line` and `invoked_line`, in the function and through project functions. A result that is only read, returned or stored before it is called is not reported (#240).
+- These sinks are proven only by a check that limits the value to constants (membership in a constant allowlist, equality with a constant); a check of its shape (`isidentifier()`, `isalnum()`, `re.fullmatch`) leaves a hotspot. For `getattr`, a check where it selects counts past a join, a check before the call counts in the same loop iteration only, and nothing is reported when the selection or the call cannot run (#240).
+- Calling the result of a call, or an item of it, calls what the call returned: its arguments are no longer read as the call's, so `eval('lambda x: x')(data)` or `importlib.import_module('plugins')(data)` reports nothing (#240).
+
+### Refutation
+
+- A membership test proves the value when every member is a constant that cannot change before the test: a tuple, list or set display, or a dict display by its keys, directly or through `.keys()`; `frozenset`, `set`, `tuple` or `list` of one of these; a module-level tuple or `frozenset` of constants bound once and never rebound. A list, set or dict of the function counts only while the function only reads it; a module-level one never does (#239).
+- A lookup in a dict display gives one of its values, of what was stored in it since, or the default, never a key: input that only selects the entry is no longer passed on (#239).
+
+### XML
+
+- `unsafe-xml` states what each parser family risks: entity amplification with Expat older than 2.7.2 for the standard library, which reads no local file; external entities in lxml before 5.0, and in `iterparse` and `ETCompatXMLParser` before 6.1 (CVE-2026-41066); `resolve_entities=True` whatever the version, `'internal'` before 5.0. A parser given `resolve_entities=False` is not reported; XML content the project wrote itself, passed to a function that parses its argument as the document, is reported at low confidence (#242).
+
+### Analysis
+
+- A project function's summary keeps nothing of the code constant propagation proves cannot run: no sink, returned, merged or stored value reaches its callers (#258).
+- A `nonlocal` a nested function may leave unwritten (no write on some path, a write that cannot run, an exception before it) keeps the value the caller's variable held before the call, joined with what may be written (#258).
+- Warnings Python raises while parsing an analysed source (an invalid escape sequence) no longer reach the analyzer's standard error (#241).
+
+### Performance
+
+- `-j N` (`--jobs N`) analyses independent modules in `N` processes, `0` for one per core the process may run on; the report does not depend on it (#205). Each worker prepares the project once and reads the summaries a component imports from the cache or a directory of the run's own, instead of receiving them with every task: on healthchecks, `-j 8` takes 7.9–9.2 s against 15.3–15.5 s with `-j 1` (#245).
+
+### Documentation
+
+- `docs/usage.md` documents the new sinks and their limits, constant allowlists, the `context` and `origin` metadata, unreachable code and `nonlocal` writes, and re-measured performance; `docs/plugins.md` documents `describe`, `PluginContext.path` and the new `Sink` fields.
+
 ## 0.22.0 (2026-10-08)
 
 ### Compatibility and migration
