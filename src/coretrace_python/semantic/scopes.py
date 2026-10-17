@@ -281,6 +281,8 @@ class _Collector:
             for decorator in node.decorators:
                 self.expression(decorator, scope)
             for parameter in node.parameters:
+                if parameter.annotation is not None:
+                    self.expression(parameter.annotation, scope)
                 if parameter.default is not None:
                     self.expression(parameter.default, scope)
             scope.bind(node.name, BindingKind.FUNCTION, node.span)
