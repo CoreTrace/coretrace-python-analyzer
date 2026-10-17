@@ -318,6 +318,30 @@ class ExternalCall:
         return ((name, deps, c) for (name, deps), c in _aligned(self.keyword_dependencies, self.keyword_cleared))
 
 
+def _canonical_external_calls(calls: Iterable[ExternalCall]) -> tuple[ExternalCall, ...]:
+    """Order by call identity so recursive summaries reach stable equality.
+
+    A callee's external calls get copied into its callers, potentially in a
+    different insertion order on each fixpoint round even when the content
+    is already stable. Comparing unsorted tuples can therefore loop forever.
+    """
+    def span_key(span: SourceSpan | None) -> tuple[str, int, int, int, int]:
+        if span is None:
+            return ("", 0, 0, 0, 0)
+        return (
+            span.source_id.value, span.start_line, span.start_column,
+            span.end_line or 0, span.end_column or 0,
+        )
+
+    return tuple(sorted(
+        calls,
+        key=lambda call: (
+            span_key(call.location), span_key(call.call_site),
+            span_key(call.invoked_at), call.symbol.canonical_name,
+        ),
+    ))
+
+
 @dataclass(frozen=True)
 class Mutation:
     """What the function stores into ``field`` of its ``parameter``: data of other
@@ -826,7 +850,7 @@ def summarize(
         name,
         len(function.parameters),
         problem.returns.parameters,
-        tuple(problem.external.values()),
+        _canonical_external_calls(problem.external.values()),
         return_externals=problem.returns.externals,
         mutations=tuple(mutations),
         side_effects=frozenset(problem.mutated_globals),
