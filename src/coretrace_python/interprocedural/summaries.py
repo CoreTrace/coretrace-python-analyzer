@@ -863,6 +863,21 @@ def summarize(
     )
 
 
+def starting_summaries(graph: CallGraph) -> dict[str, FunctionSummary]:
+    """The summary each function of ``graph`` starts from in a fixpoint: a supported
+    function reaches nothing yet, the bottom its summary grows from; an unsupported one
+    passes every parameter to its return value and keeps that summary."""
+
+    table: dict[str, FunctionSummary] = {}
+    for name, function in graph.definitions.items():
+        count = len(function.parameters)
+        if name in graph.unsupported:
+            table[name] = FunctionSummary(name, count, frozenset(range(count)), (), True)
+        else:
+            table[name] = FunctionSummary(name, count, NONE, ())
+    return table
+
+
 class SummaryAnalysis(Analysis[SummaryTable]):
     name: ClassVar[str] = "interprocedural.summaries"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset(
@@ -884,20 +899,17 @@ class SummaryAnalysis(Analysis[SummaryTable]):
         project = ctx.get(ProjectSummaries).summaries
         clearing = ctx.get(ClearingAnalysis)
         templates = ctx.get(TemplateCallsAnalysis)
-        table: dict[str, FunctionSummary] = {}
-        supported: dict[str, tuple[FunctionIR, CFG, HeapFacts, Callable[[BlockId], bool]]] = {}
-        for name, function in graph.definitions.items():
-            if name in graph.unsupported:
-                count = len(function.parameters)
-                table[name] = FunctionSummary(name, count, frozenset(range(count)), (), True)
-            else:
-                supported[name] = (
-                    ctx.get(SSAAnalysis, function),
-                    ctx.get(CFGAnalysis, function),
-                    ctx.get(HeapAnalysis, function),
-                    ctx.get(ConstantPropagation, function).reachable,
-                )
-                table[name] = FunctionSummary(name, len(function.parameters), NONE, ())
+        table = starting_summaries(graph)
+        supported: dict[str, tuple[FunctionIR, CFG, HeapFacts, Callable[[BlockId], bool]]] = {
+            name: (
+                ctx.get(SSAAnalysis, function),
+                ctx.get(CFGAnalysis, function),
+                ctx.get(HeapAnalysis, function),
+                ctx.get(ConstantPropagation, function).reachable,
+            )
+            for name, function in graph.definitions.items()
+            if name not in graph.unsupported
+        }
         changed = True
         while changed:
             changed = False

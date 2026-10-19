@@ -96,6 +96,7 @@ from coretrace_python.interprocedural import (
     discover_sources,
     name_modules,
     project_symbol,
+    starting_summaries,
 )
 from coretrace_python.ir import PYIR_SCHEMA_VERSION
 from coretrace_python.ir.defuse import DefUseAnalysis
@@ -831,7 +832,20 @@ def _analyse_managers(
 
     counts = Counter(manager.module.name for manager in managers.values())
     names = {name: manager.module.name for name, manager in managers.items() if counts[manager.module.name] == 1}
-    index = seed
+    # The members' functions start from the summaries ``SummaryAnalysis`` starts from.
+    # Left out, a call from one member to another is a call to an unknown symbol on the
+    # first iteration and a project call on the next: around a cycle of modules, the
+    # iteration then shifts by one module each time and never settles (#261).
+    index = SummaryIndex(
+        {
+            **seed.summaries,
+            **{
+                project_symbol(module, function): summary
+                for name, module in names.items()
+                for function, summary in starting_summaries(managers[name].get(CallGraphAnalysis)).items()
+            },
+        }
+    )
     for manager in managers.values():
         manager.provide(ProjectSummaries, index)
     for _ in range(MAX_PROJECT_ITERATIONS):
