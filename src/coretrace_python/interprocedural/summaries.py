@@ -791,6 +791,22 @@ def _aligned(dependencies: tuple[_T, ...], cleared: tuple[Cleared, ...]) -> Iter
     return zip(dependencies, (*cleared, *(() for _ in range(missing))), strict=True)
 
 
+def _span_order(span: SourceSpan | None) -> tuple[object, ...]:
+    """Source spans in source order, an absent one first."""
+
+    if span is None:
+        return ()
+    return (span.source_id, span.start_line, span.start_column, span.end_line or 0, span.end_column or 0)
+
+
+def _record_order(call: ExternalCall) -> tuple[object, ...]:
+    """External calls in source order, by the key ``record`` merges them on. A summary
+    compared in its fixpoint must not depend on the order in which the rounds met its
+    calls: around a call cycle, that order can rotate forever (#261)."""
+
+    return (_span_order(call.location), _span_order(call.call_site), _span_order(call.invoked_at), call.symbol)
+
+
 def summarize(
     name: str,
     function: FunctionIR,
@@ -826,7 +842,7 @@ def summarize(
         name,
         len(function.parameters),
         problem.returns.parameters,
-        tuple(problem.external.values()),
+        tuple(sorted(problem.external.values(), key=_record_order)),
         return_externals=problem.returns.externals,
         mutations=tuple(mutations),
         side_effects=frozenset(problem.mutated_globals),

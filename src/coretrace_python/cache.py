@@ -42,7 +42,7 @@ from coretrace_python.interprocedural import (
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.source import FileLocation, Location, SourceId, SourceSpan
 
-CACHE_FORMAT = 16
+CACHE_FORMAT = 17
 
 
 @dataclass(frozen=True)
