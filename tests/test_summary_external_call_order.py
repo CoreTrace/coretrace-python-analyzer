@@ -13,7 +13,6 @@ import textwrap
 import unittest
 from pathlib import Path
 
-
 SOURCE = textwrap.dedent("""\
     def a(x):
         b(x)
@@ -61,7 +60,8 @@ class ExternalCallOrderTests(unittest.TestCase):
 
     def test_external_call_order_is_independent_of_insertion_order(self):
         from coretrace_python.interprocedural.summaries import (
-            ExternalCall, _canonical_external_calls,
+            ExternalCall,
+            _canonical_external_calls,
         )
         from coretrace_python.semantic.symbols import SymbolId
         from coretrace_python.source import SourceId, SourceSpan
@@ -93,7 +93,8 @@ class ExternalCallOrderTests(unittest.TestCase):
 
     def test_order_is_stable_across_call_site_and_symbol_ties(self):
         from coretrace_python.interprocedural.summaries import (
-            ExternalCall, _canonical_external_calls,
+            ExternalCall,
+            _canonical_external_calls,
         )
         from coretrace_python.semantic.symbols import SymbolId
         from coretrace_python.source import SourceId, SourceSpan
