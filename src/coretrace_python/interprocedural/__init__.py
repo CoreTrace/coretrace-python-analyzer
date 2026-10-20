@@ -40,6 +40,7 @@ from coretrace_python.interprocedural.summaries import (
     TemplateCallsAnalysis,
     TemplateFilter,
     cleared_by,
+    starting_summaries,
 )
 
 __all__ = [
@@ -78,4 +79,5 @@ __all__ = [
     "discover_sources",
     "name_modules",
     "project_symbol",
+    "starting_summaries",
 ]

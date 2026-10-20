@@ -96,6 +96,7 @@ from coretrace_python.interprocedural import (
     discover_sources,
     name_modules,
     project_symbol,
+    starting_summaries,
 )
 from coretrace_python.ir import PYIR_SCHEMA_VERSION
 from coretrace_python.ir.defuse import DefUseAnalysis
@@ -184,7 +185,6 @@ _PROJECT_DEPENDANT_NAMES = frozenset(
 _PROJECT_DEPENDANTS: frozenset[AnyAnalysis] = frozenset(
     a for a in ALL_ANALYSES if a.name in _PROJECT_DEPENDANT_NAMES
 )
-MAX_PROJECT_ITERATIONS = 20
 
 
 class ProjectSummariesUpdated(TransformationPass):
@@ -831,10 +831,33 @@ def _analyse_managers(
 
     counts = Counter(manager.module.name for manager in managers.values())
     names = {name: manager.module.name for name, manager in managers.items() if counts[manager.module.name] == 1}
-    index = seed
+    # The members' functions start from the summaries ``SummaryAnalysis`` starts from.
+    # Left out, a call from one member to another is a call to an unknown symbol on the
+    # first iteration and a project call on the next: around a cycle of modules, the
+    # iteration then shifts by one module each time and never settles (#261).
+    index = SummaryIndex(
+        {
+            **seed.summaries,
+            **{
+                project_symbol(module, function): summary
+                for name, module in names.items()
+                for function, summary in starting_summaries(managers[name].get(CallGraphAnalysis)).items()
+            },
+        }
+    )
     for manager in managers.values():
         manager.provide(ProjectSummaries, index)
-    for _ in range(MAX_PROJECT_ITERATIONS):
+    # Iterated until the index settles, with no bound: stopped earlier, summaries that
+    # started empty would miss what later iterations add, a dependency still on its way
+    # reading as no taint. It settles because each iteration can only add: the index holds
+    # the same symbols from the start, and in every round of a module's fixpoint the rules
+    # that read the index join what they read (a call's dependencies and records, heap
+    # stores, merges), while those that do not join (a nonlocal record not summarized yet,
+    # ``kept``, reachability, ``unsupported``, ``static``) depend on the code and the round
+    # only. Each round's table thus grows with the index, the fixpoint too, in a finite
+    # domain: the parameters, symbols and call records of the code. A rule reading the
+    # index without joining would break this, and the loop's termination with it.
+    while True:
         updated = SummaryIndex(
             {
                 **seed.summaries,
