@@ -10,8 +10,9 @@ returned. A summary now lists its external calls in source order, whatever the o
 which the rounds met them.
 
 The modules of an import cycle iterate their summaries together. Their own functions
-now start from the summaries a module's fixpoint starts from, so the iteration grows to
-its fixpoint instead of running to its bound.
+now start from the summaries a module's fixpoint starts from, and the iteration goes on
+until the index settles, however deep the cycle: no bound stops it while a dependency is
+still on its way.
 """
 
 from __future__ import annotations
@@ -20,16 +21,15 @@ import dataclasses
 import json
 import subprocess
 import sys
-from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
 from coretrace_python import engine
-from coretrace_python.analysis import AnalysisManager
 from coretrace_python.cfg import CFGAnalysis
 from coretrace_python.frontend import build_hir
-from coretrace_python.interprocedural import CallGraphAnalysis, FunctionSummary, SummaryAnalysis
+from coretrace_python.interprocedural import CallGraphAnalysis, SummaryAnalysis
 from coretrace_python.interprocedural.summaries import summarize
 from coretrace_python.ir.ssa import SSAAnalysis
 from coretrace_python.source import SourceManager
@@ -194,8 +194,7 @@ def test_a_summary_does_not_depend_on_the_order_of_its_callee_s_external_calls()
 # The modules of an import cycle are analysed together, their summaries iterated until
 # the index of the project's summaries stops changing. ``THREE_FUNCTIONS`` across three
 # modules: a call from one member to another used to be a call to an unknown symbol on
-# the first iteration and a project call on the next, and the iteration never settled
-# before its bound.
+# the first iteration and a project call on the next, and the iteration never settled.
 CYCLE_OF_MODULES = {
     "pkg/__init__.py": "",
     "pkg/a.py": "import os\n\nfrom pkg import b\n\n\ndef a(x):\n    b.b(x)\n    os.system(x)\n\n\ndef run():\n    a(input())\n",
@@ -204,23 +203,62 @@ CYCLE_OF_MODULES = {
 }
 
 
-def test_a_call_cycle_across_modules_converges_before_the_bound(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def project_findings(tmp_path: Path, files: Mapping[str, str]) -> list[tuple[str, str, int, str | None]]:
+    """The findings of ``--check`` on a project of several files, by path in the project,
+    failing the test instead of waiting when the analysis does not end."""
+
     root = tmp_path / "project"
-    for path, text in CYCLE_OF_MODULES.items():
+    for path, text in files.items():
         (root / path).parent.mkdir(parents=True, exist_ok=True)
         (root / path).write_text(text, encoding="utf-8")
-    extractions: Counter[str] = Counter()
-    summaries_of = engine._summaries_of
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "coretrace_python", "--check", str(root), "--format", "json"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"the analysis did not end within {TIMEOUT} s")
+    report = json.loads(completed.stdout)
+    return [
+        (f["rule_id"], f["location"]["path"], f["location"]["line"], f["metadata"].get("verdict"))
+        for f in report["findings"]
+    ]
 
-    def counted(manager: AnalysisManager) -> dict[str, FunctionSummary]:
-        extractions[manager.module.name] += 1
-        return summaries_of(manager)
 
-    monkeypatch.setattr(engine, "_summaries_of", counted)
-    analysis = engine.analyze_project(root, [engine.BUNDLED_PLUGINS])
+def test_a_call_cycle_across_modules_converges(tmp_path: Path) -> None:
+    assert project_findings(tmp_path, CYCLE_OF_MODULES) == [("command-injection", "pkg/a.py", 12, "vulnerability")]
 
-    # Once per iteration, and once more for the module's results.
-    assert max(extractions[name] for name in ("pkg.a", "pkg.b", "pkg.c")) <= engine.MAX_PROJECT_ITERATIONS
-    assert [
-        (f.rule_id, Path(str(f.span.source_id)).name, f.span.start_line, f.metadata["verdict"]) for f in analysis.findings
-    ] == [("command-injection", "a.py", 12, "vulnerability")]
+
+# Starting from empty summaries, an index that has not settled yet misses what later
+# iterations add: stopped there, a dependency still on its way would read as no taint.
+# A cycle deeper than the 20 iterations the loop used to stop at.
+DEPTH = 30
+
+
+def deep_cycle(last: str, caller: str) -> dict[str, str]:
+    """``DEPTH`` modules in an import cycle, each ``m<i>.f`` returning ``m<i+1>.f(x)``,
+    the last doing ``last`` with ``x`` first; ``pkg/app.py`` holds ``caller``."""
+
+    files = {"pkg/__init__.py": "", "pkg/app.py": caller}
+    for i in range(DEPTH):
+        following = (i + 1) % DEPTH
+        own = last if i == DEPTH - 1 else ""
+        files[f"pkg/m{i}.py"] = f"import os\n\nfrom pkg import m{following}\n\n\ndef f(x):\n{own}    return m{following}.f(x)\n"
+    return files
+
+
+def test_a_parameter_returned_at_the_end_of_a_deep_cycle_reaches_the_caller(tmp_path: Path) -> None:
+    caller = "import os\n\nfrom pkg import m0\n\n\ndef run():\n    os.system(m0.f(input()))\n"
+    findings = project_findings(tmp_path, deep_cycle("    if x:\n        return x\n", caller))
+
+    assert findings == [("command-injection", "pkg/app.py", 7, "vulnerability")]
+
+
+def test_a_sink_at_the_end_of_a_deep_cycle_is_reported_at_the_caller(tmp_path: Path) -> None:
+    caller = "from pkg import m0\n\n\ndef run():\n    m0.f(input())\n"
+    findings = project_findings(tmp_path, deep_cycle("    if x:\n        os.system(x)\n", caller))
+
+    assert findings == [("command-injection", "pkg/app.py", 5, "vulnerability")]

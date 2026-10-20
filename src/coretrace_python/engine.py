@@ -185,7 +185,6 @@ _PROJECT_DEPENDANT_NAMES = frozenset(
 _PROJECT_DEPENDANTS: frozenset[AnyAnalysis] = frozenset(
     a for a in ALL_ANALYSES if a.name in _PROJECT_DEPENDANT_NAMES
 )
-MAX_PROJECT_ITERATIONS = 20
 
 
 class ProjectSummariesUpdated(TransformationPass):
@@ -848,7 +847,17 @@ def _analyse_managers(
     )
     for manager in managers.values():
         manager.provide(ProjectSummaries, index)
-    for _ in range(MAX_PROJECT_ITERATIONS):
+    # Iterated until the index settles, with no bound: stopped earlier, summaries that
+    # started empty would miss what later iterations add, a dependency still on its way
+    # reading as no taint. It settles because each iteration can only add: the index holds
+    # the same symbols from the start, and in every round of a module's fixpoint the rules
+    # that read the index join what they read (a call's dependencies and records, heap
+    # stores, merges), while those that do not join (a nonlocal record not summarized yet,
+    # ``kept``, reachability, ``unsupported``, ``static``) depend on the code and the round
+    # only. Each round's table thus grows with the index, the fixpoint too, in a finite
+    # domain: the parameters, symbols and call records of the code. A rule reading the
+    # index without joining would break this, and the loop's termination with it.
+    while True:
         updated = SummaryIndex(
             {
                 **seed.summaries,
