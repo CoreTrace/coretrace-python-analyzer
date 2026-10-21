@@ -197,6 +197,10 @@ It establishes escaping only when all of the following hold:
   or an attribute name.
 - No Python file of the project sets `autoescape` to `False`.
 
+Start tags and their attributes are read as a browser's HTML tokenizer reads them, in time
+linear in the size of the template. A tag a template leaves open at its end is checked
+too: once the template is included, it runs into the markup that follows.
+
 The analyzer never assumes escaping where it cannot read the template. That covers a
 template file it cannot read, a template named by an expression, a template found
 through a `DIRS` entry not named `templates`, one shipped by an installed package, one
