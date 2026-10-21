@@ -140,8 +140,20 @@ _URL_ATTRIBUTES = frozenset(
 # fixed: no scheme such as ``javascript:`` can follow.
 _SAFE_URL_PREFIX = re.compile(r"(?:/(?!/)|\.{1,2}/|[#?]|https?://[^/?#\x00\x01]+[/?#])")
 _QUOTED = r"\"[^\"]*\"|'[^']*'"
-_ATTRIBUTE = re.compile(rf"([^\s\"'>/=]+)(?:\s*=\s*({_QUOTED}|[^\s\"'=<>`]+))?")
-_START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*)((?:\s*[^\s\"'>/=]+(?:\s*=\s*(?:{_QUOTED}|[^\s\"'=<>`]+))?)*)\s*/?>")
+# A start tag read as the HTML tokenizer reads one: the tag name runs to whitespace, ``/``
+# or ``>``; between attributes, whitespace and a stray ``/`` are skipped; an attribute
+# name, which may begin with ``=``, runs to whitespace, ``/``, ``>`` or ``=``; a value
+# follows ``=``, quoted, or running to whitespace or ``>``. Each token is told apart by
+# its first character, so matching is linear, where splitting runs between attributes
+# took exponential time (#263). A tag the text ends in before its ``>`` still matches,
+# to the end: a template may be included before more markup, which the tag then runs
+# into, so its attributes are checked like any other's. A value that opens a quote
+# stays quoted to the matching quote or, for the same reason, to the end of the text: it
+# is never read again as an unquoted value.
+_ATTRIBUTE_NAME = r"(?:=[^\s/>=]*+|[^\s/>=]++)"
+_ATTRIBUTE_VALUE = r"(?:\"[^\"]*+(?:\"|\Z)|'[^']*+(?:'|\Z)|[^\s>]*+)"
+_ATTRIBUTE = re.compile(rf"({_ATTRIBUTE_NAME})(?:\s*+=\s*+({_ATTRIBUTE_VALUE}))?")
+_START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\s*+=\s*+{_ATTRIBUTE_VALUE})?)*+)>?")
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*>(.*?)</\1\s*>", re.DOTALL | re.IGNORECASE)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _END_TAG = re.compile(r"</[A-Za-z][^>]*>")
