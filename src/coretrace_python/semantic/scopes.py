@@ -328,6 +328,10 @@ class _Collector:
                 self.target(target, scope)
         elif isinstance(node, nodes.Declaration):
             scope.bind(node.name, BindingKind.LOCAL, node.span)
+            if node.annotation is not None:
+                # PEP 526: the annotation of a local variable is never evaluated.
+                evaluated = not self.postponed and scope.kind is not ScopeKind.FUNCTION
+                self.annotation(node.annotation, scope, evaluated)
         elif not isinstance(node, nodes.Pass | nodes.Break | nodes.Continue):
             raise TypeError(f"unknown statement: {node!r}")
 

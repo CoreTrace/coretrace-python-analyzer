@@ -2,9 +2,9 @@
 
 An annotation evaluated when its definition runs binds the targets of its assignment
 expressions there, as any expression does. One that is never evaluated, under
-``from __future__ import annotations`` (PEP 563), binds nothing there: a builtin it
-names, such as ``eval``, stays the builtin. Either way, its lambdas and comprehensions
-introduce scopes of their own, which keep their bindings.
+``from __future__ import annotations`` (PEP 563) or on a local variable (PEP 526), binds
+nothing there: a builtin it names, such as ``eval``, stays the builtin. Either way, its
+lambdas and comprehensions introduce scopes of their own, which keep their bindings.
 """
 
 from __future__ import annotations
@@ -99,3 +99,32 @@ def test_a_builtin_named_in_a_postponed_annotation_stays_the_builtin_in_a_projec
     (tmp_path / "app.py").write_text(SHADOWING, encoding="utf-8")
 
     assert located(engine.analyze_project(tmp_path, PLUGINS).findings) == EVAL_FINDINGS
+
+
+def test_a_lambda_or_comprehension_in_a_variable_annotation_leaves_a_project_analysable(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        "settings: (lambda: 1)\n\n\ndef run():\n    pending: [v for v in ()]\n    eval(input())\n", encoding="utf-8"
+    )
+
+    assert located(engine.analyze_project(tmp_path, PLUGINS).findings) == {("code-injection", 6), ("dangerous-eval", 6)}
+
+
+def test_a_module_variable_annotation_binds_where_it_stands() -> None:
+    scopes = analyze("settings: [(found := i) for i in (1,)]\n")
+
+    assert "found" in scopes.module_scope.bindings
+    assert child(scopes, scopes.module_scope, "<listcomp>").parent == scopes.module_scope.id
+
+
+def test_a_local_variable_annotation_binds_nothing_in_its_function() -> None:
+    scopes = analyze("def run():\n    pending: [(found := i) for i in (1,)]\n")
+    run = child(scopes, scopes.module_scope, "run")
+
+    assert "found" not in run.bindings
+    assert child(scopes, run, "<listcomp>").parent == run.id
+
+
+def test_a_postponed_module_variable_annotation_binds_nothing() -> None:
+    scopes = analyze(POSTPONED + "settings: [(found := i) for i in (1,)]\n")
+
+    assert "found" not in scopes.module_scope.bindings
