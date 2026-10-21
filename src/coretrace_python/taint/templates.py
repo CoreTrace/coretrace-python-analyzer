@@ -147,9 +147,11 @@ _QUOTED = r"\"[^\"]*\"|'[^']*'"
 # its first character, so matching is linear, where splitting runs between attributes
 # took exponential time (#263). A tag the text ends in before its ``>`` still matches,
 # to the end: a template may be included before more markup, which the tag then runs
-# into, so its attributes are checked like any other's.
+# into, so its attributes are checked like any other's. A value that opens a quote
+# stays quoted to the matching quote or, for the same reason, to the end of the text: it
+# is never read again as an unquoted value.
 _ATTRIBUTE_NAME = r"(?:=[^\s/>=]*+|[^\s/>=]++)"
-_ATTRIBUTE_VALUE = r"(?:\"[^\"]*+\"|'[^']*+'|[^\s>]*+)"
+_ATTRIBUTE_VALUE = r"(?:\"[^\"]*+(?:\"|\Z)|'[^']*+(?:'|\Z)|[^\s>]*+)"
 _ATTRIBUTE = re.compile(rf"({_ATTRIBUTE_NAME})(?:\s*+=\s*+({_ATTRIBUTE_VALUE}))?")
 _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\s*+=\s*+{_ATTRIBUTE_VALUE})?)*+)>?")
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*>(.*?)</\1\s*>", re.DOTALL | re.IGNORECASE)

@@ -137,3 +137,57 @@ def test_a_tag_left_open_at_the_end_has_its_attributes_checked(tmp_path: Path, t
 )
 def test_attributes_are_read_as_a_browser_reads_them(tmp_path: Path, template: str, names: list[str]) -> None:
     assert escaped(tmp_path, {"app/templates/page.html": template}) == names
+
+
+# A value that opens a quote stays quoted to the matching quote or, left open, to the end
+# of the template: once included, the markup that follows continues it. Read again as an
+# unquoted value, ``"/*`` ended at the first space and ``title='…'`` read as a separate,
+# safe attribute, while the variable sits in the handler.
+@pytest.mark.parametrize(
+    ("template", "names"),
+    [
+        ("<a onclick=\"/* title='<{{ name }}'>", []),
+        ("<a onclick='/* title=\"<{{ name }}\">", []),
+        ('<a title="x {{ name }} y>', ["page.html"]),
+    ],
+    ids=["double-quoted-handler", "single-quoted-handler", "double-quoted-title"],
+)
+def test_a_quoted_value_left_open_runs_to_the_end_of_the_template(
+    tmp_path: Path, template: str, names: list[str]
+) -> None:
+    assert escaped(tmp_path, {"app/templates/page.html": template}) == names
+
+
+INCLUDING_VIEW = (
+    "from django.http import HttpRequest, HttpResponse\n"
+    "from django.template.loader import render_to_string\n\n"
+    "def page(request: HttpRequest):\n"
+    "    return HttpResponse(render_to_string('page.html', {'name': request.GET['name']}))\n"
+)
+
+
+def test_a_handler_whose_quote_closes_in_the_including_template_is_cross_site_scripting(tmp_path: Path) -> None:
+    # Rendered, the handler is ``/* title='<…'>{…}">``: a name such as ``*/alert(1);//``
+    # runs in it.
+    files: dict[str, str | bytes] = {
+        "app/views.py": INCLUDING_VIEW,
+        "app/templates/fragment.html": "<a onclick=\"/* title='<{{ name }}'>\n",
+        "app/templates/page.html": "{% include 'fragment.html' %}\">click</a>\n",
+    }
+
+    assert escaped(tmp_path, files) == []
+    root = tmp_path / "project"
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "coretrace_python", "--check", str(root), "--format", "json"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"the analysis did not end within {TIMEOUT} s")
+    findings = json.loads(completed.stdout)["findings"]
+    assert [(f["location"]["path"], f["location"]["line"]) for f in findings if f["rule_id"] == "xss"] == [
+        ("app/views.py", 5)
+    ]
