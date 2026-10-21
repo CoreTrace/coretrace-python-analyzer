@@ -1,17 +1,30 @@
 """What an annotation binds in the scope it stands in.
 
 An annotation evaluated when its definition runs binds the targets of its assignment
-expressions there, as any expression does. Its lambdas and comprehensions introduce
-scopes of their own, which keep their bindings.
+expressions there, as any expression does. One that is never evaluated, under
+``from __future__ import annotations`` (PEP 563), binds nothing there: a builtin it
+names, such as ``eval``, stays the builtin. Either way, its lambdas and comprehensions
+introduce scopes of their own, which keep their bindings.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from pathlib import Path
+
+import pytest
+
+from coretrace_python import engine
+from coretrace_python.findings import Finding
 from coretrace_python.frontend import build_hir
 from coretrace_python.semantic.scopes import BindingKind, Scope, ScopeTable, analyze_scopes
 from coretrace_python.source import SourceManager
 
 POSTPONED = "from __future__ import annotations\n\n"
+PLUGINS = [engine.BUNDLED_PLUGINS]
+# The comprehension never runs, and its annotation is a string: ``eval`` stays the builtin.
+SHADOWING = POSTPONED + "def f(x: [(eval := i) for i in ()]):\n    pass\n\n\ndef run():\n    eval(input())\n"
+EVAL_FINDINGS = {("code-injection", 8), ("dangerous-eval", 8)}
 
 
 def analyze(text: str) -> ScopeTable:
@@ -21,6 +34,10 @@ def analyze(text: str) -> ScopeTable:
 def child(scopes: ScopeTable, parent: Scope, name: str) -> Scope:
     (found,) = (scope for scope in scopes.children(parent.id) if scope.name == name)
     return found
+
+
+def located(findings: Iterable[Finding]) -> set[tuple[str, int]]:
+    return {(finding.rule_id, finding.span.start_line) for finding in findings}
 
 
 def test_an_evaluated_parameter_annotation_binds_where_the_function_is_defined() -> None:
@@ -41,3 +58,44 @@ def test_a_lambda_in_a_postponed_annotation_keeps_its_own_bindings() -> None:
 
     assert "inner" in child(scopes, scopes.module_scope, "<lambda>").bindings
     assert "inner" not in scopes.module_scope.bindings
+
+
+def test_a_postponed_parameter_annotation_binds_nothing_where_it_stands() -> None:
+    scopes = analyze(POSTPONED + "def f(x: [(found := i) for i in (1,)]):\n    pass\n")
+
+    assert "found" not in scopes.module_scope.bindings
+    assert child(scopes, scopes.module_scope, "<listcomp>").parent == scopes.module_scope.id
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["from .__future__ import annotations\n", "from __future__ import division\n", "import __future__\n"],
+)
+def test_only_the_future_statement_postpones_annotations(header: str) -> None:
+    scopes = analyze(header + "def f(x: [(found := i) for i in (1,)]):\n    pass\n")
+
+    assert "found" in scopes.module_scope.bindings
+
+
+def test_assignment_expressions_after_a_postponed_annotation_still_bind() -> None:
+    scopes = analyze(POSTPONED + "def f(x: (lambda: 1)):\n    pass\n\n\n[(found := i) for i in (1,)]\n")
+
+    assert "found" in scopes.module_scope.bindings
+
+
+def test_a_postponed_annotation_in_a_function_binds_nothing_there() -> None:
+    scopes = analyze(POSTPONED + "def outer():\n    def inner(x: [(found := i) for i in (1,)]):\n        pass\n")
+
+    assert "found" not in child(scopes, scopes.module_scope, "outer").bindings
+
+
+def test_a_builtin_named_in_a_postponed_annotation_stays_the_builtin_in_a_file() -> None:
+    findings = engine.check(SourceManager().add_source("app.py", SHADOWING), PLUGINS)
+
+    assert located(findings) == EVAL_FINDINGS
+
+
+def test_a_builtin_named_in_a_postponed_annotation_stays_the_builtin_in_a_project(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(SHADOWING, encoding="utf-8")
+
+    assert located(engine.analyze_project(tmp_path, PLUGINS).findings) == EVAL_FINDINGS

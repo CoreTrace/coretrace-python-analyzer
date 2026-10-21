@@ -221,6 +221,9 @@ class _Collector:
         # The module scope is found by the module's span, as the synthetic ``<module>``
         # function carries it.
         self.spans: dict[SourceSpan, ScopeId] = {module.span: self.module.id}
+        self.postponed = _postpones_annotations(module)
+        # The scope an annotation that is never evaluated stands in, while it is visited.
+        self.unevaluated: _ScopeBuilder | None = None
         self.body(module.body, self.module)
 
     def body(self, statements: tuple[nodes.Statement, ...], scope: _ScopeBuilder) -> None:
@@ -282,7 +285,7 @@ class _Collector:
                 self.expression(decorator, scope)
             for parameter in node.parameters:
                 if parameter.annotation is not None:
-                    self.expression(parameter.annotation, scope)
+                    self.annotation(parameter.annotation, scope, evaluated=not self.postponed)
                 if parameter.default is not None:
                     self.expression(parameter.default, scope)
             scope.bind(node.name, BindingKind.FUNCTION, node.span)
@@ -363,7 +366,8 @@ class _Collector:
             owner = scope
             while owner.kind is ScopeKind.COMPREHENSION and owner.parent is not None:
                 owner = owner.parent
-            owner.bind(node.target.identifier, BindingKind.LOCAL, node.target.span)
+            if owner is not self.unevaluated:
+                owner.bind(node.target.identifier, BindingKind.LOCAL, node.target.span)
         elif isinstance(node, nodes.Tuple | nodes.List):
             for element in node.elements:
                 self.expression(element, scope)
@@ -398,6 +402,18 @@ class _Collector:
             self.expression(node.body, inner)
         else:
             raise TypeError(f"unknown expression: {node!r}")
+
+    def annotation(self, node: nodes.Expression, scope: _ScopeBuilder, evaluated: bool) -> None:
+        """Visit an annotation standing in ``scope``. One that is never evaluated still
+        introduces the scopes of its lambdas and comprehensions, which later passes look
+        up, but binds nothing in ``scope``: its assignment expressions never run."""
+
+        if evaluated:
+            self.expression(node, scope)
+            return
+        self.unevaluated = scope
+        self.expression(node, scope)
+        self.unevaluated = None
 
     def pattern(self, node: nodes.Pattern, scope: _ScopeBuilder) -> None:
         if isinstance(node, nodes.ValuePattern):
@@ -461,6 +477,20 @@ class _Collector:
         self.builders.append(builder)
         self.spans[span] = builder.id
         return builder
+
+
+def _postpones_annotations(module: nodes.Module) -> bool:
+    """Whether ``module`` imports ``annotations`` from ``__future__`` (PEP 563): its
+    annotations are then kept as strings, never evaluated. Python accepts a future
+    import only at the top of the module, so the module's statements are enough."""
+
+    return any(
+        isinstance(statement, nodes.ImportFrom)
+        and statement.module == "__future__"
+        and statement.level == 0
+        and any(alias.name == "annotations" for alias in statement.names)
+        for statement in module.body
+    )
 
 
 def analyze_scopes(module: nodes.Module) -> ScopeTable:
