@@ -120,11 +120,12 @@ def _dotted(path: Path) -> str:
     return ".".join(parts) or path.as_posix()
 
 
-def _import_root(source: SourceFile) -> Path | None:
-    """The directory an import of ``source`` by its module name starts from
-    (``SourceFile.import_names``); ``None`` for a source not on disk."""
+def import_names(source: SourceFile) -> tuple[tuple[str, Path | None], ...]:
+    """The names ``source`` can be imported by, its module name first, each with the
+    directory an import of it starts from (``SourceFile.import_names``); for a source
+    not on disk, its module name from nowhere in particular."""
 
-    return source.import_names[0].root if source.import_names else None
+    return tuple((n.name, n.root) for n in source.import_names) or ((source.module_name, None),)
 
 
 def project_symbol(module_name: str, qualified_name: str) -> SymbolId:
@@ -151,6 +152,7 @@ class ModuleGraph:
     _sources: Mapping[str, SourceFile]
     _imports: Mapping[str, frozenset[str]]
     _unresolved: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    _resolved: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     @property
     def modules(self) -> tuple[str, ...]:
@@ -170,6 +172,12 @@ class ModuleGraph:
         exactly one in its own root: no edge records them."""
 
         return self._unresolved.get(name, frozenset())
+
+    def resolved(self, name: str) -> Mapping[str, str]:
+        """The project modules ``name`` imports, each by the import name its code gives
+        it, which may be another than the module's name in the graph."""
+
+        return self._resolved.get(name, MappingProxyType({}))
 
     def schedule(self) -> tuple[tuple[frozenset[str], ...], ...]:
         """Strongly connected components in waves: every component of a wave imports,
@@ -235,16 +243,20 @@ def build_module_graph(
     imports: Mapping[str, ImportTable],
 ) -> ModuleGraph:
     """Edges from each module to the project modules it imports, in any scope. An import
-    names a module by its import name; when several files have that name, it resolves to
-    the one in the importer's own root and, without exactly one there, stays unresolved:
-    no edge, and the name is recorded on the graph."""
+    names a module by one of its import names; when several files have that name, it
+    resolves to the one from the first of the importer's own roots that has exactly one,
+    and otherwise stays unresolved: no edge, and the name is recorded on the graph. The
+    importer's roots are those of its import names, the last first: as a script run from
+    its directory finds what lies beside it before what its package's root holds."""
 
-    by_name: dict[str, list[str]] = {}
+    by_name: dict[str, list[tuple[str, Path | None]]] = {}
     for name, source in sources.items():
-        by_name.setdefault(source.module_name, []).append(name)
-    roots = {name: _import_root(source) for name, source in sources.items()}
+        for import_name, root in import_names(source):
+            by_name.setdefault(import_name, []).append((name, root))
+    roots = {name: tuple(root for _, root in reversed(import_names(source))) for name, source in sources.items()}
     edges: dict[str, frozenset[str]] = {}
     unresolved: dict[str, frozenset[str]] = {}
+    resolved: dict[str, Mapping[str, str]] = {}
     for name, module in modules.items():
         candidates: set[str] = set()
         dotted_tops: set[str] = set()
@@ -261,24 +273,39 @@ def build_module_graph(
                 candidates.add(path)
         # The most specific project module each import names; ``app.helpers`` implies
         # the ``app`` package, which is not an edge worth recording.
-        found: set[str] = set()
+        found: dict[str, str] = {}
         missing: set[str] = set()
         for candidate in candidates:
             for prefix in _prefixes(candidate):
                 matching = by_name.get(prefix)
                 if matching is None:
                     continue
-                if len(matching) > 1:
-                    matching = [m for m in matching if roots[m] == roots[name]]
-                if len(matching) == 1:
-                    found.add(matching[0])
-                else:
+                chosen = _chosen(matching, roots[name])
+                if chosen is None:
                     missing.add(prefix)
+                elif chosen != name:
+                    found[prefix] = chosen
                 break
-        edges[name] = frozenset(found - {name})
+        edges[name] = frozenset(found.values())
+        resolved[name] = MappingProxyType(found)
         if missing:
             unresolved[name] = frozenset(missing)
-    return ModuleGraph(MappingProxyType(dict(sources)), MappingProxyType(edges), MappingProxyType(unresolved))
+    return ModuleGraph(
+        MappingProxyType(dict(sources)), MappingProxyType(edges), MappingProxyType(unresolved), MappingProxyType(resolved)
+    )
+
+
+def _chosen(matching: list[tuple[str, Path | None]], roots: tuple[Path | None, ...]) -> str | None:
+    """The module an import name names among the files that have it, from the first of
+    the importer's ``roots`` holding exactly one; ``None`` when none does."""
+
+    if len({module for module, _ in matching}) == 1:
+        return matching[0][0]
+    for root in roots:
+        there = {module for module, named_from in matching if named_from == root}
+        if there:
+            return there.pop() if len(there) == 1 else None
+    return None
 
 
 def _prefixes(dotted: str) -> list[str]:
