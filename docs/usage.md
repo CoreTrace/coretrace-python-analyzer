@@ -919,7 +919,11 @@ comprehensions, lambdas, nested functions and classes, `global`, `nonlocal`, `de
 assignment expressions (`(y := f(x))`, laid out as an assignment before the statement),
 `yield from`, starred assignment targets (`first, *rest = items`), class keyword arguments
 such as `metaclass=`, `with` targets of any assignable form and `match` with every
-pattern kind. `finally` is modelled on the normal path only. A
+pattern kind. An assignment expression in an annotation binds its name as Python 3.11 to
+3.13 do, where the annotation stands: in a function, the name is a local whether the
+annotation is evaluated or not; at module level, it exists only once the annotation is
+evaluated, so under `from __future__ import annotations` a builtin it names stays the
+builtin. `finally` is modelled on the normal path only. A
 `nonlocal` write made by a nested function flows back to the enclosing variable when the
 enclosing function calls that nested function directly by name; a nested function passed
 around and called elsewhere keeps its writes to itself. Where the nested function may
