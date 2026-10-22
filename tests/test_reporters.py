@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -199,6 +200,22 @@ def test_every_documented_rule_is_described(rule: str) -> None:
 
     assert described["shortDescription"]["text"] not in ("", rule)
     assert described["fullDescription"]["text"]
+
+
+def test_sarif_results_carry_their_confidence() -> None:
+    def confidence(level: Confidence) -> object:
+        document = json.loads(render_sarif(report(replace(finding("r", 1), confidence=level))))
+        return document["runs"][0]["results"][0]["properties"]["confidence"]
+
+    assert confidence(Confidence.HIGH) == "high"
+    assert confidence(Confidence.MEDIUM) == "medium"
+    assert confidence(Confidence.LOW) == "low"
+
+
+def test_the_confidence_sits_beside_the_other_properties() -> None:
+    document = json.loads(render_sarif(report(finding("command-injection", 1, injection="option"))))
+
+    assert document["runs"][0]["results"][0]["properties"] == {"confidence": "high", "injection": "option"}
 
 
 def test_sarif_levels_follow_severity() -> None:
