@@ -26,6 +26,15 @@ PLUGINS = [engine.BUNDLED_PLUGINS]
 # The comprehension never runs, and its annotation is a string: ``eval`` stays the builtin.
 SHADOWING = POSTPONED + "def f(x: [(eval := i) for i in ()]):\n    pass\n\n\ndef run():\n    eval(input())\n"
 EVAL_FINDINGS = {("code-injection", 8), ("dangerous-eval", 8)}
+# The annotation never runs, yet ``cmd`` is a local of ``run``: the ``nonlocal`` is valid
+# and the input reaches the command.
+NONLOCAL = (
+    "from __future__ import annotations\nimport os\n\ndef run():\n"
+    "    def declared(x: [(cmd := i) for i in ()]):\n        pass\n"
+    "    def set_cmd():\n        nonlocal cmd\n        cmd = input()\n"
+    "    set_cmd()\n    os.system(cmd)\n"
+)
+NONLOCAL_FINDINGS = {("command-injection", 11)}
 
 
 def analyze(text: str) -> ScopeTable:
@@ -89,6 +98,18 @@ def test_a_postponed_annotation_in_a_function_still_declares_there() -> None:
 
     assert "found" in child(scopes, scopes.module_scope, "outer").bindings
     assert "found" not in scopes.module_scope.bindings
+
+
+def test_a_nonlocal_of_a_name_a_postponed_annotation_declares_is_followed_in_a_file() -> None:
+    findings = engine.check(SourceManager().add_source("app.py", NONLOCAL), PLUGINS)
+
+    assert located(findings) == NONLOCAL_FINDINGS
+
+
+def test_a_nonlocal_of_a_name_a_postponed_annotation_declares_is_followed_in_a_project(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(NONLOCAL, encoding="utf-8")
+
+    assert located(engine.analyze_project(tmp_path, PLUGINS).findings) == NONLOCAL_FINDINGS
 
 
 def test_a_builtin_named_in_a_postponed_annotation_stays_the_builtin_in_a_file() -> None:
