@@ -67,7 +67,21 @@ def test_the_sink_inside_a_project_function_is_a_related_location() -> None:
     (finding,) = [f for f in check(text) if f.rule_id == "code-injection"]
     (related,) = finding.related
     assert (str(related.span.source_id), related.span.start_line) == ("app.py", 2)
-    assert related.message == "the input reaches python.builtins.eval here, in evaluate"
+    assert related.message == "sink python.builtins.eval, reached via evaluate"
+
+
+def test_a_sink_two_calls_away_is_reached_via_the_first_one() -> None:
+    text = (
+        "def evaluate(expression):\n    return eval(expression)\n\n"
+        "def relay(value):\n    return evaluate(value)\n\n"
+        "def run():\n    return relay(input())\n"
+    )
+
+    (finding,) = [f for f in check(text) if f.rule_id == "code-injection"]
+    (related,) = finding.related
+    # The sink is in evaluate; relay is the call the flow goes through, not where the sink is.
+    assert related.span.start_line == 2
+    assert related.message == "sink python.builtins.eval, reached via relay"
 
 
 def test_a_sink_in_the_function_itself_has_no_related_location() -> None:
