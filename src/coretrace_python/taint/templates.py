@@ -162,6 +162,8 @@ _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\
 # the same reason (#272).
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*+>(.*?)(</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE)
 _END_TAG = re.compile(r"</[A-Za-z][^>]*+>?")
+# ``-->``, ``--!>``, or the ``>`` that ends ``<!-->`` and ``<!--->`` at once.
+_COMMENT_END = re.compile(r"--!?>")
 # ``<{{ name }}`` or ``</ {{ name }}``: the variable would name a tag.
 _NAMED_BY_OUTPUT = re.compile(rf"<[/ \t\n]*{_OUTPUT}")
 # Django's filter expressions: a constant or a variable, then filters, each with an
@@ -307,20 +309,20 @@ def _escapes_where_printed(html: str) -> bool:
     the text leaves open runs to its end: copying the rest of the text at each ``<``,
     and rescanning such a construct that never closed, took quadratic time (#272).
 
-    A comment ends at its ``-->`` or at the first template tag inside it, whichever
-    comes first, and what follows the tag is read as markup: an include there may close
-    the comment, a condition around its ``<!--`` leave it out. A variable cannot close
-    it, escaped."""
+    A comment ends at its close, as a browser closes it, or at the first template tag
+    inside it, whichever comes first, and what follows the tag is read as markup: an
+    include there may close the comment, a condition around its ``<!--`` leave it out.
+    A variable cannot close it, escaped."""
 
     position = 0
     while (start := html.find("<", position)) != -1:
         if html.startswith("<!--", start):
-            close = html.find("-->", start + 4)
-            first_tag = html.find(_TAG, start + 4, len(html) if close == -1 else close)
+            close = _COMMENT_END.search(html, start + 2)
+            first_tag = html.find(_TAG, start + 4, len(html) if close is None else close.start())
             if first_tag != -1:
                 position = first_tag + 1
-            elif close != -1:
-                position = close + 3
+            elif close is not None:
+                position = close.end()
             else:
                 # Not closed: read on as markup.
                 position = start + 1

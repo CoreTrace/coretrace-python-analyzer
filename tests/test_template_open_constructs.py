@@ -125,6 +125,16 @@ def test_a_comment_ends_at_its_close_or_at_a_template_tag_inside_it(tmp_path: Pa
 
 @pytest.mark.parametrize(
     "template",
+    ['<!--><a onclick="{{ name }}">-->', '<!-- note --!><a onclick="{{ name }}"> -->'],
+    ids=["abrupt-before-a-later-close", "bang-before-a-later-close"],
+)
+def test_a_comment_closes_where_a_browser_closes_it(tmp_path: Path, template: str) -> None:
+    # Read to the later ``-->``, the handler was taken for part of the comment.
+    assert escaped(tmp_path, {"page.html": template}) == []
+
+
+@pytest.mark.parametrize(
+    "template",
     ["<style>body { color: {{ name }} }", "<script>var name = {{ name }};", "</a {{ name }}"],
     ids=["style", "script", "end-tag"],
 )
