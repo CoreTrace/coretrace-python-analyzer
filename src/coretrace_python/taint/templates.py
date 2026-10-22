@@ -14,6 +14,9 @@ it extends or includes, can output data unescaped:
   leaves open, which once included runs into the markup that follows;
 - no Python file of the project turning autoescaping off.
 
+A comment hides what it holds only up to its first template tag: an include there may
+close it, and a condition around its ``<!--`` may leave it out.
+
 Templates are found under the project's ``templates`` directories, by their path below
 one. A template the engine cannot find — named by an expression, under a ``DIRS`` entry
 of another name, shipped by an installed package — or cannot read is never assumed to
@@ -158,7 +161,6 @@ _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\
 # A script or style block and an end tag the text leaves open run to its end as well, for
 # the same reason (#272).
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*+>(.*?)(</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE)
-_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _END_TAG = re.compile(r"</[A-Za-z][^>]*+>?")
 # ``<{{ name }}`` or ``</ {{ name }}``: the variable would name a tag.
 _NAMED_BY_OUTPUT = re.compile(rf"<[/ \t\n]*{_OUTPUT}")
@@ -303,12 +305,25 @@ def _escapes_where_printed(html: str) -> bool:
     """Whether every output marker of ``html`` stands where HTML escaping protects it.
     Each construct is matched where it starts, and a script or style block or an end tag
     the text leaves open runs to its end: copying the rest of the text at each ``<``,
-    and rescanning such a construct that never closed, took quadratic time (#272)."""
+    and rescanning such a construct that never closed, took quadratic time (#272).
+
+    A comment ends at its ``-->`` or at the first template tag inside it, whichever
+    comes first, and what follows the tag is read as markup: an include there may close
+    the comment, a condition around its ``<!--`` leave it out. A variable cannot close
+    it, escaped."""
 
     position = 0
     while (start := html.find("<", position)) != -1:
-        if comment := _COMMENT.match(html, start):
-            position = comment.end()
+        if html.startswith("<!--", start):
+            close = html.find("-->", start + 4)
+            first_tag = html.find(_TAG, start + 4, len(html) if close == -1 else close)
+            if first_tag != -1:
+                position = first_tag + 1
+            elif close != -1:
+                position = close + 3
+            else:
+                # Not closed: read on as markup.
+                position = start + 1
         elif raw := _RAW_TEXT.match(html, start):
             if _OUTPUT in raw.group(2) or not _attributes_escape(html[start : raw.start(2)]):
                 return False

@@ -6,6 +6,11 @@ markup that follows. A ``<script>``, a ``<style>`` or an end tag it leaves open 
 its end, so a variable inside is refused, even when the document ends there (the browser
 then never runs the script: a prudent false positive).
 
+A comment in the source is not necessarily one in the rendered page: a template tag
+inside it can close it (an include) or leave out its ``<!--`` (a condition). A comment
+therefore ends at its close, or at the first template tag inside it; a variable,
+escaped, cannot close it.
+
 Every construct is read once, so the inspection is linear in the size of the template.
 Each inspection and analysis runs in a subprocess with a timeout, so that one that does
 not end fails instead of hanging the suite.
@@ -80,12 +85,14 @@ def xss(tmp_path: Path, templates: dict[str, str]) -> list[tuple[str, int]]:
         {"page.html": "<script>var name = {{ name }};</script>\n"},
         {"page.html": "<script>var name = {{ name }};\n<p>after</p>\n"},
         {"page.html": '<!-- {% include "close.html" %}<script>var name = {{ name }};</script>\n', "close.html": "-->"},
+        {"page.html": '<!-- {% include "close.html" %} <script>var name = {{ name }};</script> -->\n', "close.html": "-->"},
     ],
     ids=[
         "A-fragment-closed-by-includer",
         "B-closed-in-same-template",
         "C-open-to-end-of-document",
         "D-comment-closed-by-include",
+        "G-closed-comment-holding-include",
     ],
 )
 def test_a_variable_the_rendered_page_runs_as_script_is_cross_site_scripting(
@@ -105,11 +112,12 @@ def test_a_variable_in_a_comment_holding_no_template_tag_stays_escaped(tmp_path:
     "template",
     [
         '{% if debug %}<!--{% endif %}<a onclick="{{ name }}">',
+        '<!-- {% include "x.html" %} <a onclick="{{ name }}"> -->',
         '<!--><a onclick="{{ name }}">',
         '<!---><a onclick="{{ name }}">',
         '<!-- note --!><a onclick="{{ name }}">',
     ],
-    ids=["condition-around-the-opener", "abrupt-empty", "abrupt-dash", "bang-close"],
+    ids=["condition-around-the-opener", "include-inside", "abrupt-empty", "abrupt-dash", "bang-close"],
 )
 def test_a_comment_ends_at_its_close_or_at_a_template_tag_inside_it(tmp_path: Path, template: str) -> None:
     assert escaped(tmp_path, {"page.html": template, "x.html": ""}) == ["x.html"]
