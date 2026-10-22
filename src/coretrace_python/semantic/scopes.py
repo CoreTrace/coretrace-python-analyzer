@@ -222,7 +222,8 @@ class _Collector:
         # function carries it.
         self.spans: dict[SourceSpan, ScopeId] = {module.span: self.module.id}
         self.postponed = _postpones_annotations(module)
-        # The scope an annotation that is never evaluated stands in, while it is visited.
+        # The module or class an annotation that is never evaluated stands in, while it is
+        # visited.
         self.unevaluated: _ScopeBuilder | None = None
         self.body(module.body, self.module)
 
@@ -408,11 +409,15 @@ class _Collector:
             raise TypeError(f"unknown expression: {node!r}")
 
     def annotation(self, node: nodes.Expression, scope: _ScopeBuilder, evaluated: bool) -> None:
-        """Visit an annotation standing in ``scope``. One that is never evaluated still
-        introduces the scopes of its lambdas and comprehensions, which later passes look
-        up, but binds nothing in ``scope``: its assignment expressions never run."""
+        """Visit an annotation standing in ``scope``. Python's compiler declares the
+        targets of its assignment expressions in ``scope`` whether it is evaluated or not,
+        so in a function they are locals all the same, which a nested function may declare
+        ``nonlocal``. A module's or a class's names exist only once assigned: there, one
+        that is never evaluated binds nothing, and a builtin it names stays the builtin.
+        Its lambdas and comprehensions introduce their scopes either way, which later
+        passes look up."""
 
-        if evaluated:
+        if evaluated or scope.kind is ScopeKind.FUNCTION:
             self.expression(node, scope)
             return
         self.unevaluated = scope

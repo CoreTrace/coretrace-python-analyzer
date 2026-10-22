@@ -1,9 +1,10 @@
 """What an annotation binds in the scope it stands in.
 
-An annotation evaluated when its definition runs binds the targets of its assignment
-expressions there, as any expression does. One that is never evaluated, under
-``from __future__ import annotations`` (PEP 563) or on a local variable (PEP 526), binds
-nothing there: a builtin it names, such as ``eval``, stays the builtin. Either way, its
+Python's compiler declares the target of an assignment expression in an annotation
+where the annotation stands, whether it is evaluated or not: in a function, the name is
+a local of the function. A module's names exist only once assigned, so an annotation
+that is never evaluated there, under ``from __future__ import annotations`` (PEP 563),
+binds nothing: a builtin it names, such as ``eval``, stays the builtin. Either way, its
 lambdas and comprehensions introduce scopes of their own, which keep their bindings.
 """
 
@@ -83,10 +84,11 @@ def test_assignment_expressions_after_a_postponed_annotation_still_bind() -> Non
     assert "found" in scopes.module_scope.bindings
 
 
-def test_a_postponed_annotation_in_a_function_binds_nothing_there() -> None:
+def test_a_postponed_annotation_in_a_function_still_declares_there() -> None:
     scopes = analyze(POSTPONED + "def outer():\n    def inner(x: [(found := i) for i in (1,)]):\n        pass\n")
 
-    assert "found" not in child(scopes, scopes.module_scope, "outer").bindings
+    assert "found" in child(scopes, scopes.module_scope, "outer").bindings
+    assert "found" not in scopes.module_scope.bindings
 
 
 def test_a_builtin_named_in_a_postponed_annotation_stays_the_builtin_in_a_file() -> None:
@@ -116,11 +118,12 @@ def test_a_module_variable_annotation_binds_where_it_stands() -> None:
     assert child(scopes, scopes.module_scope, "<listcomp>").parent == scopes.module_scope.id
 
 
-def test_a_local_variable_annotation_binds_nothing_in_its_function() -> None:
-    scopes = analyze("def run():\n    pending: [(found := i) for i in (1,)]\n")
+@pytest.mark.parametrize("header", ["", POSTPONED])
+def test_a_local_variable_annotation_declares_in_its_function(header: str) -> None:
+    scopes = analyze(header + "def run():\n    pending: [(found := i) for i in (1,)]\n")
     run = child(scopes, scopes.module_scope, "run")
 
-    assert "found" not in run.bindings
+    assert "found" in run.bindings
     assert child(scopes, run, "<listcomp>").parent == run.id
 
 
