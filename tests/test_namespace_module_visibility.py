@@ -254,3 +254,22 @@ def test_a_member_of_a_cycle_reached_through_its_package_is_followed_by_its_modu
     )
 
     assert injections(tmp_path, root, run) == [("main.py", 5)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_module_name_two_reached_files_share_is_taken_for_neither(tmp_path: Path, run: str) -> None:
+    # main.py, run from src, reaches src/pkg/helpers.py through its pkg, and
+    # lib/pkg/helpers.py through lib/tool.py; its pkg.helpers is src's, harmless.
+    root = project(
+        tmp_path,
+        {
+            "src/pkg/__init__.py": "from . import helpers\n",
+            "src/pkg/helpers.py": "def run(command):\n    return command\n",
+            "lib/pkg/__init__.py": "from . import helpers\n",
+            "lib/pkg/helpers.py": "import os\n\n\ndef run(command):\n    os.system(command)\n",
+            "lib/tool.py": "import pkg\n\n\ndef noop():\n    return None\n",
+            "src/main.py": "import pkg\nimport tool\n\n\ndef go():\n    tool.noop()\n    pkg.helpers.run(input())\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == []
