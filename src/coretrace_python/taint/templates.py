@@ -155,11 +155,11 @@ _ATTRIBUTE_NAME = r"(?:=[^\s/>=]*+|[^\s/>=]++)"
 _ATTRIBUTE_VALUE = r"(?:\"[^\"]*+(?:\"|\Z)|'[^']*+(?:'|\Z)|[^\s>]*+)"
 _ATTRIBUTE = re.compile(rf"({_ATTRIBUTE_NAME})(?:\s*+=\s*+({_ATTRIBUTE_VALUE}))?")
 _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\s*+=\s*+{_ATTRIBUTE_VALUE})?)*+)>?")
-# A script or style block the text leaves open runs to its end as well, for the same
-# reason (#272).
+# A script or style block and an end tag the text leaves open run to its end as well, for
+# the same reason (#272).
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*+>(.*?)(</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-_END_TAG = re.compile(r"</[A-Za-z][^>]*>")
+_END_TAG = re.compile(r"</[A-Za-z][^>]*+>?")
 # ``<{{ name }}`` or ``</ {{ name }}``: the variable would name a tag.
 _NAMED_BY_OUTPUT = re.compile(rf"<[/ \t\n]*{_OUTPUT}")
 # Django's filter expressions: a constant or a variable, then filters, each with an
@@ -301,9 +301,9 @@ def _constant(word: str) -> str | None:
 
 def _escapes_where_printed(html: str) -> bool:
     """Whether every output marker of ``html`` stands where HTML escaping protects it.
-    Each construct is matched where it starts, and a script or style block the text
-    leaves open runs to its end: copying the rest of the text at each ``<``, and
-    rescanning such a block that never closed, took quadratic time (#272)."""
+    Each construct is matched where it starts, and a script or style block or an end tag
+    the text leaves open runs to its end: copying the rest of the text at each ``<``,
+    and rescanning such a construct that never closed, took quadratic time (#272)."""
 
     position = 0
     while (start := html.find("<", position)) != -1:

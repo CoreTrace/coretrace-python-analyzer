@@ -2,8 +2,8 @@
 comment, are read as the browser receives the rendered page.
 
 A template is often a fragment: once included, what it leaves open continues into the
-markup that follows. A ``<script>`` or a ``<style>`` it leaves open runs to its
-end, so a variable inside is refused, even when the document ends there (the browser
+markup that follows. A ``<script>``, a ``<style>`` or an end tag it leaves open runs to
+its end, so a variable inside is refused, even when the document ends there (the browser
 then never runs the script: a prudent false positive).
 
 Every construct is read once, so the inspection is linear in the size of the template.
@@ -117,8 +117,8 @@ def test_a_comment_ends_at_its_close_or_at_a_template_tag_inside_it(tmp_path: Pa
 
 @pytest.mark.parametrize(
     "template",
-    ["<style>body { color: {{ name }} }", "<script>var name = {{ name }};"],
-    ids=["style", "script"],
+    ["<style>body { color: {{ name }} }", "<script>var name = {{ name }};", "</a {{ name }}"],
+    ids=["style", "script", "end-tag"],
 )
 def test_a_variable_in_a_construct_left_open_is_refused(tmp_path: Path, template: str) -> None:
     assert escaped(tmp_path, {"page.html": template}) == []
@@ -144,11 +144,12 @@ def test_extending_a_template_that_ends_inside_a_script_stays_established(tmp_pa
     "template",
     [
         "<" * SIZE,
+        "</a" * (SIZE // 3),
         "<script>" * (SIZE // 8),
         "<style>" * (SIZE // 7),
         "<p>x</p>" * (SIZE // 8),
     ],
-    ids=["lt", "script", "style", "well-formed"],
+    ids=["lt", "end-tag", "script", "style", "well-formed"],
 )
 def test_the_inspection_reads_each_construct_once(tmp_path: Path, template: str) -> None:
     escaped(tmp_path, {"page.html": template})
