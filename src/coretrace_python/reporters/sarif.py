@@ -53,7 +53,7 @@ def _result(
         "ruleId": finding.rule_id,
         "ruleIndex": rule_index,
         "level": _LEVELS[finding.severity],
-        "message": {"text": finding.message},
+        "message": {"text": _message(finding)},
         "locations": [location],
     }
     properties: dict[str, str] = {"confidence": finding.confidence.value}
@@ -94,6 +94,22 @@ def _extension(component: Component) -> dict[str, object]:
         extension["version"] = component.version
     extension["properties"] = {"kind": component.kind, "digest": component.digest}
     return extension
+
+
+def _escaped(text: str) -> str:
+    """``text`` as literal SARIF message text, beside embedded links (SARIF 2.1.0 §3.11.6)."""
+
+    return text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def _message(finding: Finding) -> str:
+    """The finding's message, ending with an embedded link to each related location, which
+    GitHub code scanning shows as a link; the other formats keep the message as it is."""
+
+    if not finding.related:
+        return finding.message
+    links = ", ".join(f"[{_escaped(related.message)}]({index})" for index, related in enumerate(finding.related))
+    return f"{_escaped(finding.message)} ({links})"
 
 
 def _region(span: SourceSpan) -> dict[str, int]:
