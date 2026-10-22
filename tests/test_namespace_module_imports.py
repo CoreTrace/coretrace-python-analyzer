@@ -1,0 +1,91 @@
+"""Acceptance tests for issue #264: imports of and from modules in directories without
+``__init__.py`` inside a package.
+
+Such a module has one identity, its name after its package, and may be imported by two
+names: that one, and, as a script run from its directory imports it (``sys.path[0]``),
+the name it has from there. Its relative imports resolve against its package; an
+absolute import from it prefers what its own directory holds, as a script finds it,
+then what the package's import root holds. Of two files with one such name, each
+importer reaches the one in its own directory. Whatever the names a module is reached
+by, its summaries are computed once, and the result does not depend on the cache or on
+the number of processes.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from coretrace_python import engine
+
+PLUGINS = [engine.BUNDLED_PLUGINS]
+
+
+def project(tmp_path: Path, files: dict[str, str], name: str = "project") -> Path:
+    root = tmp_path / name
+    for relative, text in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return root
+
+
+def located(analysis: engine.ProjectAnalysis, root: Path, *rules: str) -> list[tuple[str, str, int]]:
+    return sorted(
+        (f.rule_id, Path(str(f.span.source_id)).relative_to(root.resolve()).as_posix(), f.span.start_line)
+        for f in analysis.findings
+        if not rules or f.rule_id in rules
+    )
+
+
+SCRIPTS = {
+    "pkg/__init__.py": "",
+    "pkg/tools/run.py": 'import helper\n\n\ndef main():\n    helper.execute(input())\n\n\nif __name__ == "__main__":\n    main()\n',
+    "pkg/tools/helper.py": "import os\n\n\ndef execute(command):\n    os.system(command)\n",
+}
+
+
+def test_a_script_reaches_the_module_beside_it_by_its_short_name(tmp_path: Path) -> None:
+    root = project(tmp_path, SCRIPTS)
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root) == [("command-injection", "pkg/tools/run.py", 5)]
+
+
+def test_a_module_beside_a_script_named_like_a_library_leaves_the_library_modelled(tmp_path: Path) -> None:
+    # The script's os is the library: the os.py beside it defines no system.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/tools/run.py": "import os\n\n\ndef main():\n    os.system(input())\n",
+            "pkg/tools/os.py": "def unrelated():\n    return 1\n",
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root) == [("command-injection", "pkg/tools/run.py", 5)]
+
+
+@pytest.mark.parametrize("dangerous", ["a", "b"])
+def test_each_importer_reaches_the_helper_of_its_own_directory(tmp_path: Path, dangerous: str) -> None:
+    run = "import helper\n\n\ndef main():\n    helper.execute(input())\n"
+    sink = "import os\n\n\ndef execute(command):\n    os.system(command)\n"
+    harmless = "def execute(command):\n    return command\n"
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/a/run.py": run,
+            "pkg/a/helper.py": sink if dangerous == "a" else harmless,
+            "pkg/b/run.py": run,
+            "pkg/b/helper.py": sink if dangerous == "b" else harmless,
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root, "command-injection") == [("command-injection", f"pkg/{dangerous}/run.py", 5)]
