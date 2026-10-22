@@ -155,6 +155,18 @@ def test_a_variable_in_a_construct_left_open_is_refused(tmp_path: Path, template
 
 
 @pytest.mark.parametrize(
+    "template",
+    ["<style-switcher><p>{{ name }}</p></style-switcher>\n", "<script-editor><p>{{ name }}</p></script-editor>\n"],
+    ids=["style-switcher", "script-editor"],
+)
+def test_an_element_whose_name_only_starts_like_script_or_style_is_markup(tmp_path: Path, template: str) -> None:
+    # Only ``script`` and ``style`` themselves hold raw text: the tag name runs to
+    # whitespace, ``/`` or ``>``.
+    assert escaped(tmp_path, {"page.html": template}) == ["page.html"]
+    assert xss(tmp_path, {"page.html": template}) == []
+
+
+@pytest.mark.parametrize(
     "fragment",
     ["<script>\n", "<style>\n", '<a href="/x"', '<a title="x', "</a"],
     ids=["script", "style", "start-tag", "quoted-value", "end-tag"],

@@ -162,7 +162,9 @@ _ATTRIBUTE = re.compile(rf"({_ATTRIBUTE_NAME})(?:\s*+=\s*+({_ATTRIBUTE_VALUE}))?
 _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\s*+=\s*+{_ATTRIBUTE_VALUE})?)*+)(>)?")
 # A script or style block and an end tag the text leaves open run to its end as well, for
 # the same reason (#272); their last group, like the start tag's, is then empty or None.
-_RAW_TEXT = re.compile(r"<(script|style)\b[^>]*+>(.*?)(</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE)
+# Only ``script`` and ``style`` themselves: a tag name runs to whitespace, ``/`` or ``>``,
+# so ``<style-switcher>`` is another element, whose content is markup.
+_RAW_TEXT = re.compile(r"<(script|style)(?=[\s/>])[^>]*+>(.*?)(</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE)
 _END_TAG = re.compile(r"</[A-Za-z][^>]*+(>)?")
 # ``-->``, ``--!>``, or the ``>`` that ends ``<!-->`` and ``<!--->`` at once.
 _COMMENT_END = re.compile(r"--!?>")
