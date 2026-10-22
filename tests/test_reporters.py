@@ -16,7 +16,13 @@ from pathlib import Path
 
 import pytest
 
-from coretrace_python.findings import FINDING_SCHEMA_VERSION, Confidence, Finding, Severity
+from coretrace_python.findings import (
+    FINDING_SCHEMA_VERSION,
+    Confidence,
+    Finding,
+    RelatedLocation,
+    Severity,
+)
 from coretrace_python.source import SourceId, SourceSpan
 
 try:
@@ -216,6 +222,30 @@ def test_the_confidence_sits_beside_the_other_properties() -> None:
     document = json.loads(render_sarif(report(finding("command-injection", 1, injection="option"))))
 
     assert document["runs"][0]["results"][0]["properties"] == {"confidence": "high", "injection": "option"}
+
+
+def test_sarif_results_point_at_the_other_places_a_finding_involves() -> None:
+    sink = SourceSpan(SourceId("app/helpers.py"), 12, 9, 12, 21)
+    involved = replace(finding("code-injection", 3), related=(RelatedLocation(sink, "eval runs the input here"),))
+
+    (result,) = json.loads(render_sarif(report(involved)))["runs"][0]["results"]
+
+    assert result["relatedLocations"] == [
+        {
+            "id": 0,
+            "physicalLocation": {
+                "artifactLocation": {"uri": "app/helpers.py"},
+                "region": {"startLine": 12, "startColumn": 9, "endLine": 12, "endColumn": 21},
+            },
+            "message": {"text": "eval runs the input here"},
+        }
+    ]
+
+
+def test_a_result_without_other_places_has_no_related_locations() -> None:
+    (result,) = json.loads(render_sarif(report(finding("code-injection", 3))))["runs"][0]["results"]
+
+    assert "relatedLocations" not in result
 
 
 def test_sarif_levels_follow_severity() -> None:
