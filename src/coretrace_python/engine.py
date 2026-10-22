@@ -603,30 +603,30 @@ def analyze_project(
                     computed.update(
                         _analyse_managers(
                             batch,
-                            _seed(results, graph, component),
+                            results,
+                            _imported_names(graph, component, results),
                             module_plugins,
                             affected,
                             suffixes,
                             root,
-                            {name: _names_of(files[name]) for name in batch},
                         )
                     )
                     for manager in batch.values():
                         manager.run(ResultsEvicted)
             else:
-                futures = [
-                    pool.submit(
-                        _analyse_batch,
-                        _Batch(
-                            {name: _path_of(files[name]) for name in sorted(component)},
-                            {
-                                name: (names, keys[name])
-                                for name, names in _imported_names(graph, component, results).items()
-                            },
-                        ),
+                futures = []
+                for component in pending:
+                    names = _imported_names(graph, component, results)
+                    futures.append(
+                        pool.submit(
+                            _analyse_batch,
+                            _Batch(
+                                {name: _path_of(files[name]) for name in sorted(component)},
+                                {name: keys[name] for name in names if name not in component},
+                                names,
+                            ),
+                        )
                     )
-                    for component in pending
-                ]
                 for future in futures:
                     computed.update({name: decode(data) for name, data in future.result().items()})
             store = cache if pool is None else spool
@@ -833,21 +833,17 @@ def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: 
     return notes
 
 
-def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: frozenset[str]) -> SummaryIndex:
-    """The summaries a component starts from (``_imported_names``)."""
-
-    return _index(results, _imported_names(graph, component, results))
-
-
 def _imported_names(
     graph: ModuleGraph, component: frozenset[str], results: Mapping[str, CachedModule]
 ) -> dict[str, tuple[str, ...]]:
-    """The modules whose summaries a component starts from, each with the import names
-    the component's code refers to it by: every module it imports, transitively, all
-    final by the time its wave runs. A module a member imports goes under the name the
-    member resolved it by; two members resolving one name to different files put it
-    under neither. A module reached through another goes under its module name only,
-    the name the whole project knows it by (``pkg.helpers``, reached through
+    """The modules whose summaries a component reads, each with the import names the
+    component's code refers to it by: its members, and every module they import,
+    transitively, all final by the time its wave runs. Each member goes under its
+    import names, what the others' code refers to it by; a name two members share, a
+    cycle across roots, goes under neither. A module a member imports goes under the
+    name the member resolved it by; two members resolving one name to different files
+    put it under neither. A module reached through another goes under its module name
+    only, the name the whole project knows it by (``pkg.helpers``, reached through
     ``import pkg``), never under a name a module in between resolved from its own
     directory: what a callee resolved does not change what its caller's names mean. Of
     several such modules with one module name, only the one a member imports directly
@@ -878,6 +874,9 @@ def _imported_names(
     for import_name, reached in sorted(chosen.items()):
         if reached is not None:
             names.setdefault(reached, []).append(import_name)
+    counts = Counter(import_name for member in component for import_name in _names_of(graph.source(member)))
+    for member in component:
+        names[member] = [import_name for import_name in _names_of(graph.source(member)) if counts[import_name] == 1]
     return {module: tuple(module_names) for module, module_names in names.items()}
 
 
@@ -904,20 +903,19 @@ def _names_of(source: SourceFile) -> tuple[str, ...]:
 
 def _analyse_managers(
     managers: Mapping[str, AnalysisManager],
-    seed: SummaryIndex,
+    imported: Mapping[str, CachedModule],
+    names: Mapping[str, tuple[str, ...]],
     plugins: tuple[Plugin, ...],
     affected: Affected,
     suffixes: SuffixIndex,
     root: Path,
-    member_names: Mapping[str, tuple[str, ...]],
 ) -> dict[str, CachedModule]:
-    """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
-    then extract what the rest of the run needs from each module. Each member registers
-    its functions under its import names (``member_names``), what the others' code refers
-    to it by; a name two members share, a cycle across roots, is registered by neither."""
+    """Analyse one component: iterate its summaries to a fixpoint (§21), then extract
+    what the rest of the run needs from each module. The component reads each module of
+    ``names`` under the names given (``_imported_names``): its members' summaries as they
+    grow, the others' as ``imported`` holds them, final."""
 
-    counts = Counter(module for name in managers for module in member_names[name])
-    names = {name: tuple(module for module in member_names[name] if counts[module] == 1) for name in managers}
+    seed = _index(imported, {name: module_names for name, module_names in names.items() if name not in managers})
     # The members' functions start from the summaries ``SummaryAnalysis`` starts from.
     # Left out, a call from one member to another is a call to an unknown symbol on the
     # first iteration and a project call on the next: around a cycle of modules, the
@@ -927,8 +925,8 @@ def _analyse_managers(
             **seed.summaries,
             **{
                 project_symbol(module, function): summary
-                for name, modules in names.items()
-                for module in modules
+                for name in managers
+                for module in names[name]
                 for function, summary in starting_summaries(managers[name].get(CallGraphAnalysis)).items()
             },
         }
@@ -951,8 +949,8 @@ def _analyse_managers(
                 **seed.summaries,
                 **{
                     project_symbol(module, function): summary
-                    for name, modules in names.items()
-                    for module in modules
+                    for name in managers
+                    for module in names[name]
                     for function, summary in _summaries_of(managers[name]).items()
                 },
             }
@@ -989,11 +987,12 @@ class _Project:
 @dataclass(frozen=True)
 class _Batch:
     """One component handed to a worker process: its files under the engine's module
-    names, and the modules its summaries start from, each with its import names and the
-    key of its entry in the spool. Only these travel, not the summaries themselves."""
+    names, the key in the spool of each module it imports, and the names it reads each
+    module by (``_imported_names``). Only these travel, not the summaries themselves."""
 
     paths: Mapping[str, Path]
-    imported: Mapping[str, tuple[tuple[str, ...], str]]
+    keys: Mapping[str, str]
+    names: Mapping[str, tuple[str, ...]]
 
 
 @dataclass
@@ -1009,9 +1008,9 @@ class _Worker:
     root: Path
     read: dict[str, CachedModule] = field(default_factory=dict)
 
-    def entries(self, imported: Mapping[str, tuple[tuple[str, ...], str]]) -> dict[str, CachedModule]:
+    def entries(self, keys: Mapping[str, str]) -> dict[str, CachedModule]:
         found: dict[str, CachedModule] = {}
-        for name, (_, key) in imported.items():
+        for name, key in keys.items():
             entry = self.read.get(key)
             if entry is None:
                 entry = self.spool.load(key)
@@ -1079,15 +1078,14 @@ def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     managers = {name: _register_all(build_hir(source)) for name, source in sources.items()}
     for manager in managers.values():
         worker.managed(manager)
-    seed = _index(worker.entries(batch.imported), {name: names for name, (names, _) in batch.imported.items()})
     results = _analyse_managers(
         managers,
-        seed,
+        worker.entries(batch.keys),
+        batch.names,
         worker.plugins,
         worker.affected,
         worker.suffixes,
         worker.root,
-        {name: _names_of(source) for name, source in sources.items()},
     )
     return {name: encode(entry) for name, entry in results.items()}
 
