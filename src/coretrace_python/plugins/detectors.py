@@ -86,9 +86,7 @@ class TaintDetector(Plugin):
                     metadata["through"] = flow.through
                     metadata["sink_line"] = str(flow.sink_location.start_line)
                     related = (
-                        RelatedLocation(
-                            flow.sink_location, f"the input reaches {flow.sink.symbol} here, in {flow.through}"
-                        ),
+                        RelatedLocation(flow.sink_location, f"sink {flow.sink.symbol}, reached via {flow.through}"),
                     )
                 confidence = (
                     self.confidence if verdict.status is Status.VULNERABILITY else _lower(self.confidence)
