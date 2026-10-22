@@ -355,13 +355,18 @@ def _read_markup(html: str) -> _Reading:
 
     position = 0
     open_end = False
-    # No comment closes at or after this position: searched once, never again.
+    # The first comment close after the comment being read, searched once for all the
+    # comments that open before it; and the position after which none closes.
+    close: re.Match[str] | None = None
     unclosed_from = len(html) + 1
     while (start := html.find("<", position)) != -1:
         if html.startswith("<!--", start):
-            close = _COMMENT_END.search(html, start + 2) if start < unclosed_from else None
-            if close is None:
-                unclosed_from = min(unclosed_from, start)
+            if start >= unclosed_from:
+                close = None
+            elif close is None or close.start() < start + 2:
+                close = _COMMENT_END.search(html, start + 2)
+                if close is None:
+                    unclosed_from = start
             first_tag = html.find(_TAG, start + 4, len(html) if close is None else close.start())
             if first_tag != -1:
                 position = first_tag + 1

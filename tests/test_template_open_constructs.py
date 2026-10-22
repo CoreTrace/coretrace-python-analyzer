@@ -205,8 +205,9 @@ def test_extending_a_template_that_ends_inside_a_script_stays_established(tmp_pa
         "<script>" * (SIZE // 8),
         "<style>" * (SIZE // 7),
         "<p>x</p>" * (SIZE // 8),
+        "<!--{% include 'empty.html' %}" * (SIZE // 10) + "-->",
     ],
-    ids=["lt", "end-tag", "comment", "comment-and-tag", "script", "style", "well-formed"],
+    ids=["lt", "end-tag", "comment", "comment-and-tag", "script", "style", "well-formed", "comments-before-one-close"],
 )
 def test_the_inspection_reads_each_construct_once(tmp_path: Path, template: str) -> None:
     escaped(tmp_path, {"page.html": template})
