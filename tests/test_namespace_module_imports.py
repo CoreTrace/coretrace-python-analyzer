@@ -146,6 +146,23 @@ def test_each_importer_reaches_the_helper_of_its_own_directory(tmp_path: Path, d
     assert located(analysis, root, "command-injection") == [("command-injection", f"pkg/{dangerous}/run.py", 5)]
 
 
+def test_a_module_reached_by_both_its_names_keeps_one_identity(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            **SCRIPTS,
+            "pkg/other.py": "from .tools import helper\n\n\ndef handle():\n    helper.execute(input())\n",
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    helpers = [n for n in analysis.graph.modules if str(analysis.graph.source(n).source_id).endswith("tools/helper.py")]
+    assert helpers == ["pkg.tools.helper"]
+    assert [d.path for d in analysis.coverage.details].count(str((root / "pkg/tools/helper.py").resolve())) == 1
+    assert located(analysis, root) == [("command-injection", "pkg/other.py", 5), ("command-injection", "pkg/tools/run.py", 5)]
+
+
 def test_an_import_no_root_decides_is_noted_and_not_followed(tmp_path: Path) -> None:
     # Run from the root, tool.py finds no helper beside it: neither file is the one.
     root = project(
