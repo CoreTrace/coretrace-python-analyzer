@@ -10,7 +10,8 @@ it extends or includes, can output data unescaped:
 - no variable where HTML escaping does not protect it: in a ``<script>`` or ``<style>``
   block, an event handler, a ``style`` or ``srcdoc`` attribute, a URL attribute whose
   value does not start with a fixed relative or ``http(s)`` prefix, an unquoted
-  attribute, an attribute or a tag name;
+  attribute, an attribute or a tag name, including in such a block or tag the template
+  leaves open, which once included runs into the markup that follows;
 - no Python file of the project turning autoescaping off.
 
 Templates are found under the project's ``templates`` directories, by their path below
@@ -154,7 +155,9 @@ _ATTRIBUTE_NAME = r"(?:=[^\s/>=]*+|[^\s/>=]++)"
 _ATTRIBUTE_VALUE = r"(?:\"[^\"]*+(?:\"|\Z)|'[^']*+(?:'|\Z)|[^\s>]*+)"
 _ATTRIBUTE = re.compile(rf"({_ATTRIBUTE_NAME})(?:\s*+=\s*+({_ATTRIBUTE_VALUE}))?")
 _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\s*+=\s*+{_ATTRIBUTE_VALUE})?)*+)>?")
-_RAW_TEXT = re.compile(r"<(script|style)\b[^>]*>(.*?)</\1\s*>", re.DOTALL | re.IGNORECASE)
+# A script or style block the text leaves open runs to its end as well, for the same
+# reason (#272).
+_RAW_TEXT = re.compile(r"<(script|style)\b[^>]*+>(.*?)(</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _END_TAG = re.compile(r"</[A-Za-z][^>]*>")
 # ``<{{ name }}`` or ``</ {{ name }}``: the variable would name a tag.
@@ -298,8 +301,9 @@ def _constant(word: str) -> str | None:
 
 def _escapes_where_printed(html: str) -> bool:
     """Whether every output marker of ``html`` stands where HTML escaping protects it.
-    Each construct is matched where it starts, where copying the rest of the text at
-    each ``<`` took quadratic time (#272)."""
+    Each construct is matched where it starts, and a script or style block the text
+    leaves open runs to its end: copying the rest of the text at each ``<``, and
+    rescanning such a block that never closed, took quadratic time (#272)."""
 
     position = 0
     while (start := html.find("<", position)) != -1:

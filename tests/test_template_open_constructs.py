@@ -1,6 +1,11 @@
 """Acceptance tests for issue #272: what a template leaves open, and a template tag inside a
 comment, are read as the browser receives the rendered page.
 
+A template is often a fragment: once included, what it leaves open continues into the
+markup that follows. A ``<script>`` or a ``<style>`` it leaves open runs to its
+end, so a variable inside is refused, even when the document ends there (the browser
+then never runs the script: a prudent false positive).
+
 Every construct is read once, so the inspection is linear in the size of the template.
 Each inspection and analysis runs in a subprocess with a timeout, so that one that does
 not end fails instead of hanging the suite.
@@ -71,11 +76,15 @@ def xss(tmp_path: Path, templates: dict[str, str]) -> list[tuple[str, int]]:
 @pytest.mark.parametrize(
     "templates",
     [
+        {"fragment.html": "<script>var name = {{ name }};\n", "page.html": "{% include 'fragment.html' %}</script>\n"},
         {"page.html": "<script>var name = {{ name }};</script>\n"},
+        {"page.html": "<script>var name = {{ name }};\n<p>after</p>\n"},
         {"page.html": '<!-- {% include "close.html" %}<script>var name = {{ name }};</script>\n', "close.html": "-->"},
     ],
     ids=[
+        "A-fragment-closed-by-includer",
         "B-closed-in-same-template",
+        "C-open-to-end-of-document",
         "D-comment-closed-by-include",
     ],
 )
@@ -106,6 +115,15 @@ def test_a_comment_ends_at_its_close_or_at_a_template_tag_inside_it(tmp_path: Pa
     assert escaped(tmp_path, {"page.html": template, "x.html": ""}) == ["x.html"]
 
 
+@pytest.mark.parametrize(
+    "template",
+    ["<style>body { color: {{ name }} }", "<script>var name = {{ name }};"],
+    ids=["style", "script"],
+)
+def test_a_variable_in_a_construct_left_open_is_refused(tmp_path: Path, template: str) -> None:
+    assert escaped(tmp_path, {"page.html": template}) == []
+
+
 def test_including_a_template_that_ends_inside_a_comment_stays_established(tmp_path: Path) -> None:
     templates = {"fragment.html": "<!-- note", "page.html": "{% include 'fragment.html' %} -->\n<p>{{ name }}</p>\n"}
 
@@ -126,9 +144,11 @@ def test_extending_a_template_that_ends_inside_a_script_stays_established(tmp_pa
     "template",
     [
         "<" * SIZE,
+        "<script>" * (SIZE // 8),
+        "<style>" * (SIZE // 7),
         "<p>x</p>" * (SIZE // 8),
     ],
-    ids=["lt", "well-formed"],
+    ids=["lt", "script", "style", "well-formed"],
 )
 def test_the_inspection_reads_each_construct_once(tmp_path: Path, template: str) -> None:
     escaped(tmp_path, {"page.html": template})
