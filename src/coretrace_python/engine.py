@@ -11,7 +11,6 @@ import hashlib
 import multiprocessing
 import sys
 import tempfile
-from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -622,7 +621,7 @@ def analyze_project(
                             _analyse_batch,
                             _Batch(
                                 {name: _path_of(files[name]) for name in sorted(component)},
-                                {name: keys[name] for name in names if name not in component},
+                                {name: keys[name] for read in names.values() for name in read if name not in component},
                                 names,
                             ),
                         )
@@ -835,49 +834,46 @@ def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: 
 
 def _imported_names(
     graph: ModuleGraph, component: frozenset[str], results: Mapping[str, CachedModule]
-) -> dict[str, tuple[str, ...]]:
-    """The modules whose summaries a component reads, each with the import names the
-    component's code refers to it by: its members, and every module they import,
-    transitively, all final by the time its wave runs. Each member goes under its
-    import names, what the others' code refers to it by; a name two members share, a
-    cycle across roots, goes under neither. A module a member imports goes under the
-    name the member resolved it by; two members resolving one name to different files
-    put it under neither. A module reached through another goes under its module name
-    only, the name the whole project knows it by (``pkg.helpers``, reached through
-    ``import pkg``), never under a name a module in between resolved from its own
-    directory: what a callee resolved does not change what its caller's names mean. Of
-    several such modules with one module name, only the one a member imports directly
-    goes under it, and a name a member left unresolved goes under none."""
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    """For each member of a component, the modules whose summaries it reads, each with
+    the import names the member's own code refers to it by: the members, and every
+    module they import, transitively, all final by the time the component's wave runs.
+    The member goes under its own names, each of which names it from its own roots.
+    Another module goes under the names the member resolved it by, and otherwise under
+    its module name only, the name the whole project knows it by (``pkg.helpers``,
+    reached through ``import pkg``), never under a name another module resolved from
+    its own directory: what a callee, or another member of a cycle, resolved does not
+    change what the member's names mean. Of several such modules with one module name,
+    only one the member imports directly goes under it, and a name the member left
+    unresolved goes under none."""
 
-    wanted: set[str] = set()
+    reached = set(component)
     pending = list(component)
     while pending:
         for imported in graph.imports(pending.pop()):
-            if imported in results and imported not in wanted:
-                wanted.add(imported)
+            if imported in results and imported not in reached:
+                reached.add(imported)
                 pending.append(imported)
-    unresolved = {import_name for member in component for import_name in graph.unresolved(member)}
-    chosen: dict[str, str | None] = {}
-    for member in sorted(component):
-        for import_name, module in graph.resolved(member).items():
-            if module in results and import_name not in unresolved and chosen.setdefault(import_name, module) != module:
-                chosen[import_name] = None
-    direct = {imported for member in component for imported in graph.imports(member)}
     by_module_name: dict[str, list[str]] = {}
-    for name in sorted(wanted):
+    for name in sorted(reached):
         by_module_name.setdefault(graph.source(name).module_name, []).append(name)
-    for module_name, modules in by_module_name.items():
-        picked = modules if len(modules) == 1 else [name for name in modules if name in direct]
-        if module_name not in chosen and module_name not in unresolved and len(picked) == 1:
-            chosen[module_name] = picked[0]
-    names: dict[str, list[str]] = {}
-    for import_name, reached in sorted(chosen.items()):
-        if reached is not None:
-            names.setdefault(reached, []).append(import_name)
-    counts = Counter(import_name for member in component for import_name in _names_of(graph.source(member)))
-    for member in component:
-        names[member] = [import_name for import_name in _names_of(graph.source(member)) if counts[import_name] == 1]
-    return {module: tuple(module_names) for module, module_names in names.items()}
+    read: dict[str, dict[str, tuple[str, ...]]] = {}
+    for member in sorted(component):
+        # The graph records no import of a module by itself.
+        chosen = {
+            **dict.fromkeys(_names_of(graph.source(member)), member),
+            **{import_name: module for import_name, module in graph.resolved(member).items() if module in reached},
+        }
+        direct = graph.imports(member)
+        for module_name, modules in by_module_name.items():
+            picked = modules if len(modules) == 1 else [name for name in modules if name in direct]
+            if module_name not in chosen and module_name not in graph.unresolved(member) and len(picked) == 1:
+                chosen[module_name] = picked[0]
+        names: dict[str, list[str]] = {}
+        for import_name, module in sorted(chosen.items()):
+            names.setdefault(module, []).append(import_name)
+        read[member] = {module: tuple(module_names) for module, module_names in names.items()}
+    return read
 
 
 def _index(results: Mapping[str, CachedModule], names: Mapping[str, Iterable[str]]) -> SummaryIndex:
@@ -904,63 +900,65 @@ def _names_of(source: SourceFile) -> tuple[str, ...]:
 def _analyse_managers(
     managers: Mapping[str, AnalysisManager],
     imported: Mapping[str, CachedModule],
-    names: Mapping[str, tuple[str, ...]],
+    names: Mapping[str, Mapping[str, tuple[str, ...]]],
     plugins: tuple[Plugin, ...],
     affected: Affected,
     suffixes: SuffixIndex,
     root: Path,
 ) -> dict[str, CachedModule]:
     """Analyse one component: iterate its summaries to a fixpoint (§21), then extract
-    what the rest of the run needs from each module. The component reads each module of
-    ``names`` under the names given (``_imported_names``): its members' summaries as they
-    grow, the others' as ``imported`` holds them, final."""
+    what the rest of the run needs from each module. Each member reads, in an index of
+    its own, the modules ``names`` gives it under the names given (``_imported_names``):
+    the members' summaries as they grow, the others' as ``imported`` holds them, final."""
 
-    seed = _index(imported, {name: module_names for name, module_names in names.items() if name not in managers})
+    final = {
+        member: _index(imported, {name: module_names for name, module_names in names[member].items() if name not in managers})
+        for member in managers
+    }
+
+    def indexes(summaries: Mapping[str, Mapping[str, FunctionSummary]]) -> dict[str, SummaryIndex]:
+        return {
+            member: SummaryIndex(
+                {
+                    **final[member].summaries,
+                    **{
+                        project_symbol(module, function): summary
+                        for name, module_names in names[member].items()
+                        if name in managers
+                        for module in module_names
+                        for function, summary in summaries[name].items()
+                    },
+                }
+            )
+            for member in managers
+        }
+
     # The members' functions start from the summaries ``SummaryAnalysis`` starts from.
     # Left out, a call from one member to another is a call to an unknown symbol on the
     # first iteration and a project call on the next: around a cycle of modules, the
     # iteration then shifts by one module each time and never settles (#261).
-    index = SummaryIndex(
-        {
-            **seed.summaries,
-            **{
-                project_symbol(module, function): summary
-                for name in managers
-                for module in names[name]
-                for function, summary in starting_summaries(managers[name].get(CallGraphAnalysis)).items()
-            },
-        }
-    )
-    for manager in managers.values():
-        manager.provide(ProjectSummaries, index)
-    # Iterated until the index settles, with no bound: stopped earlier, summaries that
-    # started empty would miss what later iterations add, a dependency still on its way
-    # reading as no taint. It settles because each iteration can only add: the index holds
-    # the same symbols from the start, and in every round of a module's fixpoint the rules
-    # that read the index join what they read (a call's dependencies and records, heap
-    # stores, merges), while those that do not join (a nonlocal record not summarized yet,
-    # ``kept``, reachability, ``unsupported``, ``static``) depend on the code and the round
-    # only. Each round's table thus grows with the index, the fixpoint too, in a finite
-    # domain: the parameters, symbols and call records of the code. A rule reading the
-    # index without joining would break this, and the loop's termination with it.
+    index = indexes({name: starting_summaries(manager.get(CallGraphAnalysis)) for name, manager in managers.items()})
+    for name, manager in managers.items():
+        manager.provide(ProjectSummaries, index[name])
+    # Iterated until every member's index settles, with no bound: stopped earlier,
+    # summaries that started empty would miss what later iterations add, a dependency
+    # still on its way reading as no taint. It settles because each iteration can only
+    # add: each index holds the same symbols from the start, and in every round of a
+    # module's fixpoint the rules that read the index join what they read (a call's
+    # dependencies and records, heap stores, merges), while those that do not join (a
+    # nonlocal record not summarized yet, ``kept``, reachability, ``unsupported``,
+    # ``static``) depend on the code and the round only. Each round's table thus grows
+    # with the index, the fixpoint too, in a finite domain: the parameters, symbols and
+    # call records of the code. A rule reading the index without joining would break
+    # this, and the loop's termination with it.
     while True:
-        updated = SummaryIndex(
-            {
-                **seed.summaries,
-                **{
-                    project_symbol(module, function): summary
-                    for name in managers
-                    for module in names[name]
-                    for function, summary in _summaries_of(managers[name]).items()
-                },
-            }
-        )
+        updated = indexes({name: _summaries_of(manager) for name, manager in managers.items()})
         if updated == index:
             break
         index = updated
-        for manager in managers.values():
+        for name, manager in managers.items():
             manager.run(ProjectSummariesUpdated)
-            manager.provide(ProjectSummaries, index)
+            manager.provide(ProjectSummaries, index[name])
     return {name: _analyse_module(manager, plugins, affected, suffixes, root) for name, manager in managers.items()}
 
 
@@ -987,12 +985,13 @@ class _Project:
 @dataclass(frozen=True)
 class _Batch:
     """One component handed to a worker process: its files under the engine's module
-    names, the key in the spool of each module it imports, and the names it reads each
-    module by (``_imported_names``). Only these travel, not the summaries themselves."""
+    names, the key in the spool of each module it imports, and the names each member
+    reads each module by (``_imported_names``). Only these travel, not the summaries
+    themselves."""
 
     paths: Mapping[str, Path]
     keys: Mapping[str, str]
-    names: Mapping[str, tuple[str, ...]]
+    names: Mapping[str, Mapping[str, tuple[str, ...]]]
 
 
 @dataclass

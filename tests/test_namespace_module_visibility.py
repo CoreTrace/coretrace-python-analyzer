@@ -8,6 +8,8 @@ file has it. Up to the summaries: a module is registered for an importer only un
 the names that importer resolved, or, reached through another module, under its module
 name. A name the module graph leaves unresolved is registered for no file, and what a
 module in between resolved from its own directory changes nothing for its importer.
+Within an import cycle too, each member reads the others under the names it resolved
+itself, and itself under its own names.
 """
 
 from __future__ import annotations
@@ -169,3 +171,54 @@ def test_a_name_one_member_of_a_cycle_resolved_does_not_change_another(tmp_path:
     )
 
     assert injections(tmp_path, root, run) == [("main.py", 8)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_member_of_a_cycle_is_not_read_under_a_short_name_another_did_not_resolve(tmp_path: Path, run: str) -> None:
+    # main.py and pkg/sub/os.py import each other; main.py's os is the library.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/config.py": "VALUE = 1\n",
+            "pkg/sub/os.py": "from ..config import VALUE\nimport main\n\n\ndef noop():\n    return None\n\n\n" + SHADOWED_OS,
+            "main.py": "import os\nfrom pkg.sub.os import noop\n\n\ndef run():\n    noop()\n    os.system(input())\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 7)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_what_a_member_of_a_cycle_resolved_does_not_change_another(tmp_path: Path, run: str) -> None:
+    # main.py and pkg/sub/loader.py import each other; loader.py's os is pkg/sub/os.py,
+    # main.py's the library.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/config.py": "VALUE = 1\n",
+            "pkg/sub/os.py": "from ..config import VALUE\n\n\n" + SHADOWED_OS,
+            "pkg/sub/loader.py": "import os\nimport main\n\n\ndef noop():\n    return None\n",
+            "main.py": "import os\nfrom pkg.sub.loader import noop\n\n\ndef run():\n    noop()\n    os.system(input())\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 7)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_module_that_imports_itself_by_its_short_name_reads_its_own_functions(tmp_path: Path, run: str) -> None:
+    # Run from pkg/tools, helper.py's ``import helper`` is helper.py itself.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/tools/helper.py": (
+                "import os\nimport helper\n\n\ndef execute(command):\n    os.system(command)\n\n\n"
+                "def run():\n    helper.execute(input())\n"
+            ),
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("pkg/tools/helper.py", 10)]
