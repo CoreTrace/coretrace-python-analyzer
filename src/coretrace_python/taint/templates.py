@@ -194,7 +194,8 @@ def escaped_templates(root: Path) -> frozenset[str]:
     """The names of the templates under ``root`` that escape every variable they render,
     as ``render_to_string`` names them (their path below a ``templates`` directory). A
     template including one that ends inside a script or style block, a tag or an end tag
-    is not among them: the markup after its include continues that construct."""
+    is not among them: the markup after its include continues that construct. A
+    template extending another renders it, and ends where it ends."""
 
     found: dict[str, list[Path]] = {}
     for path in discover_files(root):
@@ -204,15 +205,19 @@ def escaped_templates(root: Path) -> frozenset[str]:
             found.setdefault(name, []).append(path)
     local: dict[str, bool] = {}
     requires: dict[str, set[str]] = {}
+    extends: dict[str, set[str]] = {}
     includes: dict[str, set[str]] = {}
     open_ended: set[str] = set()
     for name, paths in found.items():
         verdicts = [_verdict(path) for path in paths]
         local[name] = all(verdict.escapes for verdict in verdicts)
         requires[name] = {needed for verdict in verdicts for needed in verdict.extends | verdict.includes}
+        extends[name] = {extended for verdict in verdicts for extended in verdict.extends}
         includes[name] = {included for verdict in verdicts for included in verdict.includes}
         if any(verdict.open_end for verdict in verdicts):
             open_ended.add(name)
+    while grown := {name for name, extended in extends.items() if extended & open_ended} - open_ended:
+        open_ended |= grown
     escaped = {name for name, safe in local.items() if safe and not includes[name] & open_ended}
     changed = True
     while changed:

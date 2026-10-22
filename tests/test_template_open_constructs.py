@@ -185,6 +185,32 @@ def test_including_a_template_that_ends_inside_a_comment_stays_established(tmp_p
     assert escaped(tmp_path, templates) == ["fragment.html", "page.html"]
 
 
+@pytest.mark.parametrize(
+    "chain",
+    [
+        {"child.html": '{% extends "base.html" %}{% block body %}hello{% endblock %}'},
+        {
+            "middle.html": '{% extends "base.html" %}',
+            "child.html": '{% extends "middle.html" %}{% block body %}hello{% endblock %}',
+        },
+    ],
+    ids=["extends", "extends-twice"],
+)
+def test_a_template_extending_one_that_ends_inside_a_construct_ends_inside_it_too(
+    tmp_path: Path, chain: dict[str, str]
+) -> None:
+    # Rendered, child.html is base.html with its block filled: it ends inside base.html's
+    # script, which the markup after its include continues.
+    templates = {
+        "base.html": "<p>{% block body %}{% endblock %}</p><script>",
+        **chain,
+        "page.html": '{% include "child.html" %}var name = {{ name }};</script>',
+    }
+
+    assert escaped(tmp_path, templates) == sorted(set(templates) - {"page.html"})
+    assert xss(tmp_path, templates) == [("app/views.py", 5)]
+
+
 def test_extending_a_template_that_ends_inside_a_script_stays_established(tmp_path: Path) -> None:
     # A child's blocks stand where the parent places them, before the parent's end.
     templates = {
