@@ -18,11 +18,12 @@ runs depends on what the object exposes, a hotspot."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import ClassVar
 
 from coretrace_python.abstract.strings import ModuleStringsAnalysis, leading_text
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Severity
+from coretrace_python.findings import RuleDescription, Severity
 from coretrace_python.findings.refutation import Status, Verdict
 from coretrace_python.hir import nodes
 from coretrace_python.ir.ssa import SSAAnalysis
@@ -42,6 +43,12 @@ _GETATTR = SymbolId("python.builtins.getattr")
 
 class CodeInjectionPlugin(TaintDetector):
     name: ClassVar[str] = "code-injection"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "code-injection": RuleDescription(
+            "Code injection",
+            "Attacker-controlled data chooses code that runs: the code eval or exec runs, the module an import loads, the script runpy runs, or the attribute getattr selects and the program calls.",
+        ),
+    }
     rule_id: ClassVar[str] = "code-injection"
     kind: ClassVar[TaintKind] = TaintKind.CODE
     severity: ClassVar[Severity] = Severity.HIGH

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import Confidence, Finding, RuleDescription, Severity
 from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.plugins import Plugin, PluginContext
@@ -18,6 +18,12 @@ RUN = SymbolId("python.flask.Flask.run")
 
 class FlaskDebugPlugin(Plugin):
     name: ClassVar[str] = "flask-debug"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "debug-enabled": RuleDescription(
+            "Debug mode enabled",
+            "A Flask application run with debug=True, which exposes an interactive debugger.",
+        ),
+    }
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({ScopeAnalysis, SymbolAnalysis})
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:

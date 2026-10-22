@@ -5,15 +5,22 @@ a hint, so medium confidence."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import ClassVar
 
-from coretrace_python.findings import Confidence, Severity
+from coretrace_python.findings import Confidence, RuleDescription, Severity
 from coretrace_python.plugins import TaintDetector
 from coretrace_python.taint import TaintKind
 
 
 class PlaintextCredentialsPlugin(TaintDetector):
     name: ClassVar[str] = "plaintext-credentials"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "plaintext-credential-storage": RuleDescription(
+            "Plaintext credential storage",
+            "A parameter named like a password is stored in a database without hashing.",
+        ),
+    }
     rule_id: ClassVar[str] = "plaintext-credential-storage"
     kind: ClassVar[TaintKind] = TaintKind.CREDENTIAL
     severity: ClassVar[Severity] = Severity.HIGH

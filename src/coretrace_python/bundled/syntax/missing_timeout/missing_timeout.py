@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import Confidence, Finding, RuleDescription, Severity
 from coretrace_python.interprocedural import CallGraphAnalysis
 from coretrace_python.ir.model import Call
 from coretrace_python.ir.ssa import SSAAnalysis
@@ -20,6 +20,12 @@ HTTP_CALLS = frozenset(SymbolId(f"python.{caller}.{method}") for caller in _CALL
 
 class MissingTimeoutPlugin(Plugin):
     name: ClassVar[str] = "missing-timeout"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "missing-timeout": RuleDescription(
+            "HTTP request without a timeout",
+            "A Requests or httpx call without a timeout, which can wait forever.",
+        ),
+    }
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis, CallGraphAnalysis})
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:

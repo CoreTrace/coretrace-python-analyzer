@@ -10,11 +10,12 @@ unproven, ``"/" + next`` included, stays a vulnerability.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import ClassVar
 
 from coretrace_python.abstract.strings import ModuleStringsAnalysis
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Severity
+from coretrace_python.findings import RuleDescription, Severity
 from coretrace_python.findings.refutation import Status, Verdict
 from coretrace_python.hir import nodes
 from coretrace_python.ir.ssa import SSAAnalysis
@@ -25,6 +26,12 @@ from coretrace_python.taint.urls import flow_url
 
 class OpenRedirectPlugin(TaintDetector):
     name: ClassVar[str] = "open-redirect"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "open-redirect": RuleDescription(
+            "Open redirect",
+            "Attacker-controlled data chooses the target of an HTTP redirect, which can send the user to another site.",
+        ),
+    }
     rule_id: ClassVar[str] = "open-redirect"
     kind: ClassVar[TaintKind] = TaintKind.REDIRECT
     severity: ClassVar[Severity] = Severity.MEDIUM

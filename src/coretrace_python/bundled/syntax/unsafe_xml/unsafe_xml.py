@@ -19,7 +19,7 @@ from typing import ClassVar
 
 from coretrace_python.abstract.strings import ModuleStringsAnalysis
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Confidence, Severity
+from coretrace_python.findings import Confidence, RuleDescription, Severity
 from coretrace_python.interprocedural import CallGraphAnalysis
 from coretrace_python.ir.model import Call, Constant, Global, Instruction, Value
 from coretrace_python.ir.ssa import SSAAnalysis
@@ -64,6 +64,12 @@ def _resolve_entities(call: Call, defs: Mapping[Value, Instruction]) -> object:
 
 class UnsafeXmlPlugin(SymbolCallDetector):
     name: ClassVar[str] = "unsafe-xml"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "unsafe-xml": RuleDescription(
+            "Unsafe XML parser",
+            "An XML parser of the standard library or of lxml, exposed to the entities a document declares; defusedxml is the safe replacement.",
+        ),
+    }
     rule_id: ClassVar[str] = "unsafe-xml"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis, CallGraphAnalysis, ModuleStringsAnalysis})
     symbols: ClassVar[frozenset[SymbolId]] = _STANDARD_LIBRARY | _LXML | _LXML_UNTIL_6_1

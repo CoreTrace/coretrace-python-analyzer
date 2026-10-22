@@ -7,11 +7,11 @@ produces one."""
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import Confidence, Finding, RuleDescription, Severity
 from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
 from coretrace_python.plugins import Plugin, PluginContext
@@ -25,6 +25,12 @@ CREDENTIAL = re.compile(r"(?i)(token|secret|password|passwd|api_?key|session|non
 
 class WeakRandomPlugin(Plugin):
     name: ClassVar[str] = "weak-random"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "weak-random": RuleDescription(
+            "Weak random value for a credential",
+            "A value of the random module used as a credential; random is not cryptographically secure.",
+        ),
+    }
     rule_id: ClassVar[str] = "weak-random"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({ScopeAnalysis, SymbolAnalysis})
 

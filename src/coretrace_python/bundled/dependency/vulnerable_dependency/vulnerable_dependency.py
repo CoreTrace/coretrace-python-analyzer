@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import PurePath
 from typing import ClassVar
 
@@ -15,13 +15,19 @@ from coretrace_python.dependency.correlation import (
     ruled_out,
     suffix_index,
 )
-from coretrace_python.findings import Confidence, Finding
+from coretrace_python.findings import Confidence, Finding, RuleDescription
 from coretrace_python.interprocedural import CallGraphAnalysis, ExternalSymbol
 from coretrace_python.plugins import ProjectContext, ProjectPlugin
 
 
 class VulnerableDependencyPlugin(ProjectPlugin):
     name: ClassVar[str] = "vulnerable-dependency"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "vulnerable-dependency": RuleDescription(
+            "Vulnerable dependency",
+            "A requirement allows a version that an advisory affects.",
+        ),
+    }
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({DependencyAnalysis, CallGraphAnalysis})
 
     def analyze_project(self, ctx: ProjectContext) -> Sequence[Finding]:

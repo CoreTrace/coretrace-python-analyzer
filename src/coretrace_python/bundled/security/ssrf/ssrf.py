@@ -10,11 +10,12 @@ a base of unknown value or a URL built in a helper function, stays a vulnerabili
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import ClassVar
 
 from coretrace_python.abstract.strings import ModuleStringsAnalysis
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Severity
+from coretrace_python.findings import RuleDescription, Severity
 from coretrace_python.findings.refutation import Status, Verdict
 from coretrace_python.hir import nodes
 from coretrace_python.ir.ssa import SSAAnalysis
@@ -25,6 +26,12 @@ from coretrace_python.taint.urls import flow_url, redirects_disabled
 
 class SsrfPlugin(TaintDetector):
     name: ClassVar[str] = "ssrf"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "ssrf": RuleDescription(
+            "Server-side request forgery",
+            "Attacker-controlled data reaches the destination of an HTTP client request (Requests, httpx, urllib).",
+        ),
+    }
     rule_id: ClassVar[str] = "ssrf"
     kind: ClassVar[TaintKind] = TaintKind.SSRF
     severity: ClassVar[Severity] = Severity.HIGH

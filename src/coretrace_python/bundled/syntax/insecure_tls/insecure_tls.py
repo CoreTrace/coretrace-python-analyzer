@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Severity
+from coretrace_python.findings import RuleDescription, Severity
 from coretrace_python.interprocedural import CallGraphAnalysis
 from coretrace_python.ir.model import Call, Constant, Instruction, Value
 from coretrace_python.ir.ssa import SSAAnalysis
@@ -24,6 +24,12 @@ UNVERIFIED = frozenset({SymbolId("python.ssl._create_unverified_context")})
 
 class InsecureTlsPlugin(SymbolCallDetector):
     name: ClassVar[str] = "insecure-tls"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "insecure-tls": RuleDescription(
+            "TLS certificate verification disabled",
+            "verify=False on a Requests or httpx call, or ssl._create_unverified_context(), which accept any certificate.",
+        ),
+    }
     rule_id: ClassVar[str] = "insecure-tls"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis, CallGraphAnalysis})
     symbols: ClassVar[frozenset[SymbolId]] = HTTP_CALLS | UNVERIFIED

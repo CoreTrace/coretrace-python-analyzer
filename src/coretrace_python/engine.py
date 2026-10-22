@@ -75,7 +75,6 @@ from coretrace_python.findings import (
 )
 from coretrace_python.findings.context import code_context, code_origin, path_in_project
 from coretrace_python.findings.refutation import RefutationAnalysis
-from coretrace_python.findings.rules import RULES
 from coretrace_python.findings.suppressions import partition
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
 from coretrace_python.hir import HIR_SCHEMA_VERSION, nodes
@@ -151,11 +150,27 @@ TOOL_NAME = "coretrace-python-analyzer"
 BUNDLED_PLUGINS = Path(__file__).resolve().parent / "bundled"
 
 
-def rule_descriptions(registry: PluginRegistry) -> Mapping[str, RuleDescription]:
-    """What every rule of a check detects, for its report: the rules each loaded plugin
-    describes, the first declaration of an id kept, and the rules the engine reports itself."""
+# The rules the engine reports itself, beside those of the plugins: notes on what it could not
+# analyse, and the correlation of a dependency's advisory with the project's taint flows.
+ENGINE_RULES: Mapping[str, RuleDescription] = MappingProxyType(
+    {
+        "unsupported-syntax": RuleDescription(
+            "Unsupported syntax",
+            "A function the analyzer could not analyze, because of syntax it does not support: its code is not checked.",
+        ),
+        "exploitable-vulnerability": RuleDescription(
+            "Exploitable dependency vulnerability",
+            "Attacker-controlled data reaches an API that an advisory of a vulnerable requirement affects.",
+        ),
+    }
+)
 
-    described: dict[str, RuleDescription] = dict(RULES)
+
+def rule_descriptions(registry: PluginRegistry) -> Mapping[str, RuleDescription]:
+    """What every rule of a check detects, for its report: the rules the engine reports
+    itself, and those each loaded plugin describes, the first declaration of an id kept."""
+
+    described: dict[str, RuleDescription] = dict(ENGINE_RULES)
     for loaded in registry:
         for rule_id, description in loaded.plugin.rules.items():
             described.setdefault(rule_id, description)
