@@ -222,3 +222,20 @@ def test_a_module_that_imports_itself_by_its_short_name_reads_its_own_functions(
     )
 
     assert injections(tmp_path, root, run) == [("pkg/tools/helper.py", 10)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_each_member_of_a_cycle_reads_the_module_it_resolved(tmp_path: Path, run: str) -> None:
+    # pkg/a/run.py and pkg/b/tool.py import each other, and each its own helper.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/a/run.py": "import helper\nfrom pkg.b import tool\n\n\ndef main():\n    tool.use()\n    helper.execute(input())\n",
+            "pkg/a/helper.py": "import os\n\n\ndef execute(command):\n    os.system(command)\n",
+            "pkg/b/tool.py": 'import helper\nfrom pkg.a import run\n\n\ndef use():\n    return helper.execute("x")\n',
+            "pkg/b/helper.py": "def execute(command):\n    return command\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("pkg/a/run.py", 7)]
