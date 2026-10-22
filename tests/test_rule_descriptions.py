@@ -8,6 +8,7 @@ reports, its rules listed by id alone.
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import io
 import json
@@ -115,6 +116,40 @@ def documented_rules() -> list[str]:
 
 @pytest.mark.parametrize("rule", documented_rules())
 def test_every_documented_rule_is_described(rule: str) -> None:
+    described = bundled_rules().get(rule)
+
+    assert described is not None
+    assert described.title not in ("", rule)
+    assert described.description
+
+
+def reportable_rules() -> set[str]:
+    """Every rule id the code gives a finding literally, the engine's notes included: a
+    rule_id class attribute, a rule_id argument, or the first argument of Finding or of the
+    engine's _note."""
+
+    source = Path(__file__).resolve().parent.parent / "src" / "coretrace_python"
+    found: set[str] = set()
+    for path in source.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "rule_id":
+                value = node.value
+            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("Finding", "_note"):
+                keyword = next((k.value for k in node.keywords if k.arg == "rule_id"), None)
+                value = keyword or (node.args[0] if node.args else None)
+            else:
+                continue
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                found.add(value.value)
+    return found
+
+
+def test_the_rules_are_read_from_the_code() -> None:
+    assert {"dangerous-eval", "hardcoded-secret", "unsupported-syntax", "syntax-error"} <= reportable_rules()
+
+
+@pytest.mark.parametrize("rule", sorted(reportable_rules()))
+def test_every_rule_the_code_reports_is_described(rule: str) -> None:
     described = bundled_rules().get(rule)
 
     assert described is not None
