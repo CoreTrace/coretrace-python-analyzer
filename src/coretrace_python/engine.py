@@ -176,13 +176,14 @@ ENGINE_RULES: Mapping[str, RuleDescription] = MappingProxyType(
 )
 
 
-def rule_descriptions(registry: PluginRegistry) -> Mapping[str, RuleDescription]:
+def rule_descriptions(plugins: Iterable[Plugin]) -> Mapping[str, RuleDescription]:
     """What every rule of a check detects, for its report: the rules the engine reports
-    itself, and those each loaded plugin describes, the first declaration of an id kept."""
+    itself, and those each of its plugins describes, loaded or given as an instance, the
+    first declaration of an id kept."""
 
     described: dict[str, RuleDescription] = dict(ENGINE_RULES)
-    for loaded in registry:
-        for rule_id, description in loaded.plugin.rules.items():
+    for plugin in plugins:
+        for rule_id, description in plugin.rules.items():
             described.setdefault(rule_id, description)
     return MappingProxyType(described)
 
@@ -395,7 +396,7 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path], root: Path | 
     functions = len(analyzable_functions(manager.module))
     coverage = Coverage((FileCoverage(str(source.source_id), "analysed", functions, len(supported)),))
     kept, suppressed = partition(findings, lambda sid: source.text if sid == source.source_id else None)
-    return FileAnalysis(kept, coverage, suppressed, rule_descriptions(registry))
+    return FileAnalysis(kept, coverage, suppressed, rule_descriptions(loaded.plugin for loaded in registry))
 
 
 def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
@@ -692,7 +693,7 @@ def analyze_project(
         suppressed,
         accepted,
         components,
-        rule_descriptions(registry),
+        rule_descriptions(all_plugins),
     )
 
 
