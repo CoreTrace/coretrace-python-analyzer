@@ -341,6 +341,32 @@ JSON pointer of a value) for a value of a structured file whose line cannot be: 
 that reads a finding's line checks which it has, and never invents a line for a
 `FileLocation` (`coretrace_python.source.positions` places JSON and TOML values).
 
+A plugin describes the rules it reports in its optional `rules` attribute: each rule id to a
+`RuleDescription`, a title and what the rule detects. The SARIF report gives them to its
+consumers (`shortDescription` and `fullDescription`), so that GitHub code scanning names and
+explains the alert; a rule the plugin does not describe is listed by its id alone.
+
+```python
+from collections.abc import Mapping
+
+from coretrace_python.findings import RuleDescription
+
+
+class SensitiveLoggingPlugin(SymbolCallDetector):
+    ...
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "sensitive-logging": RuleDescription(
+            "Sensitive data logged",
+            "A logging call at debug level that may write sensitive data to the logs.",
+        ),
+    }
+```
+
+A finding may also point at other places it involves, each a `RelatedLocation` (a span and a
+short message) in its `related` tuple, as a taint flow reaching its sink inside a project
+function points at that sink. The SARIF report lists them as `relatedLocations` and links to
+them from the message.
+
 ## Testing a plugin
 
 Load the plugin directory with the engine and check one source or one project:
