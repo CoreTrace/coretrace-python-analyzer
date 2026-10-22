@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
 from coretrace_python.dependency import DependencyAnalysis
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import Confidence, Finding, RuleDescription, Severity
 from coretrace_python.plugins import ProjectContext, ProjectPlugin
 
 
 class DependencyPolicyPlugin(ProjectPlugin):
     name: ClassVar[str] = "dependency-policy"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "denied-dependency": RuleDescription(
+            "Denied dependency",
+            "A requirement on a package the policy denies.",
+        ),
+        "unpinned-dependency": RuleDescription(
+            "Unpinned dependency",
+            "A requirement without an exact pin, when the policy requires pins.",
+        ),
+    }
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({DependencyAnalysis})
 
     def analyze_project(self, ctx: ProjectContext) -> Sequence[Finding]:

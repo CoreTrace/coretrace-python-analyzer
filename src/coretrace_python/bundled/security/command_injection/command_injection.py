@@ -36,7 +36,7 @@ from typing import ClassVar
 
 from coretrace_python.abstract.strings import ModuleStringsAnalysis, leading_text
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Severity
+from coretrace_python.findings import RuleDescription, Severity
 from coretrace_python.findings.refutation import Status, Verdict
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import Arguments
@@ -398,6 +398,12 @@ class _Operands:
 
 class CommandInjectionPlugin(TaintDetector):
     name: ClassVar[str] = "command-injection"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "command-injection": RuleDescription(
+            "Command injection",
+            "Attacker-controlled data reaches a shell or process execution (os.system, subprocess, ...) where it can run or choose a command.",
+        ),
+    }
     rule_id: ClassVar[str] = "command-injection"
     kind: ClassVar[TaintKind] = TaintKind.COMMAND
     severity: ClassVar[Severity] = Severity.HIGH

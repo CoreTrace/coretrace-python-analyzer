@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 
-from coretrace_python.source import Location
+from coretrace_python.source import Location, SourceSpan
 
 FINDING_SCHEMA_VERSION = 1
 
@@ -45,6 +45,15 @@ def _no_metadata() -> Mapping[str, str]:
 
 
 @dataclass(frozen=True)
+class RelatedLocation:
+    """Another place a finding involves, such as the sink a flow reaches inside a project
+    function, with a short message saying what happens there."""
+
+    span: SourceSpan
+    message: str
+
+
+@dataclass(frozen=True)
 class Finding:
     rule_id: str
     message: str
@@ -54,6 +63,7 @@ class Finding:
     span: Location
     function: str | None = None
     metadata: Mapping[str, str] = field(default_factory=_no_metadata)
+    related: tuple[RelatedLocation, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))

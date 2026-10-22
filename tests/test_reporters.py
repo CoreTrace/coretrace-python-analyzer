@@ -11,11 +11,19 @@ from __future__ import annotations
 
 import ast
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from coretrace_python.findings import FINDING_SCHEMA_VERSION, Confidence, Finding, Severity
+from coretrace_python.findings import (
+    FINDING_SCHEMA_VERSION,
+    Confidence,
+    Finding,
+    RelatedLocation,
+    RuleDescription,
+    Severity,
+)
 from coretrace_python.source import SourceId, SourceSpan
 
 try:
@@ -168,6 +176,84 @@ def test_sarif_reporter_emits_a_single_run_with_rules_and_results() -> None:
             }
         }
     ]
+
+
+def test_sarif_rules_carry_the_description_the_report_gives_them() -> None:
+    described = Report(
+        findings=(finding("dangerous-eval", 2),),
+        tool_name="coretrace-python-analyzer",
+        tool_version="0.1.0",
+        rules={"dangerous-eval": RuleDescription("Dynamic code execution", "A call to eval or exec.")},
+    )
+
+    assert json.loads(render_sarif(described))["runs"][0]["tool"]["driver"]["rules"] == [
+        {
+            "id": "dangerous-eval",
+            "shortDescription": {"text": "Dynamic code execution"},
+            "fullDescription": {"text": "A call to eval or exec."},
+        }
+    ]
+
+
+def test_a_rule_without_a_description_keeps_its_id_alone() -> None:
+    document = json.loads(render_sarif(report(finding("from-a-third-party-plugin", 1))))
+
+    assert document["runs"][0]["tool"]["driver"]["rules"] == [{"id": "from-a-third-party-plugin"}]
+
+
+def test_sarif_results_carry_their_confidence() -> None:
+    def confidence(level: Confidence) -> object:
+        document = json.loads(render_sarif(report(replace(finding("r", 1), confidence=level))))
+        return document["runs"][0]["results"][0]["properties"]["confidence"]
+
+    assert confidence(Confidence.HIGH) == "high"
+    assert confidence(Confidence.MEDIUM) == "medium"
+    assert confidence(Confidence.LOW) == "low"
+
+
+def test_the_confidence_sits_beside_the_other_properties() -> None:
+    document = json.loads(render_sarif(report(finding("command-injection", 1, injection="option"))))
+
+    assert document["runs"][0]["results"][0]["properties"] == {"confidence": "high", "injection": "option"}
+
+
+def test_sarif_results_point_at_the_other_places_a_finding_involves() -> None:
+    sink = SourceSpan(SourceId("app/helpers.py"), 12, 9, 12, 21)
+    involved = replace(finding("code-injection", 3), related=(RelatedLocation(sink, "eval runs the input here"),))
+
+    (result,) = json.loads(render_sarif(report(involved)))["runs"][0]["results"]
+
+    assert result["relatedLocations"] == [
+        {
+            "id": 0,
+            "physicalLocation": {
+                "artifactLocation": {"uri": "app/helpers.py"},
+                "region": {"startLine": 12, "startColumn": 9, "endLine": 12, "endColumn": 21},
+            },
+            "message": {"text": "eval runs the input here"},
+        }
+    ]
+
+
+def test_the_message_links_to_each_related_location() -> None:
+    sink = SourceSpan(SourceId("app/helpers.py"), 12, 9, 12, 21)
+    involved = replace(
+        finding("code-injection", 3),
+        message="a[0] reaches eval",
+        related=(RelatedLocation(sink, "sink eval"), RelatedLocation(sink, "sink [exec]")),
+    )
+
+    (result,) = json.loads(render_sarif(report(involved)))["runs"][0]["results"]
+
+    # SARIF embedded links: [text](id) points at relatedLocations[id], which GitHub code
+    # scanning shows as a link; literal brackets and backslashes are escaped around them.
+    assert result["message"] == {"text": "a\\[0\\] reaches eval ([sink eval](0), [sink \\[exec\\]](1))"}
+
+
+def test_a_result_without_other_places_has_no_related_locations() -> None:
+    (result,) = json.loads(render_sarif(report(finding("code-injection", 3))))["runs"][0]["results"]
+
+    assert "relatedLocations" not in result
 
 
 def test_sarif_levels_follow_severity() -> None:

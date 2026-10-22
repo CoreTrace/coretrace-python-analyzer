@@ -23,12 +23,12 @@ import re
 import tomllib
 from bisect import bisect_right
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import ClassVar
 
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import Confidence, Finding, RuleDescription, Severity
 from coretrace_python.findings.context import is_test_code
 from coretrace_python.hir import nodes
 from coretrace_python.hir.visitors import Node, children
@@ -495,6 +495,20 @@ def is_placeholder(value: str) -> bool:
 class SecretDetector(Plugin):
     """Report hardcoded secrets among the module's string literals."""
 
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "hardcoded-secret": RuleDescription(
+            "Hard-coded secret",
+            "A secret in a provider-specific format (AWS, GitHub, Slack, Stripe, Google, a private key, a JWT, ...) written in a source or configuration file.",
+        ),
+        "hardcoded-credential": RuleDescription(
+            "Hard-coded credential",
+            "A credential-like name (password, token, api_key, ...) bound to a real value in a source or configuration file.",
+        ),
+        "high-entropy-string": RuleDescription(
+            "High-entropy string",
+            "An opaque high-entropy token that may be a secret.",
+        ),
+    }
     patterns: ClassVar[tuple[SecretPattern, ...]] = ()
     credential_names: ClassVar[tuple[str, ...]] = ()
     entropy_threshold: ClassVar[float] = 4.5

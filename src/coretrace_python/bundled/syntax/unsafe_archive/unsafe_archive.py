@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Severity
+from coretrace_python.findings import RuleDescription, Severity
 from coretrace_python.interprocedural import CallGraphAnalysis
 from coretrace_python.ir.model import Call, Instruction, Value
 from coretrace_python.ir.ssa import SSAAnalysis
@@ -20,6 +20,12 @@ _EXTRACTORS = tuple(f"{opener}.{method}" for opener in _OPENERS for method in ("
 
 class UnsafeArchivePlugin(SymbolCallDetector):
     name: ClassVar[str] = "unsafe-archive-extraction"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "unsafe-archive-extraction": RuleDescription(
+            "Unsafe archive extraction",
+            "A tarfile or zipfile extraction, or shutil.unpack_archive, without a member filter: a member can be written outside the destination.",
+        ),
+    }
     rule_id: ClassVar[str] = "unsafe-archive-extraction"
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset({SSAAnalysis, CallGraphAnalysis})
     symbols: ClassVar[frozenset[SymbolId]] = frozenset(

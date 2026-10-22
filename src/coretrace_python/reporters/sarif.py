@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
-from coretrace_python.findings import Component, Finding, Severity
+from coretrace_python.findings import Component, Finding, RuleDescription, Severity
 from coretrace_python.reporters.report import Report
 from coretrace_python.source import SourceSpan
 
@@ -44,11 +45,7 @@ def _result(
     physical: dict[str, object] = {"artifactLocation": _artifact(report, str(span.source_id))}
     location: dict[str, object] = {"physicalLocation": physical}
     if isinstance(span, SourceSpan):
-        region: dict[str, int] = {"startLine": span.start_line, "startColumn": span.start_column}
-        if span.end_line is not None and span.end_column is not None:
-            region["endLine"] = span.end_line
-            region["endColumn"] = span.end_column
-        physical["region"] = region
+        physical["region"] = _region(span)
     else:
         # No region: the line is not established; the pointer says where in the file.
         location["properties"] = {"pointer": span.pointer}
@@ -56,10 +53,10 @@ def _result(
         "ruleId": finding.rule_id,
         "ruleIndex": rule_index,
         "level": _LEVELS[finding.severity],
-        "message": {"text": finding.message},
+        "message": {"text": _message(finding)},
         "locations": [location],
     }
-    properties: dict[str, str] = {}
+    properties: dict[str, str] = {"confidence": finding.confidence.value}
     injection = finding.metadata.get("injection")
     if injection in _INJECTIONS:
         properties["injection"] = injection
@@ -69,8 +66,19 @@ def _result(
     origin = finding.metadata.get("origin")
     if origin in _ORIGINS:
         properties["origin"] = origin
-    if properties:
-        result["properties"] = properties
+    result["properties"] = properties
+    if finding.related:
+        result["relatedLocations"] = [
+            {
+                "id": index,
+                "physicalLocation": {
+                    "artifactLocation": _artifact(report, str(related.span.source_id)),
+                    "region": _region(related.span),
+                },
+                "message": {"text": related.message},
+            }
+            for index, related in enumerate(finding.related)
+        ]
     if suppressed:
         result["suppressions"] = [{"kind": "inSource"}]
     if baseline_state is not None:
@@ -88,6 +96,44 @@ def _extension(component: Component) -> dict[str, object]:
     return extension
 
 
+def _escaped(text: str) -> str:
+    """``text`` as literal SARIF message text, beside embedded links (SARIF 2.1.0 §3.11.6)."""
+
+    return text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def _message(finding: Finding) -> str:
+    """The finding's message, ending with an embedded link to each related location, which
+    GitHub code scanning shows as a link; the other formats keep the message as it is."""
+
+    if not finding.related:
+        return finding.message
+    links = ", ".join(f"[{_escaped(related.message)}]({index})" for index, related in enumerate(finding.related))
+    return f"{_escaped(finding.message)} ({links})"
+
+
+def _region(span: SourceSpan) -> dict[str, int]:
+    region = {"startLine": span.start_line, "startColumn": span.start_column}
+    if span.end_line is not None and span.end_column is not None:
+        region["endLine"] = span.end_line
+        region["endColumn"] = span.end_column
+    return region
+
+
+def _rule(rule_id: str, rules: Mapping[str, RuleDescription]) -> dict[str, object]:
+    """A rule as the log lists it: its title and description when the report has them, its
+    id alone otherwise, never the id repeated as a title."""
+
+    described = rules.get(rule_id)
+    if described is None:
+        return {"id": rule_id}
+    return {
+        "id": rule_id,
+        "shortDescription": {"text": described.title},
+        "fullDescription": {"text": described.description},
+    }
+
+
 def render_sarif(report: Report) -> str:
     rule_ids: list[str] = []
     for finding in (*report.findings, *report.suppressed, *report.baselined):
@@ -103,10 +149,7 @@ def render_sarif(report: Report) -> str:
                     "driver": {
                         "name": report.tool_name,
                         "version": report.tool_version,
-                        "rules": [
-                            {"id": rule_id, "shortDescription": {"text": rule_id}}
-                            for rule_id in rule_ids
-                        ],
+                        "rules": [_rule(rule_id, report.rules) for rule_id in rule_ids],
                     },
                     **({"extensions": [_extension(c) for c in report.components]} if report.components else {}),
                 },

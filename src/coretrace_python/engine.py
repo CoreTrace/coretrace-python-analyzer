@@ -70,6 +70,7 @@ from coretrace_python.findings import (
     Coverage,
     FileCoverage,
     Finding,
+    RuleDescription,
     Severity,
 )
 from coretrace_python.findings.context import code_context, code_origin, path_in_project
@@ -148,6 +149,43 @@ TOOL_NAME = "coretrace-python-analyzer"
 # checks. They are loaded by default; ``--plugins`` adds directories on top.
 BUNDLED_PLUGINS = Path(__file__).resolve().parent / "bundled"
 
+
+# The rules the engine reports itself, beside those of the plugins: notes on what it could not
+# analyse, and the correlation of a dependency's advisory with the project's taint flows.
+ENGINE_RULES: Mapping[str, RuleDescription] = MappingProxyType(
+    {
+        "syntax-error": RuleDescription(
+            "File that could not be read",
+            "A source, requirements or policy file the analyzer could not read or parse: "
+            "nothing in it is checked.",
+        ),
+        "ambiguous-module": RuleDescription(
+            "Ambiguous module name",
+            "A file whose import name another file of the project shares: calls through that "
+            "name may not be followed to the right function.",
+        ),
+        "unsupported-syntax": RuleDescription(
+            "Unsupported syntax",
+            "A function the analyzer could not analyze, because of syntax it does not support: its code is not checked.",
+        ),
+        "exploitable-vulnerability": RuleDescription(
+            "Exploitable dependency vulnerability",
+            "Attacker-controlled data reaches an API that an advisory of a vulnerable requirement affects.",
+        ),
+    }
+)
+
+
+def rule_descriptions(registry: PluginRegistry) -> Mapping[str, RuleDescription]:
+    """What every rule of a check detects, for its report: the rules the engine reports
+    itself, and those each loaded plugin describes, the first declaration of an id kept."""
+
+    described: dict[str, RuleDescription] = dict(ENGINE_RULES)
+    for loaded in registry:
+        for rule_id, description in loaded.plugin.rules.items():
+            described.setdefault(rule_id, description)
+    return MappingProxyType(described)
+
 ALL_ANALYSES: tuple[AnyAnalysis, ...] = (
     *SEMANTIC_ANALYSES,
     CFGAnalysis,
@@ -224,6 +262,10 @@ class ResultsEvicted(TransformationPass):
         pass
 
 
+def _no_rules() -> Mapping[str, RuleDescription]:
+    return MappingProxyType({})
+
+
 def _no_keys() -> Mapping[str, str]:
     return MappingProxyType({})
 
@@ -244,6 +286,8 @@ class ProjectAnalysis:
     accepted: tuple[Finding, ...] = ()
     # The plugins and advisory files the result was produced with.
     components: tuple[Component, ...] = ()
+    # What each rule of the check detects, for its report.
+    rules: Mapping[str, RuleDescription] = field(default_factory=_no_rules)
 
 
 @dataclass(frozen=True)
@@ -251,6 +295,8 @@ class FileAnalysis:
     findings: tuple[Finding, ...]
     coverage: Coverage
     suppressed: tuple[Finding, ...] = ()
+    # What each rule of the check detects, for its report.
+    rules: Mapping[str, RuleDescription] = field(default_factory=_no_rules)
 
 
 def _text_of(sources: SourceManager) -> Callable[[SourceId], str | None]:
@@ -349,7 +395,7 @@ def analyze_file(source: SourceFile, plugin_roots: Sequence[Path], root: Path | 
     functions = len(analyzable_functions(manager.module))
     coverage = Coverage((FileCoverage(str(source.source_id), "analysed", functions, len(supported)),))
     kept, suppressed = partition(findings, lambda sid: source.text if sid == source.source_id else None)
-    return FileAnalysis(kept, coverage, suppressed)
+    return FileAnalysis(kept, coverage, suppressed, rule_descriptions(registry))
 
 
 def resolve_dependencies(root: Path, sources: SourceManager) -> DependencyGraph:
@@ -635,6 +681,7 @@ def analyze_project(
         suppressed,
         accepted,
         components,
+        rule_descriptions(registry),
     )
 
 
@@ -1134,6 +1181,7 @@ def report(
     suppressed: Sequence[Finding] = (),
     baselined: Sequence[Finding] | None = None,
     components: Sequence[Component] = (),
+    rules: Mapping[str, RuleDescription] | None = None,
 ) -> Report:
     """The report of a check; paths under ``root`` are rendered relative to it.
     ``baselined`` is the findings a baseline accounts for, ``None`` when none applied."""
@@ -1148,4 +1196,5 @@ def report(
         tuple(baselined or ()),
         baselined is not None,
         tuple(components),
+        MappingProxyType(dict(rules or {})),
     )

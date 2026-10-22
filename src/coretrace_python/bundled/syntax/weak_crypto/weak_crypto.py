@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import ClassVar
 
-from coretrace_python.findings import Severity
+from coretrace_python.findings import RuleDescription, Severity
 from coretrace_python.plugins import SymbolCallDetector
 from coretrace_python.semantic.symbols import SymbolId
 
 
 class WeakCryptoPlugin(SymbolCallDetector):
     name: ClassVar[str] = "weak-crypto"
+    rules: ClassVar[Mapping[str, RuleDescription]] = {
+        "weak-crypto": RuleDescription(
+            "Weak cryptographic algorithm",
+            "A broken algorithm such as hashlib.md5 or hashlib.sha1.",
+        ),
+    }
     rule_id: ClassVar[str] = "weak-crypto"
     symbols: ClassVar[frozenset[SymbolId]] = frozenset(
         {SymbolId("python.hashlib.md5"), SymbolId("python.hashlib.sha1")}

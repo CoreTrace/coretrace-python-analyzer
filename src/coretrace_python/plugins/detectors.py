@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from coretrace_python.analysis import AnyAnalysis
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import Confidence, Finding, RelatedLocation, Severity
 from coretrace_python.findings.refutation import RefutationAnalysis, Status, Verdict
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import CallGraphAnalysis
@@ -80,10 +80,14 @@ class TaintDetector(Plugin):
                     "evidence": verdict.evidence,
                     **assessment.metadata,
                 }
+                related: tuple[RelatedLocation, ...] = ()
                 if flow.through is not None and flow.sink_location is not None:
                     message += f" through {flow.through}"
                     metadata["through"] = flow.through
                     metadata["sink_line"] = str(flow.sink_location.start_line)
+                    related = (
+                        RelatedLocation(flow.sink_location, f"sink {flow.sink.symbol}, reached via {flow.through}"),
+                    )
                 confidence = (
                     self.confidence if verdict.status is Status.VULNERABILITY else _lower(self.confidence)
                 )
@@ -96,6 +100,7 @@ class TaintDetector(Plugin):
                         span=flow.location,
                         function=function.name,
                         metadata=metadata,
+                        related=related,
                     )
                 )
         return findings
