@@ -228,8 +228,9 @@ def test_the_result_does_not_depend_on_the_cache_or_the_processes(tmp_path: Path
     assert outcome(jobs=2, cache=ProjectCache(tmp_path / "parallel-cache")) == expected
 
 
-def test_an_import_no_root_decides_is_noted_and_not_followed(tmp_path: Path) -> None:
-    # Run from the root, tool.py finds no helper beside it: neither file is the one.
+def test_a_short_name_no_directory_of_the_importer_answers_is_no_module_of_the_project(tmp_path: Path) -> None:
+    # Run from the root, tool.py finds no helper: pkg/a/helper.py and pkg/b/helper.py
+    # are ``helper`` only to a script beside them, and Python raises ModuleNotFoundError.
     root = project(
         tmp_path,
         {
@@ -242,6 +243,7 @@ def test_an_import_no_root_decides_is_noted_and_not_followed(tmp_path: Path) -> 
 
     analysis = engine.analyze_project(root, PLUGINS)
 
-    (note,) = [f for f in analysis.findings if Path(str(f.span.source_id)).name == "tool.py"]
-    assert note.rule_id == "ambiguous-module"
-    assert note.message == "'helper' imported here is pkg/a/helper.py or pkg/b/helper.py: calls into it are not followed"
+    (tool,) = [n for n in analysis.graph.modules if Path(str(analysis.graph.source(n).source_id)).name == "tool.py"]
+    assert analysis.graph.imports(tool) == frozenset()
+    assert analysis.graph.unresolved(tool) == frozenset()
+    assert [f for f in analysis.findings if Path(str(f.span.source_id)).name == "tool.py"] == []

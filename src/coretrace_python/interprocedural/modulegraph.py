@@ -247,12 +247,16 @@ def build_module_graph(
     resolves to the one from the first of the importer's own roots that has exactly one,
     and otherwise stays unresolved: no edge, and the name is recorded on the graph. The
     importer's roots are those of its import names, the last first: as a script run from
-    its directory finds what lies beside it before what its package's root holds."""
+    its directory finds what lies beside it before what its package's root holds. A name
+    a module has only from its own directory, not its module name, answers only an
+    importer with that directory among its roots, however few files have it: from
+    elsewhere, ``import os`` is the library even when ``pkg/sub/os.py`` is ``os`` to a
+    script beside it."""
 
-    by_name: dict[str, list[tuple[str, Path | None]]] = {}
+    by_name: dict[str, list[tuple[str, Path | None, bool]]] = {}
     for name, source in sources.items():
-        for import_name, root in import_names(source):
-            by_name.setdefault(import_name, []).append((name, root))
+        for index, (import_name, root) in enumerate(import_names(source)):
+            by_name.setdefault(import_name, []).append((name, root, index == 0))
     roots = {name: tuple(root for _, root in reversed(import_names(source))) for name, source in sources.items()}
     edges: dict[str, frozenset[str]] = {}
     unresolved: dict[str, frozenset[str]] = {}
@@ -277,8 +281,8 @@ def build_module_graph(
         missing: set[str] = set()
         for candidate in candidates:
             for prefix in _prefixes(candidate):
-                matching = by_name.get(prefix)
-                if matching is None:
+                matching = [(m, r) for m, r, primary in by_name.get(prefix, ()) if primary or r in roots[name]]
+                if not matching:
                     continue
                 chosen = _chosen(matching, roots[name])
                 if chosen is None:
