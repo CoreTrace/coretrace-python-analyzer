@@ -89,3 +89,22 @@ def test_each_importer_reaches_the_helper_of_its_own_directory(tmp_path: Path, d
     analysis = engine.analyze_project(root, PLUGINS)
 
     assert located(analysis, root, "command-injection") == [("command-injection", f"pkg/{dangerous}/run.py", 5)]
+
+
+def test_an_import_no_root_decides_is_noted_and_not_followed(tmp_path: Path) -> None:
+    # Run from the root, tool.py finds no helper beside it: neither file is the one.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/a/helper.py": "import os\n\n\ndef execute(command):\n    os.system(command)\n",
+            "pkg/b/helper.py": "def execute(command):\n    return command\n",
+            "tool.py": "import helper\n\n\ndef main():\n    helper.execute(input())\n",
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    (note,) = [f for f in analysis.findings if Path(str(f.span.source_id)).name == "tool.py"]
+    assert note.rule_id == "ambiguous-module"
+    assert note.message == "'helper' imported here is pkg/a/helper.py or pkg/b/helper.py: calls into it are not followed"
