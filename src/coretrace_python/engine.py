@@ -548,9 +548,14 @@ def analyze_project(
     configuration = _configuration_key(
         components, plugins, models, advisories, dependencies, routes, escaped, template_calls
     )
+    # A module's names are part of its key: under another name, what the modules importing
+    # it reach, and the symbols of its own functions, change.
     keys = module_keys(
         graph,
-        {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
+        {
+            name: fingerprint(configuration, str(files[name].source_id), name, *_names_of(files[name]), files[name].text)
+            for name in analysable
+        },
     )
     results: dict[str, CachedModule] = {}
     if cache is not None:

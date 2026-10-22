@@ -44,8 +44,9 @@ from coretrace_python.source import FileLocation, Location, SourceId, SourceSpan
 
 # Cached summaries from earlier versions preserve unstable external-call
 # insertion order. They must be recomputed with canonical ordering (#261).
-# Findings carry their related locations from format 18 on (#271).
-CACHE_FORMAT = 18
+# Findings carry their related locations from format 18 on (#271). A module's key holds
+# the names it is imported by from format 19 on (#264).
+CACHE_FORMAT = 19
 
 
 @dataclass(frozen=True)
