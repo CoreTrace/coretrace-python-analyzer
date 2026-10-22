@@ -4,9 +4,10 @@ directory is seen only from there, up to the summaries.
 ``pkg/sub/os.py`` is ``os`` to a script run from ``pkg/sub`` (``sys.path[0]``), and
 ``pkg.sub.os`` to the rest of the project. From the project root, ``import os`` is the
 library: the short name answers no import from another directory, even when no other
-file has it. And a name the module graph leaves unresolved is registered for no file:
-reached by its full name, a module is not also put under a short name the importer
-could not resolve.
+file has it. Up to the summaries: a module is registered for an importer only under
+the names that importer resolved, or, reached through another module, under its module
+name. A name the module graph leaves unresolved is registered for no file, and what a
+module in between resolved from its own directory changes nothing for its importer.
 """
 
 from __future__ import annotations
@@ -119,3 +120,35 @@ def test_a_member_keeps_the_module_it_resolved_over_one_an_import_resolved(tmp_p
     )
 
     assert injections(tmp_path, root, run) == [("pkg/a/run.py", 7)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_what_a_module_in_between_resolved_does_not_change_the_importer(tmp_path: Path, run: str) -> None:
+    # loader.py, in pkg/sub, resolves os to pkg/sub/os.py; main.py's os is the library.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/config.py": "VALUE = 1\n",
+            "pkg/sub/os.py": "from ..config import VALUE\n\n\n" + SHADOWED_OS,
+            "pkg/sub/loader.py": "import os\n\n\ndef noop():\n    return None\n",
+            "main.py": "import os\nfrom pkg.sub.loader import noop\n\n\ndef run():\n    noop()\n    os.system(input())\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 7)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_module_reached_through_its_package_is_followed_by_its_module_name(tmp_path: Path, run: str) -> None:
+    # pkg.helpers is reached through ``import pkg``, whose __init__.py imports it.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "from . import helpers\n",
+            "pkg/helpers.py": "import os\n\n\ndef run(command):\n    os.system(command)\n",
+            "main.py": "import pkg\n\n\ndef go():\n    pkg.helpers.run(input())\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 5)]
