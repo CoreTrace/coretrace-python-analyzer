@@ -844,11 +844,11 @@ def _imported_names(
 ) -> dict[str, tuple[str, ...]]:
     """The modules whose summaries a component starts from, each with the import names
     the component's code refers to it by: every module it imports, transitively, all
-    final by the time its wave runs. A member's own import goes under the name it
-    resolved by, unless another member resolved that name to another file. Of several
-    files with one import name, only the one a member imports directly goes under that
-    name: the others are reached through summaries that inline them already, and a name
-    no member's root resolved is followed into neither file."""
+    final by the time its wave runs. A module goes under the names the graph resolved to
+    it, and only those: a member's own resolutions first, then those of the modules the
+    component reaches. A name two of them resolved to different files goes under
+    neither, and a name a member left unresolved under none, whatever file reached by
+    another name also has it."""
 
     wanted: set[str] = set()
     pending = list(component)
@@ -857,20 +857,16 @@ def _imported_names(
             if imported in results and imported not in wanted:
                 wanted.add(imported)
                 pending.append(imported)
+    unresolved = {import_name for member in component for import_name in graph.unresolved(member)}
     chosen: dict[str, str | None] = {}
-    for member in sorted(component):
-        for import_name, module in graph.resolved(member).items():
-            if module in results and chosen.setdefault(import_name, module) != module:
-                chosen[import_name] = None
-    direct = {imported for member in component for imported in graph.imports(member)}
-    by_import: dict[str, list[str]] = {}
-    for name in wanted:
-        for import_name, _ in import_names(graph.source(name)):
-            by_import.setdefault(import_name, []).append(name)
-    for import_name, modules in by_import.items():
-        picked = modules if len(modules) == 1 else [name for name in modules if name in direct]
-        if import_name not in chosen and len(picked) == 1:
-            chosen[import_name] = picked[0]
+    for importers in (sorted(component), sorted(wanted)):
+        settled = set(chosen)
+        for importer in importers:
+            for import_name, module in graph.resolved(importer).items():
+                if module not in results or import_name in unresolved or import_name in settled:
+                    continue
+                if chosen.setdefault(import_name, module) != module:
+                    chosen[import_name] = None
     names: dict[str, list[str]] = {}
     for import_name, reached in sorted(chosen.items()):
         if reached is not None:

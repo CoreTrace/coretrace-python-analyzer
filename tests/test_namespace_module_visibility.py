@@ -4,7 +4,9 @@ directory is seen only from there, up to the summaries.
 ``pkg/sub/os.py`` is ``os`` to a script run from ``pkg/sub`` (``sys.path[0]``), and
 ``pkg.sub.os`` to the rest of the project. From the project root, ``import os`` is the
 library: the short name answers no import from another directory, even when no other
-file has it.
+file has it. And a name the module graph leaves unresolved is registered for no file:
+reached by its full name, a module is not also put under a short name the importer
+could not resolve.
 """
 
 from __future__ import annotations
@@ -63,3 +65,57 @@ def test_a_short_name_from_another_directory_leaves_the_library(tmp_path: Path, 
     )
 
     assert injections(tmp_path, root, run) == [("main.py", 5)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_short_name_the_graph_leaves_unresolved_is_registered_for_no_file(tmp_path: Path, run: str) -> None:
+    # pkg.a.helper is reached by its full name only: its execute, which returns a
+    # constant, is not the helper.execute main.py calls.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/a/helper.py": 'def execute(command):\n    return "constant"\n\n\ndef noop():\n    return None\n',
+            "pkg/b/helper.py": "def execute(command):\n    return command\n",
+            "main.py": (
+                "import os\nimport helper\nfrom pkg.a.helper import noop\n\n\n"
+                "def run():\n    noop()\n    os.system(helper.execute(input()))\n"
+            ),
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 8)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_name_a_member_leaves_unresolved_is_not_taken_from_a_module_it_imports(tmp_path: Path, run: str) -> None:
+    # a/user.py resolves helper to a/helper.py, from a; main.py, at the root, cannot
+    # tell a/helper.py from z/helper.py, and its helper.execute is neither.
+    root = project(
+        tmp_path,
+        {
+            "a/helper.py": 'def execute(command):\n    return "constant"\n',
+            "a/user.py": 'import helper\n\n\ndef use():\n    return helper.execute("x")\n',
+            "z/helper.py": "def execute(command):\n    return command\n",
+            "main.py": "import os\nimport helper\nimport user\n\n\ndef run():\n    user.use()\n    os.system(helper.execute(input()))\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 8)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_member_keeps_the_module_it_resolved_over_one_an_import_resolved(tmp_path: Path, run: str) -> None:
+    # pkg/b/tool.py's helper is pkg/b/helper.py; pkg/a/run.py's is its own.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/a/run.py": "import helper\nfrom pkg.b import tool\n\n\ndef main():\n    tool.use()\n    helper.execute(input())\n",
+            "pkg/a/helper.py": "import os\n\n\ndef execute(command):\n    os.system(command)\n",
+            "pkg/b/tool.py": 'import helper\n\n\ndef use():\n    return helper.execute("x")\n',
+            "pkg/b/helper.py": "def execute(command):\n    return command\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("pkg/a/run.py", 7)]
