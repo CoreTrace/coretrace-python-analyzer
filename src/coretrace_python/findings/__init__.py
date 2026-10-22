@@ -9,6 +9,7 @@ from coretrace_python.findings.model import (
     Severity,
 )
 from coretrace_python.findings.provenance import ADVISORIES, PLUGIN, Component
+from coretrace_python.findings.rules import RuleDescription
 
 __all__ = [
     "ADVISORIES",
@@ -20,5 +21,6 @@ __all__ = [
     "FileCoverage",
     "Finding",
     "RelatedLocation",
+    "RuleDescription",
     "Severity",
 ]

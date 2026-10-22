@@ -12,6 +12,7 @@ import dataclasses
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, ClassVar, overload
 
 from coretrace_python.analysis import (
@@ -23,7 +24,7 @@ from coretrace_python.analysis import (
 )
 from coretrace_python.analysis.provider import R
 from coretrace_python.dependency import Advisory, DependencyGraph, Policy
-from coretrace_python.findings import Finding
+from coretrace_python.findings import Finding, RuleDescription
 from coretrace_python.findings.context import path_in_project
 from coretrace_python.hir import nodes
 from coretrace_python.interprocedural import (
@@ -47,6 +48,9 @@ class Plugin(ABC):
     requires: ClassVar[frozenset[AnyAnalysis]] = frozenset()
     models: ClassVar[tuple[Model, ...]] = ()
     advisories: ClassVar[tuple[Advisory, ...]] = ()
+    # What each rule the plugin reports detects, for a report to explain its findings (SARIF
+    # shortDescription and fullDescription). Optional: a rule left out is listed by id alone.
+    rules: ClassVar[Mapping[str, RuleDescription]] = MappingProxyType({})
 
     @abstractmethod
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
