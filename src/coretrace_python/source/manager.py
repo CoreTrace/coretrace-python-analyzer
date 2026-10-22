@@ -5,20 +5,27 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from coretrace_python.source.model import SourceFile, SourceId
+from coretrace_python.source.model import ImportName, SourceFile, SourceId
 
 
-def module_name_for(path: Path) -> str:
-    """Dotted module name of ``path``, walking up through ``__init__.py`` packages.
-
-    A package's ``__init__.py`` is named after the package itself."""
+def import_names_for(path: Path) -> tuple[ImportName, ...]:
+    """The names the file ``path`` can be imported by, its module name first, each with
+    the directory an import of it starts from: walking up through ``__init__.py``
+    packages, named from the first directory without one. A package's ``__init__.py``
+    is named after the package itself."""
 
     parts = [] if path.name == "__init__.py" else [path.stem]
     directory = path.parent
     while (directory / "__init__.py").is_file():
         parts.append(directory.name)
         directory = directory.parent
-    return ".".join(reversed(parts)) or path.stem
+    return (ImportName(".".join(reversed(parts)) or path.stem, directory),)
+
+
+def module_name_for(path: Path) -> str:
+    """Dotted module name of ``path`` (``import_names_for``)."""
+
+    return import_names_for(path)[0].name
 
 
 def decode_text(data: bytes) -> str:
@@ -76,12 +83,14 @@ class SourceManager:
             return existing
 
         text = decode_text(resolved_path.read_bytes())
+        names = import_names_for(resolved_path)
         source = SourceFile(
             source_id=source_id,
             text=text,
-            module_name=module_name_for(resolved_path),
+            module_name=names[0].name,
             path=resolved_path,
             is_package=resolved_path.name == "__init__.py",
+            import_names=names,
         )
         self._sources[source_id] = source
         return source

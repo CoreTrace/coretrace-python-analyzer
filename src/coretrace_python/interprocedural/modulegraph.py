@@ -121,16 +121,10 @@ def _dotted(path: Path) -> str:
 
 
 def _import_root(source: SourceFile) -> Path | None:
-    """The directory an import of ``source`` by its module name starts from: the parent
-    of its top-level package, or its own directory for a module outside any package,
-    where ``module_name_for`` stopped. ``None`` for a source not on disk."""
+    """The directory an import of ``source`` by its module name starts from
+    (``SourceFile.import_names``); ``None`` for a source not on disk."""
 
-    if source.path is None:
-        return None
-    directory = source.path.parent
-    while (directory / "__init__.py").is_file():
-        directory = directory.parent
-    return directory
+    return source.import_names[0].root if source.import_names else None
 
 
 def project_symbol(module_name: str, qualified_name: str) -> SymbolId:

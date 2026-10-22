@@ -66,12 +66,23 @@ Location = SourceSpan | FileLocation
 
 
 @dataclass(frozen=True)
+class ImportName:
+    """A name a module can be imported by, with the directory an import of that name
+    starts from: the entry of the import path under which the module has that name."""
+
+    name: str
+    root: Path
+
+
+@dataclass(frozen=True)
 class SourceFile:
-    """Decoded source text, its identity and its dotted module name."""
+    """Decoded source text, its identity and its dotted module name; for a file on disk,
+    the names it can be imported by (``import_names``), its module name first."""
 
     source_id: SourceId
     text: str
     module_name: str
     path: Path | None = None
     is_package: bool = False
+    import_names: tuple[ImportName, ...] = ()
 
