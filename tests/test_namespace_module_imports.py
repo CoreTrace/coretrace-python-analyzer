@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from coretrace_python import engine
+from coretrace_python.cache import ProjectCache
 
 PLUGINS = [engine.BUNDLED_PLUGINS]
 
@@ -161,6 +162,38 @@ def test_a_module_reached_by_both_its_names_keeps_one_identity(tmp_path: Path) -
     assert helpers == ["pkg.tools.helper"]
     assert [d.path for d in analysis.coverage.details].count(str((root / "pkg/tools/helper.py").resolve())) == 1
     assert located(analysis, root) == [("command-injection", "pkg/other.py", 5), ("command-injection", "pkg/tools/run.py", 5)]
+
+
+EVERYTHING = {
+    **NAMESPACE,
+    "pkg/tools/run.py": SCRIPTS["pkg/tools/run.py"],
+    "pkg/tools/helper.py": SCRIPTS["pkg/tools/helper.py"],
+    "pkg/other.py": "from .tools import helper\n\n\ndef handle():\n    helper.execute(input())\n",
+    "pkg/b/run.py": "import helper\n\n\ndef main():\n    helper.execute(input())\n",
+    "pkg/b/helper.py": "def execute(command):\n    return command\n",
+}
+
+
+def test_the_result_does_not_depend_on_the_cache_or_the_processes(tmp_path: Path) -> None:
+    root = project(tmp_path, EVERYTHING)
+
+    def outcome(**options: object) -> tuple[list[tuple[str, str, int]], list[tuple[str, str]]]:
+        analysis = engine.analyze_project(root, PLUGINS, **options)  # type: ignore[arg-type]
+        return located(analysis, root), sorted((d.path, d.status) for d in analysis.coverage.details)
+
+    expected = outcome()
+    cache = ProjectCache(tmp_path / "cache")
+
+    assert expected[0] == [
+        ("command-injection", "pkg/a/b/deep.py", 5),
+        ("command-injection", "pkg/other.py", 5),
+        ("command-injection", "pkg/sub/app.py", 6),
+        ("command-injection", "pkg/tools/run.py", 5),
+    ]
+    assert outcome(cache=cache) == expected
+    assert outcome(cache=cache) == expected
+    assert outcome(jobs=2) == expected
+    assert outcome(jobs=2, cache=ProjectCache(tmp_path / "parallel-cache")) == expected
 
 
 def test_an_import_no_root_decides_is_noted_and_not_followed(tmp_path: Path) -> None:
