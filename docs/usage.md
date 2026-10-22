@@ -72,7 +72,9 @@ package is a portion of it, as Python reads one: `pkg/sub/app.py` is `pkg.sub.ap
 its relative imports resolve against `pkg`. A module there can also be imported by the
 name a script run from its directory gives it, `app`: an absolute import from that
 directory reaches what lies beside it first, then what the package's root holds, and
-files sharing only such a name are told apart by the importer's directory. Two files
+files sharing only such a name are told apart by the importer's directory. From another
+directory that name answers nothing, as Python finds no such module there: at the
+project root, `import os` is the library even beside a `pkg/sub/os.py`. Two files
 that would share a module name, `a/app.py` and `z/app.py` outside any package, are told
 apart by their path from the root, `a.app` and `z.app`, and reported: each carries an `ambiguous-module` note, since a symbol
 `python.app.main` may name a function of either and an import of `app` resolves only
