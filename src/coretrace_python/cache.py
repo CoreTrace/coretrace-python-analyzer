@@ -21,7 +21,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from coretrace_python.findings import Confidence, Finding, Severity
+from coretrace_python.findings import Confidence, Finding, RelatedLocation, Severity
 from coretrace_python.interprocedural import (
     Arguments,
     CallSite,
@@ -44,7 +44,8 @@ from coretrace_python.source import FileLocation, Location, SourceId, SourceSpan
 
 # Cached summaries from earlier versions preserve unstable external-call
 # insertion order. They must be recomputed with canonical ordering (#261).
-CACHE_FORMAT = 17
+# Findings carry their related locations from format 18 on (#271).
+CACHE_FORMAT = 18
 
 
 @dataclass(frozen=True)
@@ -229,6 +230,7 @@ def _encode_finding(finding: Finding) -> dict[str, Any]:
         "span": _encode_location(finding.span),
         "function": finding.function,
         "metadata": dict(finding.metadata),
+        "related": [[_encode_span(r.span), r.message] for r in finding.related],
     }
 
 
@@ -242,6 +244,7 @@ def _decode_finding(data: Mapping[str, Any]) -> Finding:
         _decode_location(data["span"]),
         None if function is None else _string(function),
         {_string(k): _string(v) for k, v in data["metadata"].items()},
+        tuple(RelatedLocation(_decode_span(span), _string(message)) for span, message in data["related"]),
     )
 
 
