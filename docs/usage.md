@@ -418,11 +418,13 @@ the next section describes.
 
 `--format sarif` prints a SARIF 2.1.0 log, one run with the tool, its rules and one
 result per finding. Each rule carries a title (`shortDescription`) and what it detects
-(`fullDescription`), so that a code scanning service can explain a finding; a rule a
-third-party plugin reports keeps its id alone. Each result carries the finding's confidence
-as the `confidence` property. A flow that reaches its sink inside a project function is
-reported at the call, and points at the sink as a related location (`relatedLocations`),
-with the message `the input reaches <sink> here, in <function>`. The root is declared once as the `SRCROOT` original URI base and
+(`fullDescription`), so that a code scanning service can explain a finding: the plugin that
+reports a rule describes it, the engine its own notes, and a rule a plugin does not describe
+keeps its id alone. Each result carries the finding's confidence as the `confidence`
+property. A flow that reaches its sink inside a project function is reported at the call, and
+points at the sink as a related location (`relatedLocations`), with the message
+`sink <sink>, reached via <function>`, which the result's message links to. The root is
+declared once as the `SRCROOT` original URI base and
 every location under it is relative to that base, which is what code scanning services
 need to attach results to files. The components of a directory check are the tool's
 `extensions`, their kind and digest in `properties`:

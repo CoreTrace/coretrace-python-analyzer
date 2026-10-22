@@ -8,9 +8,11 @@
 - SARIF: each rule carries a title (`shortDescription`) and a description (`fullDescription`)
   instead of repeating its id (#270), and each result carries its confidence as the
   `confidence` property (#271). A flow reaching its sink inside a project function points at
-  that sink as a related location (#271).
-- Plugin API, additive: `Finding.related` lists `RelatedLocation`s (a span and a message), and
-  `coretrace_python.findings.rules` describes the bundled rules.
+  that sink as a related location, which the result's message links to (#271).
+- Plugin API, additive: `Plugin.rules` maps the rules a plugin reports to their
+  `RuleDescription`, optional, so that third-party plugins describe their own rules;
+  `Finding.related` lists `RelatedLocation`s (a span and a message). `Report.rules` carries the
+  descriptions to the reporters.
 
 ## 0.23.0 (2026-10-16)
 
