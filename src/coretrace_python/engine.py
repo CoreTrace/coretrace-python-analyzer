@@ -909,28 +909,33 @@ def _analyse_managers(
     """Analyse one component: iterate its summaries to a fixpoint (§21), then extract
     what the rest of the run needs from each module. Each member reads, in an index of
     its own, the modules ``names`` gives it under the names given (``_imported_names``):
-    the members' summaries as they grow, the others' as ``imported`` holds them, final."""
+    the members' summaries as they grow, the others' as ``imported`` holds them, final.
+    Members that read every module under the same names, as in a regular package, share
+    one index."""
 
+    views = {member: tuple(sorted(names[member].items())) for member in managers}
     final = {
-        member: _index(imported, {name: module_names for name, module_names in names[member].items() if name not in managers})
-        for member in managers
+        view: _index(imported, {name: module_names for name, module_names in view if name not in managers})
+        for view in dict.fromkeys(views.values())
     }
 
-    def indexes(summaries: Mapping[str, Mapping[str, FunctionSummary]]) -> dict[str, SummaryIndex]:
+    def indexes(
+        summaries: Mapping[str, Mapping[str, FunctionSummary]],
+    ) -> dict[tuple[tuple[str, tuple[str, ...]], ...], SummaryIndex]:
         return {
-            member: SummaryIndex(
+            view: SummaryIndex(
                 {
-                    **final[member].summaries,
+                    **seed.summaries,
                     **{
                         project_symbol(module, function): summary
-                        for name, module_names in names[member].items()
+                        for name, module_names in view
                         if name in managers
                         for module in module_names
                         for function, summary in summaries[name].items()
                     },
                 }
             )
-            for member in managers
+            for view, seed in final.items()
         }
 
     # The members' functions start from the summaries ``SummaryAnalysis`` starts from.
@@ -939,7 +944,7 @@ def _analyse_managers(
     # iteration then shifts by one module each time and never settles (#261).
     index = indexes({name: starting_summaries(manager.get(CallGraphAnalysis)) for name, manager in managers.items()})
     for name, manager in managers.items():
-        manager.provide(ProjectSummaries, index[name])
+        manager.provide(ProjectSummaries, index[views[name]])
     # Iterated until every member's index settles, with no bound: stopped earlier,
     # summaries that started empty would miss what later iterations add, a dependency
     # still on its way reading as no taint. It settles because each iteration can only
@@ -958,7 +963,7 @@ def _analyse_managers(
         index = updated
         for name, manager in managers.items():
             manager.run(ProjectSummariesUpdated)
-            manager.provide(ProjectSummaries, index[name])
+            manager.provide(ProjectSummaries, index[views[name]])
     return {name: _analyse_module(manager, plugins, affected, suffixes, root) for name, manager in managers.items()}
 
 
