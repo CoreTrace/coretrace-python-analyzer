@@ -204,10 +204,10 @@ checked, a quoted value stays quoted until its quote closes, and a variable in a
 `<script>` or `<style>` block or an end tag left open is refused, even where the page
 ends there and the browser would never run it. A template including one that ends inside
 such a block, a tag or an end tag is not established either: the markup after the
-include continues it. A comment hides what it holds only up to its first template tag,
-since an include there may close it and a condition around its `<!--` may leave it out.
-A `{% block %}` or `{% include %}` placed inside a parent's `<script>` is not covered yet
-(#273).
+include continues it. A template extending another ends where that one ends. A comment
+hides what it holds only up to its first template tag, since an include there may close
+it and a condition around its `<!--` may leave it out. A `{% block %}` or
+`{% include %}` placed inside a parent's `<script>` is not covered yet (#273).
 
 The analyzer never assumes escaping where it cannot read the template. That covers a
 template file it cannot read, a template named by an expression, a template found
