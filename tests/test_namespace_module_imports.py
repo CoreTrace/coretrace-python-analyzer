@@ -39,6 +39,61 @@ def located(analysis: engine.ProjectAnalysis, root: Path, *rules: str) -> list[t
     )
 
 
+NAMESPACE = {
+    "pkg/__init__.py": "",
+    "pkg/config.py": "import os\n\n\ndef run(command):\n    os.system(command)\n",
+    "pkg/sub/app.py": "from ..config import run\nfrom .helper import read\n\n\ndef view():\n    run(read())\n",
+    "pkg/sub/helper.py": "def read():\n    return input()\n",
+    "pkg/a/b/deep.py": "from ...config import run\n\n\ndef view():\n    run(input())\n",
+}
+
+
+def test_relative_imports_from_a_directory_without_init_resolve_against_its_package(tmp_path: Path) -> None:
+    root = project(tmp_path, NAMESPACE)
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root) == [("command-injection", "pkg/a/b/deep.py", 5), ("command-injection", "pkg/sub/app.py", 6)]
+
+
+def test_a_core_module_in_such_a_directory_is_followed_from_its_package(tmp_path: Path) -> None:
+    # flask 3.1.0: src/flask/sansio has no __init__.py, and flask/app.py imports from it.
+    root = project(
+        tmp_path,
+        {
+            "src/flask/__init__.py": "",
+            "src/flask/helpers.py": "import os\n\n\ndef spawn(command):\n    os.system(command)\n",
+            "src/flask/sansio/scaffold.py": "from ..helpers import spawn\n\n\ndef launch(command):\n    spawn(command)\n",
+            "src/flask/app.py": "from .sansio.scaffold import launch\n\n\ndef serve():\n    launch(input())\n",
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root) == [("command-injection", "src/flask/app.py", 5)]
+
+
+def test_a_sibling_imported_relatively_is_found_beside_a_module_of_the_same_short_name(tmp_path: Path) -> None:
+    # pygoat: introduction/playground/A9/api.py imports .main, and another main.py lies
+    # elsewhere, outside any package.
+    root = project(
+        tmp_path,
+        {
+            "introduction/__init__.py": "",
+            "introduction/playground/__init__.py": "",
+            "introduction/playground/A9/main.py": "import os\n\n\nclass Log:\n    def write(self, line):\n        os.system(line)\n",
+            "introduction/playground/A9/api.py": "from .main import Log\n\n\ndef view():\n    Log().write(input())\n",
+            "labs/insec/main.py": "def unrelated():\n    return 1\n",
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root, "command-injection", "syntax-error") == [
+        ("command-injection", "introduction/playground/A9/api.py", 5)
+    ]
+
+
 SCRIPTS = {
     "pkg/__init__.py": "",
     "pkg/tools/run.py": 'import helper\n\n\ndef main():\n    helper.execute(input())\n\n\nif __name__ == "__main__":\n    main()\n',

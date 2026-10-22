@@ -59,7 +59,7 @@ def discover_sources(
     found: list[SourceFile] = []
     for path in discover_files(root, "*.py"):
         try:
-            found.append(manager.load_file(path))
+            found.append(manager.load_file(path, root))
         except (OSError, UnicodeDecodeError) as error:
             if errors is None:
                 raise

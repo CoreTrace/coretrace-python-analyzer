@@ -11,9 +11,13 @@ climbs above the root only while each directory holds an ``__init__.py``.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 from coretrace_python import engine
+
+TIMEOUT = 60
 
 
 def project(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -53,3 +57,34 @@ def test_no_directory_above_the_project_root_names_a_module(tmp_path: Path) -> N
     root = project(tmp_path, {"tools/app.py": ""})
 
     assert module_names(root) == {"tools/app.py": "app"}
+
+
+def test_a_directory_without_init_inside_a_package_is_a_portion_of_it(tmp_path: Path) -> None:
+    root = project(tmp_path, {"pkg/__init__.py": "", "pkg/sub/app.py": "", "pkg/a/b/deep.py": ""})
+
+    assert module_names(root) == {"pkg/__init__.py": "pkg", "pkg/sub/app.py": "pkg.sub.app", "pkg/a/b/deep.py": "pkg.a.b.deep"}
+
+
+def test_python_imports_every_module_by_its_name(tmp_path: Path) -> None:
+    root = project(
+        tmp_path,
+        {
+            "src/flask/__init__.py": "",
+            "src/flask/helpers.py": "VALUE = 1\n",
+            "src/flask/sansio/app.py": "from ..helpers import VALUE\n",
+            "src/flask/sansio/deep/more.py": "from ...helpers import VALUE\n",
+        },
+    )
+    names = module_names(root)
+    check = "import importlib, sys\nsys.path.insert(0, sys.argv[1])\nfor name in sys.argv[2:]:\n    importlib.import_module(name)\n"
+
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", check, str(root / "src"), *names.values()],
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert names["src/flask/sansio/deep/more.py"] == "flask.sansio.deep.more"

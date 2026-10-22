@@ -793,7 +793,9 @@ def _advisory_paths(root: Path, advisory_files: Sequence[Path]) -> tuple[Path, .
 
 
 def _shared_names(graph: ModuleGraph) -> dict[str, list[str]]:
-    """The import names several analysable files have, each with those files' modules."""
+    """The module names several analysable files have, each with those files' modules.
+    A name a module also has from its own directory (``import_names``) is not among
+    them: the importer's root tells such files apart."""
 
     by_name: dict[str, list[str]] = {}
     for name in graph.modules:
@@ -809,6 +811,10 @@ def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: 
     def located(name: str) -> str:
         return _located(_path_of(graph.source(name)), root)
 
+    having: dict[str, list[str]] = {}
+    for module in graph.modules:
+        for import_name, _ in import_names(graph.source(module)):
+            having.setdefault(import_name, []).append(module)
     notes: list[Finding] = []
     for import_name, names in sorted(shared.items()):
         for name in names:
@@ -821,7 +827,7 @@ def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: 
             notes.append(_note("ambiguous-module", message, graph.source(name), 1))
     for name in graph.modules:
         for import_name in sorted(graph.unresolved(name)):
-            candidates = " or ".join(located(other) for other in shared[import_name])
+            candidates = " or ".join(located(other) for other in having[import_name])
             message = f"'{import_name}' imported here is {candidates}: calls into it are not followed"
             notes.append(_note("ambiguous-module", message, graph.source(name), 1))
     return notes
@@ -1066,7 +1072,7 @@ def _start_worker(project: _Project) -> None:
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     worker = _WORKER
     assert worker is not None, "the pool starts every worker with _start_worker"
-    sources = {name: SourceManager().load_file(path) for name, path in batch.paths.items()}
+    sources = {name: SourceManager().load_file(path, worker.root) for name, path in batch.paths.items()}
     managers = {name: _register_all(build_hir(source)) for name, source in sources.items()}
     for manager in managers.values():
         worker.managed(manager)
