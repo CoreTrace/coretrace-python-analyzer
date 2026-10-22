@@ -120,3 +120,15 @@ def test_extending_a_template_that_ends_inside_a_script_stays_established(tmp_pa
     }
 
     assert escaped(tmp_path, templates) == ["base.html", "page.html"]
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "<" * SIZE,
+        "<p>x</p>" * (SIZE // 8),
+    ],
+    ids=["lt", "well-formed"],
+)
+def test_the_inspection_reads_each_construct_once(tmp_path: Path, template: str) -> None:
+    escaped(tmp_path, {"page.html": template})

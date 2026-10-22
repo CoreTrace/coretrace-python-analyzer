@@ -157,6 +157,8 @@ _START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*>(.*?)</\1\s*>", re.DOTALL | re.IGNORECASE)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _END_TAG = re.compile(r"</[A-Za-z][^>]*>")
+# ``<{{ name }}`` or ``</ {{ name }}``: the variable would name a tag.
+_NAMED_BY_OUTPUT = re.compile(rf"<[/ \t\n]*{_OUTPUT}")
 # Django's filter expressions: a constant or a variable, then filters, each with an
 # optional argument, the way ``django.template.base.FilterExpression`` reads them.
 _STRING = r"\"[^\"\\]*(?:\\.[^\"\\]*)*\"|'[^'\\]*(?:\\.[^'\\]*)*'"
@@ -295,33 +297,29 @@ def _constant(word: str) -> str | None:
 
 
 def _escapes_where_printed(html: str) -> bool:
-    """Whether every output marker of ``html`` stands where HTML escaping protects it."""
+    """Whether every output marker of ``html`` stands where HTML escaping protects it.
+    Each construct is matched where it starts, where copying the rest of the text at
+    each ``<`` took quadratic time (#272)."""
 
     position = 0
     while (start := html.find("<", position)) != -1:
-        rest = html[start:]
-        comment = _COMMENT.match(rest)
-        raw = _RAW_TEXT.match(rest)
-        tag = _START_TAG.match(rest)
-        end = _END_TAG.match(rest)
-        if comment:
-            position = start + comment.end()
-        elif raw:
-            if _OUTPUT in raw.group(2) or not _attributes_escape(raw.group(0)[: raw.start(2)]):
+        if comment := _COMMENT.match(html, start):
+            position = comment.end()
+        elif raw := _RAW_TEXT.match(html, start):
+            if _OUTPUT in raw.group(2) or not _attributes_escape(html[start : raw.start(2)]):
                 return False
-            position = start + raw.end()
-        elif tag:
+            position = raw.end()
+        elif tag := _START_TAG.match(html, start):
             if _OUTPUT in tag.group(1) or not _attributes_escape(tag.group(2)):
                 return False
-            position = start + tag.end()
-        elif end:
+            position = tag.end()
+        elif end := _END_TAG.match(html, start):
             if _OUTPUT in end.group(0):
                 return False
-            position = start + end.end()
+            position = end.end()
+        elif _NAMED_BY_OUTPUT.match(html, start):
+            return False
         else:
-            # ``<{{ name }}``: the variable would name a tag, escaping cannot stop it.
-            if rest[1:].lstrip("/ \t\n").startswith(_OUTPUT):
-                return False
             position = start + 1
     return True
 
