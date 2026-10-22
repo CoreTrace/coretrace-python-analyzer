@@ -147,6 +147,38 @@ def test_each_importer_reaches_the_helper_of_its_own_directory(tmp_path: Path, d
     assert located(analysis, root, "command-injection") == [("command-injection", f"pkg/{dangerous}/run.py", 5)]
 
 
+def test_a_script_reaches_the_helper_beside_it_before_one_at_the_project_root(tmp_path: Path) -> None:
+    # Run from its directory, the script finds the helper beside it first (sys.path[0]).
+    root = project(
+        tmp_path,
+        {
+            **SCRIPTS,
+            "helper.py": "def execute(command):\n    return command\n",
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root, "command-injection") == [("command-injection", "pkg/tools/run.py", 5)]
+
+
+def test_a_script_keeps_the_helper_it_resolved_beside_another_of_that_short_name(tmp_path: Path) -> None:
+    # pkg/b/helper.py is also ``helper`` from pkg/b: the script's ``helper`` is its own.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "",
+            "pkg/a/run.py": "import helper\nfrom pkg.b import helper as other\n\n\ndef main():\n    other.execute(input())\n    helper.execute(input())\n",
+            "pkg/a/helper.py": "import os\n\n\ndef execute(command):\n    os.system(command)\n",
+            "pkg/b/helper.py": "def execute(command):\n    return command\n",
+        },
+    )
+
+    analysis = engine.analyze_project(root, PLUGINS)
+
+    assert located(analysis, root, "command-injection") == [("command-injection", "pkg/a/run.py", 7)]
+
+
 def test_a_module_reached_by_both_its_names_keeps_one_identity(tmp_path: Path) -> None:
     root = project(
         tmp_path,
