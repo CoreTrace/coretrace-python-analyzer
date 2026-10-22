@@ -48,7 +48,7 @@ from collections.abc import Container, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
 from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -200,8 +200,8 @@ def escaped_templates(root: Path) -> frozenset[str]:
     requires: dict[str, set[str]] = {}
     for name, paths in found.items():
         verdicts = [_verdict(path) for path in paths]
-        local[name] = all(safe for safe, _ in verdicts)
-        requires[name] = {needed for _, needs in verdicts for needed in needs}
+        local[name] = all(verdict.escapes for verdict in verdicts)
+        requires[name] = {needed for verdict in verdicts for needed in verdict.requires}
     escaped = {name for name, safe in local.items() if safe}
     changed = True
     while changed:
@@ -221,12 +221,23 @@ def _read(path: Path) -> str:
     return _text(path) or ""
 
 
-def _verdict(path: Path) -> tuple[bool, set[str]]:
-    """Whether one template file escapes all it prints, and what it needs: a file the
-    engine cannot read is not established to escape, like a template it cannot find."""
+class _Verdict(NamedTuple):
+    """Whether a template escapes all it prints itself, and the templates it extends or
+    includes, which must escape too."""
+
+    escapes: bool
+    requires: frozenset[str]
+
+
+_REFUSED = _Verdict(escapes=False, requires=frozenset())
+
+
+def _verdict(path: Path) -> _Verdict:
+    """What one template file establishes: a file the engine cannot read is not
+    established to escape, like a template it cannot find."""
 
     text = _text(path)
-    return (False, set()) if text is None else _inspect(text)
+    return _REFUSED if text is None else _inspect(text)
 
 
 def _text(path: Path) -> str | None:
@@ -238,9 +249,8 @@ def _text(path: Path) -> str | None:
         return None
 
 
-def _inspect(text: str) -> tuple[bool, set[str]]:
-    """Whether the template escapes all it prints itself, and the templates it extends
-    or includes, which must escape too."""
+def _inspect(text: str) -> _Verdict:
+    """What the template of ``text`` establishes (``_Verdict``)."""
 
     requires: set[str] = set()
     html: list[str] = []
@@ -260,7 +270,7 @@ def _inspect(text: str) -> tuple[bool, set[str]]:
         position = match.end()
         if variable is not None:
             if not _escaping_filters(variable):
-                return False, requires
+                return _REFUSED
             html.append(_OUTPUT)
         elif words and words[0] in ("comment", "verbatim"):
             skipping = f"end{words[0]}"
@@ -269,23 +279,23 @@ def _inspect(text: str) -> tuple[bool, set[str]]:
         elif words:
             name = words[0]
             if name not in _TAGS:
-                return False, requires
+                return _REFUSED
             if name == "load" and not set(_loaded(words[1:])) <= _LIBRARIES:
-                return False, requires
+                return _REFUSED
             if name == "autoescape" and words[1:] != ["on"]:
-                return False, requires
+                return _REFUSED
             if name == "filter" and not _escaping_filters(tag.split(None, 1)[1] if len(words) > 1 else ""):
-                return False, requires
+                return _REFUSED
             if name in ("extends", "include"):
                 needed = _constant(words[1] if len(words) > 1 else "")
                 if needed is None:
-                    return False, requires
+                    return _REFUSED
                 requires.add(needed)
             html.append(_OUTPUT if name in _PRINTING else _URL if name in ("url", "static") else _TAG)
     if skipping is not None:
-        return False, requires
+        return _REFUSED
     html.append(text[position:])
-    return _escapes_where_printed("".join(html)), requires
+    return _Verdict(_escapes_where_printed("".join(html)), frozenset(requires))
 
 
 def _loaded(words: list[str]) -> list[str]:
