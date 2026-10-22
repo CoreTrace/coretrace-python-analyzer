@@ -209,7 +209,7 @@ def escaped_templates(root: Path) -> frozenset[str]:
     for name, paths in found.items():
         verdicts = [_verdict(path) for path in paths]
         local[name] = all(verdict.escapes for verdict in verdicts)
-        requires[name] = {needed for verdict in verdicts for needed in verdict.requires}
+        requires[name] = {needed for verdict in verdicts for needed in verdict.extends | verdict.includes}
         includes[name] = {included for verdict in verdicts for included in verdict.includes}
         if any(verdict.open_end for verdict in verdicts):
             open_ended.add(name)
@@ -233,17 +233,17 @@ def _read(path: Path) -> str:
 
 
 class _Verdict(NamedTuple):
-    """Whether a template escapes all it prints itself; the templates it extends or
-    includes, which must escape too, and of them those it includes; and whether its text
-    ends inside a construct, which the markup after its include continues."""
+    """Whether a template escapes all it prints itself; the templates it extends and
+    those it includes, which must escape too; and whether its text ends inside a
+    construct, which the markup after its include continues."""
 
     escapes: bool
-    requires: frozenset[str]
+    extends: frozenset[str]
     includes: frozenset[str]
     open_end: bool
 
 
-_REFUSED = _Verdict(escapes=False, requires=frozenset(), includes=frozenset(), open_end=False)
+_REFUSED = _Verdict(escapes=False, extends=frozenset(), includes=frozenset(), open_end=False)
 
 
 def _verdict(path: Path) -> _Verdict:
@@ -266,7 +266,7 @@ def _text(path: Path) -> str | None:
 def _inspect(text: str) -> _Verdict:
     """What the template of ``text`` establishes (``_Verdict``)."""
 
-    requires: set[str] = set()
+    extends: set[str] = set()
     includes: set[str] = set()
     html: list[str] = []
     skipping: str | None = None
@@ -305,15 +305,13 @@ def _inspect(text: str) -> _Verdict:
                 needed = _constant(words[1] if len(words) > 1 else "")
                 if needed is None:
                     return _REFUSED
-                requires.add(needed)
-                if name == "include":
-                    includes.add(needed)
+                (extends if name == "extends" else includes).add(needed)
             html.append(_OUTPUT if name in _PRINTING else _URL if name in ("url", "static") else _TAG)
     if skipping is not None:
         return _REFUSED
     html.append(text[position:])
     reading = _read_markup("".join(html))
-    return _Verdict(reading.escapes, frozenset(requires), frozenset(includes), reading.open_end)
+    return _Verdict(reading.escapes, frozenset(extends), frozenset(includes), reading.open_end)
 
 
 def _loaded(words: list[str]) -> list[str]:
