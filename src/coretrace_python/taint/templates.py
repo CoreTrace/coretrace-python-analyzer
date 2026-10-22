@@ -305,27 +305,31 @@ def _constant(word: str) -> str | None:
 
 def _escapes_where_printed(html: str) -> bool:
     """Whether every output marker of ``html`` stands where HTML escaping protects it.
-    Each construct is matched where it starts, and a script or style block or an end tag
-    the text leaves open runs to its end: copying the rest of the text at each ``<``,
-    and rescanning such a construct that never closed, took quadratic time (#272).
+    Each construct is matched where it starts and one the text leaves open runs to its
+    end, so every character is read once, where copying the rest of the text at each
+    ``<`` and rescanning what never closed took quadratic time (#272).
 
     A comment ends at its close, as a browser closes it, or at the first template tag
     inside it, whichever comes first, and what follows the tag is read as markup: an
     include there may close the comment, a condition around its ``<!--`` leave it out.
-    A variable cannot close it, escaped."""
+    A variable cannot close it, escaped. A comment left open, with no tag after it,
+    hides the rest of the text."""
 
     position = 0
+    # No comment closes at or after this position: searched once, never again.
+    unclosed_from = len(html) + 1
     while (start := html.find("<", position)) != -1:
         if html.startswith("<!--", start):
-            close = _COMMENT_END.search(html, start + 2)
+            close = _COMMENT_END.search(html, start + 2) if start < unclosed_from else None
+            if close is None:
+                unclosed_from = min(unclosed_from, start)
             first_tag = html.find(_TAG, start + 4, len(html) if close is None else close.start())
             if first_tag != -1:
                 position = first_tag + 1
             elif close is not None:
                 position = close.end()
             else:
-                # Not closed: read on as markup.
-                position = start + 1
+                break
         elif raw := _RAW_TEXT.match(html, start):
             if _OUTPUT in raw.group(2) or not _attributes_escape(html[start : raw.start(2)]):
                 return False

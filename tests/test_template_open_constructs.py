@@ -9,7 +9,7 @@ then never runs the script: a prudent false positive).
 A comment in the source is not necessarily one in the rendered page: a template tag
 inside it can close it (an include) or leave out its ``<!--`` (a condition). A comment
 therefore ends at its close, or at the first template tag inside it; a variable,
-escaped, cannot close it.
+escaped, cannot close it. A comment left open, with no tag after it, hides the rest.
 
 Every construct is read once, so the inspection is linear in the size of the template.
 Each inspection and analysis runs in a subprocess with a timeout, so that one that does
@@ -133,6 +133,12 @@ def test_a_comment_closes_where_a_browser_closes_it(tmp_path: Path, template: st
     assert escaped(tmp_path, {"page.html": template}) == []
 
 
+def test_a_comment_left_open_without_a_template_tag_is_inert_to_the_end(tmp_path: Path) -> None:
+    # Rendered alone, the comment runs to the end; included, it holds the markup that
+    # follows until a ``-->`` there: either way, nothing after its ``<!--`` is shown.
+    assert escaped(tmp_path, {"page.html": '<p>{{ name }}</p><!-- <a onclick="{{ name }}">'}) == ["page.html"]
+
+
 @pytest.mark.parametrize(
     "template",
     ["<style>body { color: {{ name }} }", "<script>var name = {{ name }};", "</a {{ name }}"],
@@ -163,11 +169,13 @@ def test_extending_a_template_that_ends_inside_a_script_stays_established(tmp_pa
     [
         "<" * SIZE,
         "</a" * (SIZE // 3),
+        "<!--" * (SIZE // 4),
+        "<!--{% if x %}" * (SIZE // 14),
         "<script>" * (SIZE // 8),
         "<style>" * (SIZE // 7),
         "<p>x</p>" * (SIZE // 8),
     ],
-    ids=["lt", "end-tag", "script", "style", "well-formed"],
+    ids=["lt", "end-tag", "comment", "comment-and-tag", "script", "style", "well-formed"],
 )
 def test_the_inspection_reads_each_construct_once(tmp_path: Path, template: str) -> None:
     escaped(tmp_path, {"page.html": template})
