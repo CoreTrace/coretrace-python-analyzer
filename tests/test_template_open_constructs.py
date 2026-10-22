@@ -11,6 +11,10 @@ inside it can close it (an include) or leave out its ``<!--`` (a condition). A c
 therefore ends at its close, or at the first template tag inside it; a variable,
 escaped, cannot close it. A comment left open, with no tag after it, hides the rest.
 
+A template that ends inside a script or style block, a tag or an end tag hands that
+construct to the markup following its include, so the templates including it are not
+established as escaping.
+
 Every construct is read once, so the inspection is linear in the size of the template.
 Each inspection and analysis runs in a subprocess with a timeout, so that one that does
 not end fails instead of hanging the suite.
@@ -85,6 +89,7 @@ def xss(tmp_path: Path, templates: dict[str, str]) -> list[tuple[str, int]]:
         {"page.html": "<script>var name = {{ name }};</script>\n"},
         {"page.html": "<script>var name = {{ name }};\n<p>after</p>\n"},
         {"page.html": '<!-- {% include "close.html" %}<script>var name = {{ name }};</script>\n', "close.html": "-->"},
+        {"open.html": "<script>\n", "page.html": "{% include 'open.html' %}var name = {{ name }};</script>\n"},
         {"page.html": '<!-- {% include "close.html" %} <script>var name = {{ name }};</script> -->\n', "close.html": "-->"},
     ],
     ids=[
@@ -92,6 +97,7 @@ def xss(tmp_path: Path, templates: dict[str, str]) -> list[tuple[str, int]]:
         "B-closed-in-same-template",
         "C-open-to-end-of-document",
         "D-comment-closed-by-include",
+        "E-includer-continues-open-script",
         "G-closed-comment-holding-include",
     ],
 )
@@ -146,6 +152,19 @@ def test_a_comment_left_open_without_a_template_tag_is_inert_to_the_end(tmp_path
 )
 def test_a_variable_in_a_construct_left_open_is_refused(tmp_path: Path, template: str) -> None:
     assert escaped(tmp_path, {"page.html": template}) == []
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    ["<script>\n", "<style>\n", '<a href="/x"', '<a title="x', "</a"],
+    ids=["script", "style", "start-tag", "quoted-value", "end-tag"],
+)
+def test_including_a_template_that_ends_inside_a_construct_is_not_established(tmp_path: Path, fragment: str) -> None:
+    # The fragment prints nothing and is established; the markup after its include
+    # continues what it leaves open.
+    templates = {"fragment.html": fragment, "page.html": "{% include 'fragment.html' %}<p>{{ name }}</p>\n"}
+
+    assert escaped(tmp_path, templates) == ["fragment.html"]
 
 
 def test_including_a_template_that_ends_inside_a_comment_stays_established(tmp_path: Path) -> None:

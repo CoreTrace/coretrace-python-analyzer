@@ -12,6 +12,8 @@ it extends or includes, can output data unescaped:
   value does not start with a fixed relative or ``http(s)`` prefix, an unquoted
   attribute, an attribute or a tag name, including in such a block or tag the template
   leaves open, which once included runs into the markup that follows;
+- no include of a template that ends inside a ``<script>`` or ``<style>`` block, a tag
+  or an end tag, which the markup after the include then continues;
 - no Python file of the project turning autoescaping off.
 
 A comment hides what it holds only up to its first template tag: an include there may
@@ -157,11 +159,11 @@ _QUOTED = r"\"[^\"]*\"|'[^']*'"
 _ATTRIBUTE_NAME = r"(?:=[^\s/>=]*+|[^\s/>=]++)"
 _ATTRIBUTE_VALUE = r"(?:\"[^\"]*+(?:\"|\Z)|'[^']*+(?:'|\Z)|[^\s>]*+)"
 _ATTRIBUTE = re.compile(rf"({_ATTRIBUTE_NAME})(?:\s*+=\s*+({_ATTRIBUTE_VALUE}))?")
-_START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\s*+=\s*+{_ATTRIBUTE_VALUE})?)*+)>?")
+_START_TAG = re.compile(rf"<([A-Za-z][^\s/>]*+)((?:[\s/]++|{_ATTRIBUTE_NAME}(?:\s*+=\s*+{_ATTRIBUTE_VALUE})?)*+)(>)?")
 # A script or style block and an end tag the text leaves open run to its end as well, for
-# the same reason (#272).
+# the same reason (#272); their last group, like the start tag's, is then empty or None.
 _RAW_TEXT = re.compile(r"<(script|style)\b[^>]*+>(.*?)(</\1\s*>|\Z)", re.DOTALL | re.IGNORECASE)
-_END_TAG = re.compile(r"</[A-Za-z][^>]*+>?")
+_END_TAG = re.compile(r"</[A-Za-z][^>]*+(>)?")
 # ``-->``, ``--!>``, or the ``>`` that ends ``<!-->`` and ``<!--->`` at once.
 _COMMENT_END = re.compile(r"--!?>")
 # ``<{{ name }}`` or ``</ {{ name }}``: the variable would name a tag.
@@ -188,7 +190,9 @@ _ENGINES_SETTING = "TEMPLATES"
 
 def escaped_templates(root: Path) -> frozenset[str]:
     """The names of the templates under ``root`` that escape every variable they render,
-    as ``render_to_string`` names them (their path below a ``templates`` directory)."""
+    as ``render_to_string`` names them (their path below a ``templates`` directory). A
+    template including one that ends inside a script or style block, a tag or an end tag
+    is not among them: the markup after its include continues that construct."""
 
     found: dict[str, list[Path]] = {}
     for path in discover_files(root):
@@ -198,11 +202,16 @@ def escaped_templates(root: Path) -> frozenset[str]:
             found.setdefault(name, []).append(path)
     local: dict[str, bool] = {}
     requires: dict[str, set[str]] = {}
+    includes: dict[str, set[str]] = {}
+    open_ended: set[str] = set()
     for name, paths in found.items():
         verdicts = [_verdict(path) for path in paths]
         local[name] = all(verdict.escapes for verdict in verdicts)
         requires[name] = {needed for verdict in verdicts for needed in verdict.requires}
-    escaped = {name for name, safe in local.items() if safe}
+        includes[name] = {included for verdict in verdicts for included in verdict.includes}
+        if any(verdict.open_end for verdict in verdicts):
+            open_ended.add(name)
+    escaped = {name for name, safe in local.items() if safe and not includes[name] & open_ended}
     changed = True
     while changed:
         kept = {name for name in escaped if requires[name] <= escaped}
@@ -222,14 +231,17 @@ def _read(path: Path) -> str:
 
 
 class _Verdict(NamedTuple):
-    """Whether a template escapes all it prints itself, and the templates it extends or
-    includes, which must escape too."""
+    """Whether a template escapes all it prints itself; the templates it extends or
+    includes, which must escape too, and of them those it includes; and whether its text
+    ends inside a construct, which the markup after its include continues."""
 
     escapes: bool
     requires: frozenset[str]
+    includes: frozenset[str]
+    open_end: bool
 
 
-_REFUSED = _Verdict(escapes=False, requires=frozenset())
+_REFUSED = _Verdict(escapes=False, requires=frozenset(), includes=frozenset(), open_end=False)
 
 
 def _verdict(path: Path) -> _Verdict:
@@ -253,6 +265,7 @@ def _inspect(text: str) -> _Verdict:
     """What the template of ``text`` establishes (``_Verdict``)."""
 
     requires: set[str] = set()
+    includes: set[str] = set()
     html: list[str] = []
     skipping: str | None = None
     position = 0
@@ -291,11 +304,14 @@ def _inspect(text: str) -> _Verdict:
                 if needed is None:
                     return _REFUSED
                 requires.add(needed)
+                if name == "include":
+                    includes.add(needed)
             html.append(_OUTPUT if name in _PRINTING else _URL if name in ("url", "static") else _TAG)
     if skipping is not None:
         return _REFUSED
     html.append(text[position:])
-    return _Verdict(_escapes_where_printed("".join(html)), frozenset(requires))
+    reading = _read_markup("".join(html))
+    return _Verdict(reading.escapes, frozenset(requires), frozenset(includes), reading.open_end)
 
 
 def _loaded(words: list[str]) -> list[str]:
@@ -313,19 +329,30 @@ def _constant(word: str) -> str | None:
     return word[1:-1] if len(word) >= 2 and word[0] == word[-1] and word[0] in "\"'" else None
 
 
-def _escapes_where_printed(html: str) -> bool:
-    """Whether every output marker of ``html`` stands where HTML escaping protects it.
-    Each construct is matched where it starts and one the text leaves open runs to its
-    end, so every character is read once, where copying the rest of the text at each
-    ``<`` and rescanning what never closed took quadratic time (#272).
+class _Reading(NamedTuple):
+    """What one pass over a template's markup establishes: whether every output marker
+    stands where HTML escaping protects it, and whether the text ends inside a script or
+    style block, a tag or an end tag, which the markup after its include continues."""
+
+    escapes: bool
+    open_end: bool
+
+
+def _read_markup(html: str) -> _Reading:
+    """Read ``html`` once, as the HTML tokenizer reads the page it is part of. Each
+    construct is matched where it starts and one the text leaves open runs to its end,
+    so every character is read once, where copying the rest of the text at each ``<``
+    and rescanning what never closed took quadratic time (#272).
 
     A comment ends at its close, as a browser closes it, or at the first template tag
     inside it, whichever comes first, and what follows the tag is read as markup: an
     include there may close the comment, a condition around its ``<!--`` leave it out.
     A variable cannot close it, escaped. A comment left open, with no tag after it,
-    hides the rest of the text."""
+    hides the rest of the text, and hands nothing on: what follows its include stays
+    inside it."""
 
     position = 0
+    open_end = False
     # No comment closes at or after this position: searched once, never again.
     unclosed_from = len(html) + 1
     while (start := html.find("<", position)) != -1:
@@ -342,21 +369,21 @@ def _escapes_where_printed(html: str) -> bool:
                 break
         elif raw := _RAW_TEXT.match(html, start):
             if _OUTPUT in raw.group(2) or not _attributes_escape(html[start : raw.start(2)]):
-                return False
-            position = raw.end()
+                return _Reading(escapes=False, open_end=False)
+            position, open_end = raw.end(), not raw.group(3)
         elif tag := _START_TAG.match(html, start):
             if _OUTPUT in tag.group(1) or not _attributes_escape(tag.group(2)):
-                return False
-            position = tag.end()
+                return _Reading(escapes=False, open_end=False)
+            position, open_end = tag.end(), tag.group(3) is None
         elif end := _END_TAG.match(html, start):
             if _OUTPUT in end.group(0):
-                return False
-            position = end.end()
+                return _Reading(escapes=False, open_end=False)
+            position, open_end = end.end(), end.group(1) is None
         elif _NAMED_BY_OUTPUT.match(html, start):
-            return False
+            return _Reading(escapes=False, open_end=False)
         else:
             position = start + 1
-    return True
+    return _Reading(escapes=True, open_end=open_end)
 
 
 def _attributes_escape(attributes: str) -> bool:
