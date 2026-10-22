@@ -4,7 +4,15 @@
 
 ### Compatibility and migration
 
-- The cache format changes (18): caches built by an earlier version miss once.
+- The cache format changes (19): caches built by an earlier version miss once.
+- A module in a directory without `__init__.py` inside a package is named after that
+  package, as Python names it (#264): `pkg/sub/app.py` is `pkg.sub.app`. Its relative
+  imports now resolve, and a file that was a `syntax-error` (`relative import beyond
+  top-level package`) is analysed, flask's `sansio` for one. The project symbols of its
+  functions change with its name (`python.pkg.sub.app.view`), which a model declared on
+  the former symbol must follow; baseline keys do not change, since they hold no module
+  name. A script beside it still imports it by its short name. Files that share only
+  that short name are no longer noted as `ambiguous-module`.
 - SARIF: each rule carries a title (`shortDescription`) and a description (`fullDescription`)
   instead of repeating its id (#270), and each result carries its confidence as the
   `confidence` property (#271). A flow reaching its sink inside a project function points at
