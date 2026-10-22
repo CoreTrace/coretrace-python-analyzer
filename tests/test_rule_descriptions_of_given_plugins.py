@@ -1,6 +1,6 @@
 """Acceptance tests for the review of #274: a plugin given to ``analyze_project`` as an
 instance, rather than loaded from a plugin root, describes its rules in the report as a
-loaded plugin does.
+loaded plugin does, the first declaration of an id kept.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ class Quiet(Plugin):
     name: ClassVar[str] = "quiet"
     rules: ClassVar[Mapping[str, RuleDescription]] = {
         "quiet-rule": QUIET,
+        "command-injection": RuleDescription("Another title", "Another description."),
     }
 
     def analyze(self, ctx: PluginContext) -> Sequence[Finding]:
@@ -33,3 +34,7 @@ def analysed(tmp_path: Path) -> engine.ProjectAnalysis:
 
 def test_a_plugin_given_as_an_instance_describes_its_rules(tmp_path: Path) -> None:
     assert analysed(tmp_path).rules["quiet-rule"] == QUIET
+
+
+def test_a_loaded_plugin_keeps_the_description_of_a_rule_an_instance_describes_too(tmp_path: Path) -> None:
+    assert analysed(tmp_path).rules["command-injection"].title == "Command injection"
