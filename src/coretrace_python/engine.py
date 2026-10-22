@@ -154,6 +154,16 @@ BUNDLED_PLUGINS = Path(__file__).resolve().parent / "bundled"
 # analyse, and the correlation of a dependency's advisory with the project's taint flows.
 ENGINE_RULES: Mapping[str, RuleDescription] = MappingProxyType(
     {
+        "syntax-error": RuleDescription(
+            "File that could not be read",
+            "A source, requirements or policy file the analyzer could not read or parse: "
+            "nothing in it is checked.",
+        ),
+        "ambiguous-module": RuleDescription(
+            "Ambiguous module name",
+            "A file whose import name another file of the project shares: calls through that "
+            "name may not be followed to the right function.",
+        ),
         "unsupported-syntax": RuleDescription(
             "Unsupported syntax",
             "A function the analyzer could not analyze, because of syntax it does not support: its code is not checked.",
