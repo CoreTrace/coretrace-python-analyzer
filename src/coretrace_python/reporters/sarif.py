@@ -45,11 +45,7 @@ def _result(
     physical: dict[str, object] = {"artifactLocation": _artifact(report, str(span.source_id))}
     location: dict[str, object] = {"physicalLocation": physical}
     if isinstance(span, SourceSpan):
-        region: dict[str, int] = {"startLine": span.start_line, "startColumn": span.start_column}
-        if span.end_line is not None and span.end_column is not None:
-            region["endLine"] = span.end_line
-            region["endColumn"] = span.end_column
-        physical["region"] = region
+        physical["region"] = _region(span)
     else:
         # No region: the line is not established; the pointer says where in the file.
         location["properties"] = {"pointer": span.pointer}
@@ -71,6 +67,18 @@ def _result(
     if origin in _ORIGINS:
         properties["origin"] = origin
     result["properties"] = properties
+    if finding.related:
+        result["relatedLocations"] = [
+            {
+                "id": index,
+                "physicalLocation": {
+                    "artifactLocation": _artifact(report, str(related.span.source_id)),
+                    "region": _region(related.span),
+                },
+                "message": {"text": related.message},
+            }
+            for index, related in enumerate(finding.related)
+        ]
     if suppressed:
         result["suppressions"] = [{"kind": "inSource"}]
     if baseline_state is not None:
@@ -86,6 +94,14 @@ def _extension(component: Component) -> dict[str, object]:
         extension["version"] = component.version
     extension["properties"] = {"kind": component.kind, "digest": component.digest}
     return extension
+
+
+def _region(span: SourceSpan) -> dict[str, int]:
+    region = {"startLine": span.start_line, "startColumn": span.start_column}
+    if span.end_line is not None and span.end_column is not None:
+        region["endLine"] = span.end_line
+        region["endColumn"] = span.end_column
+    return region
 
 
 def _rule(rule_id: str) -> dict[str, object]:
