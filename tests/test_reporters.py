@@ -242,6 +242,21 @@ def test_sarif_results_point_at_the_other_places_a_finding_involves() -> None:
     ]
 
 
+def test_the_message_links_to_each_related_location() -> None:
+    sink = SourceSpan(SourceId("app/helpers.py"), 12, 9, 12, 21)
+    involved = replace(
+        finding("code-injection", 3),
+        message="a[0] reaches eval",
+        related=(RelatedLocation(sink, "sink eval"), RelatedLocation(sink, "sink [exec]")),
+    )
+
+    (result,) = json.loads(render_sarif(report(involved)))["runs"][0]["results"]
+
+    # SARIF embedded links: [text](id) points at relatedLocations[id], which GitHub code
+    # scanning shows as a link; literal brackets and backslashes are escaped around them.
+    assert result["message"] == {"text": "a\\[0\\] reaches eval ([sink eval](0), [sink \\[exec\\]](1))"}
+
+
 def test_a_result_without_other_places_has_no_related_locations() -> None:
     (result,) = json.loads(render_sarif(report(finding("code-injection", 3))))["runs"][0]["results"]
 
