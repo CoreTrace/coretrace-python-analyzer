@@ -1,9 +1,9 @@
 {
   "coverage": {
     "files": 80,
-    "files_analysed": 74,
-    "functions": 295,
-    "functions_analysed": 295
+    "files_analysed": 78,
+    "functions": 303,
+    "functions_analysed": 303
   },
   "findings": [
     {
@@ -48,12 +48,6 @@
       "file": "dockerized_labs/broken_auth_lab/app.py",
       "line": 123,
       "rule": "debug-enabled",
-      "function": null
-    },
-    {
-      "file": "dockerized_labs/insec_des_lab/main.py",
-      "line": 1,
-      "rule": "ambiguous-module",
       "function": null
     },
     {
@@ -155,24 +149,6 @@
       "line": 9,
       "rule": "missing-timeout",
       "function": "check_vuln"
-    },
-    {
-      "file": "introduction/playground/A9/api.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "introduction/playground/A9/archive.py",
-      "line": 1,
-      "rule": "syntax-error",
-      "function": null
-    },
-    {
-      "file": "introduction/playground/A9/main.py",
-      "line": 1,
-      "rule": "ambiguous-module",
-      "function": null
     },
     {
       "file": "introduction/views.py",

@@ -11,7 +11,6 @@ import hashlib
 import multiprocessing
 import sys
 import tempfile
-from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -95,6 +94,7 @@ from coretrace_python.interprocedural import (
     TemplateCallsAnalysis,
     build_module_graph,
     discover_sources,
+    import_names,
     name_modules,
     project_symbol,
     starting_summaries,
@@ -547,9 +547,14 @@ def analyze_project(
     configuration = _configuration_key(
         components, plugins, models, advisories, dependencies, routes, escaped, template_calls
     )
+    # A module's names are part of its key: under another name, what the modules importing
+    # it reach, and the symbols of its own functions, change.
     keys = module_keys(
         graph,
-        {name: fingerprint(configuration, str(files[name].source_id), name, files[name].text) for name in analysable},
+        {
+            name: fingerprint(configuration, str(files[name].source_id), name, *_names_of(files[name]), files[name].text)
+            for name in analysable
+        },
     )
     results: dict[str, CachedModule] = {}
     if cache is not None:
@@ -596,25 +601,31 @@ def analyze_project(
                     batch = {name: analysable[name] for name in sorted(component)}
                     computed.update(
                         _analyse_managers(
-                            batch, _seed(results, graph, component), module_plugins, affected, suffixes, root
+                            batch,
+                            results,
+                            _imported_names(graph, component, results),
+                            module_plugins,
+                            affected,
+                            suffixes,
+                            root,
                         )
                     )
                     for manager in batch.values():
                         manager.run(ResultsEvicted)
             else:
-                futures = [
-                    pool.submit(
-                        _analyse_batch,
-                        _Batch(
-                            {name: _path_of(files[name]) for name in sorted(component)},
-                            {
-                                name: (import_name, keys[name])
-                                for name, import_name in _imported_names(graph, component, results).items()
-                            },
-                        ),
+                futures = []
+                for component in pending:
+                    names = _imported_names(graph, component, results)
+                    futures.append(
+                        pool.submit(
+                            _analyse_batch,
+                            _Batch(
+                                {name: _path_of(files[name]) for name in sorted(component)},
+                                {name: keys[name] for read in names.values() for name in read if name not in component},
+                                names,
+                            ),
+                        )
                     )
-                    for component in pending
-                ]
                 for future in futures:
                     computed.update({name: decode(data) for name, data in future.result().items()})
             store = cache if pool is None else spool
@@ -628,7 +639,7 @@ def analyze_project(
         if spooled is not None:
             spooled.cleanup()
 
-    index = _index(results, {name: name for name in results})
+    index = _index(results, {name: (name,) for name in results})
     call_graphs: dict[str, CallGraph] = {}
     functions: dict[str, tuple[ModuleFunction, ...]] = {}
     for name in sorted(analysable):
@@ -781,7 +792,9 @@ def _advisory_paths(root: Path, advisory_files: Sequence[Path]) -> tuple[Path, .
 
 
 def _shared_names(graph: ModuleGraph) -> dict[str, list[str]]:
-    """The import names several analysable files have, each with those files' modules."""
+    """The module names several analysable files have, each with those files' modules.
+    A name a module also has from its own directory (``import_names``) is not among
+    them: the importer's root tells such files apart."""
 
     by_name: dict[str, list[str]] = {}
     for name in graph.modules:
@@ -797,6 +810,10 @@ def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: 
     def located(name: str) -> str:
         return _located(_path_of(graph.source(name)), root)
 
+    having: dict[str, list[str]] = {}
+    for module in graph.modules:
+        for import_name, _ in import_names(graph.source(module)):
+            having.setdefault(import_name, []).append(module)
     notes: list[Finding] = []
     for import_name, names in sorted(shared.items()):
         for name in names:
@@ -809,118 +826,144 @@ def _ambiguity_notes(graph: ModuleGraph, shared: Mapping[str, list[str]], root: 
             notes.append(_note("ambiguous-module", message, graph.source(name), 1))
     for name in graph.modules:
         for import_name in sorted(graph.unresolved(name)):
-            candidates = " or ".join(located(other) for other in shared[import_name])
+            candidates = " or ".join(located(other) for other in having[import_name])
             message = f"'{import_name}' imported here is {candidates}: calls into it are not followed"
             notes.append(_note("ambiguous-module", message, graph.source(name), 1))
     return notes
 
 
-def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: frozenset[str]) -> SummaryIndex:
-    """The summaries a component starts from (``_imported_names``)."""
-
-    return _index(results, _imported_names(graph, component, results))
-
-
 def _imported_names(
     graph: ModuleGraph, component: frozenset[str], results: Mapping[str, CachedModule]
-) -> dict[str, str]:
-    """The modules whose summaries a component starts from, each with the import name the
-    component's code refers to it by: every module it imports, transitively, all final
-    by the time its wave runs. Of several files with one import name, only the one a
-    member imports directly, resolved in its own root, goes under that name: the others
-    are reached through summaries that inline them already, and a name no member's root
-    resolved is followed into neither file."""
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    """For each member of a component, the modules whose summaries it reads, each with
+    the import names the member's own code refers to it by: the members, and every
+    module they import, transitively, all final by the time the component's wave runs.
+    The member goes under its own names, each of which names it from its own roots.
+    Another module goes under the names the member resolved it by, and otherwise under
+    its module name only, the name the whole project knows it by (``pkg.helpers``,
+    reached through ``import pkg``), never under a name another module resolved from
+    its own directory: what a callee, or another member of a cycle, resolved does not
+    change what the member's names mean. Of several such modules with one module name,
+    only one the member imports directly goes under it, and a name the member left
+    unresolved goes under none."""
 
-    wanted: set[str] = set()
+    reached = set(component)
     pending = list(component)
     while pending:
         for imported in graph.imports(pending.pop()):
-            if imported in results and imported not in wanted:
-                wanted.add(imported)
+            if imported in results and imported not in reached:
+                reached.add(imported)
                 pending.append(imported)
-    direct = {imported for member in component for imported in graph.imports(member)}
-    by_import: dict[str, list[str]] = {}
-    for name in wanted:
-        by_import.setdefault(graph.source(name).module_name, []).append(name)
-    names: dict[str, str] = {}
-    for import_name, modules in by_import.items():
-        chosen = modules if len(modules) == 1 else [name for name in modules if name in direct]
-        if len(chosen) == 1:
-            names[chosen[0]] = import_name
-    return names
+    by_module_name: dict[str, list[str]] = {}
+    for name in sorted(reached):
+        by_module_name.setdefault(graph.source(name).module_name, []).append(name)
+    read: dict[str, dict[str, tuple[str, ...]]] = {}
+    for member in sorted(component):
+        # The graph records no import of a module by itself.
+        chosen = {
+            **dict.fromkeys(_names_of(graph.source(member)), member),
+            **{import_name: module for import_name, module in graph.resolved(member).items() if module in reached},
+        }
+        direct = graph.imports(member)
+        for module_name, modules in by_module_name.items():
+            picked = modules if len(modules) == 1 else [name for name in modules if name in direct]
+            if module_name not in chosen and module_name not in graph.unresolved(member) and len(picked) == 1:
+                chosen[module_name] = picked[0]
+        names: dict[str, list[str]] = {}
+        for import_name, module in sorted(chosen.items()):
+            names.setdefault(module, []).append(import_name)
+        read[member] = {module: tuple(module_names) for module, module_names in names.items()}
+    return read
 
 
-def _index(results: Mapping[str, CachedModule], names: Mapping[str, str]) -> SummaryIndex:
+def _index(results: Mapping[str, CachedModule], names: Mapping[str, Iterable[str]]) -> SummaryIndex:
     """The summaries of the modules in ``names``, each function under the project symbol
-    of the module name given for its module."""
+    of every module name given for its module: one module, reached by several names,
+    has its summaries computed once."""
 
     return SummaryIndex(
         {
             project_symbol(module, function): summary
-            for name, module in sorted(names.items())
+            for name, module_names in sorted(names.items())
+            for module in module_names
             for function, summary in results[name].summaries.items()
         }
     )
 
 
+def _names_of(source: SourceFile) -> tuple[str, ...]:
+    """The import names of ``source`` (``import_names``), without their roots."""
+
+    return tuple(name for name, _ in import_names(source))
+
+
 def _analyse_managers(
     managers: Mapping[str, AnalysisManager],
-    seed: SummaryIndex,
+    imported: Mapping[str, CachedModule],
+    names: Mapping[str, Mapping[str, tuple[str, ...]]],
     plugins: tuple[Plugin, ...],
     affected: Affected,
     suffixes: SuffixIndex,
     root: Path,
 ) -> dict[str, CachedModule]:
-    """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
-    then extract what the rest of the run needs from each module. Each member registers
-    its functions under its import name, what the others' code refers to it by; a name
-    two members share, a cycle across roots, is registered by neither."""
+    """Analyse one component: iterate its summaries to a fixpoint (§21), then extract
+    what the rest of the run needs from each module. Each member reads, in an index of
+    its own, the modules ``names`` gives it under the names given (``_imported_names``):
+    the members' summaries as they grow, the others' as ``imported`` holds them, final.
+    Members that read every module under the same names, as in a regular package, share
+    one index."""
 
-    counts = Counter(manager.module.name for manager in managers.values())
-    names = {name: manager.module.name for name, manager in managers.items() if counts[manager.module.name] == 1}
+    views = {member: tuple(sorted(names[member].items())) for member in managers}
+    final = {
+        view: _index(imported, {name: module_names for name, module_names in view if name not in managers})
+        for view in dict.fromkeys(views.values())
+    }
+
+    def indexes(
+        summaries: Mapping[str, Mapping[str, FunctionSummary]],
+    ) -> dict[tuple[tuple[str, tuple[str, ...]], ...], SummaryIndex]:
+        return {
+            view: SummaryIndex(
+                {
+                    **seed.summaries,
+                    **{
+                        project_symbol(module, function): summary
+                        for name, module_names in view
+                        if name in managers
+                        for module in module_names
+                        for function, summary in summaries[name].items()
+                    },
+                }
+            )
+            for view, seed in final.items()
+        }
+
     # The members' functions start from the summaries ``SummaryAnalysis`` starts from.
     # Left out, a call from one member to another is a call to an unknown symbol on the
     # first iteration and a project call on the next: around a cycle of modules, the
     # iteration then shifts by one module each time and never settles (#261).
-    index = SummaryIndex(
-        {
-            **seed.summaries,
-            **{
-                project_symbol(module, function): summary
-                for name, module in names.items()
-                for function, summary in starting_summaries(managers[name].get(CallGraphAnalysis)).items()
-            },
-        }
-    )
-    for manager in managers.values():
-        manager.provide(ProjectSummaries, index)
-    # Iterated until the index settles, with no bound: stopped earlier, summaries that
-    # started empty would miss what later iterations add, a dependency still on its way
-    # reading as no taint. It settles because each iteration can only add: the index holds
-    # the same symbols from the start, and in every round of a module's fixpoint the rules
-    # that read the index join what they read (a call's dependencies and records, heap
-    # stores, merges), while those that do not join (a nonlocal record not summarized yet,
-    # ``kept``, reachability, ``unsupported``, ``static``) depend on the code and the round
-    # only. Each round's table thus grows with the index, the fixpoint too, in a finite
-    # domain: the parameters, symbols and call records of the code. A rule reading the
-    # index without joining would break this, and the loop's termination with it.
+    index = indexes({name: starting_summaries(manager.get(CallGraphAnalysis)) for name, manager in managers.items()})
+    for name, manager in managers.items():
+        manager.provide(ProjectSummaries, index[views[name]])
+    # Iterated until every member's index settles, with no bound: stopped earlier,
+    # summaries that started empty would miss what later iterations add, a dependency
+    # still on its way reading as no taint. It settles because each iteration can only
+    # add: each index holds the same symbols from the start, and in every round of a
+    # module's fixpoint the rules that read the index join what they read (a call's
+    # dependencies and records, heap stores, merges), while those that do not join (a
+    # nonlocal record not summarized yet, ``kept``, reachability, ``unsupported``,
+    # ``static``) depend on the code and the round only. Each round's table thus grows
+    # with the index, the fixpoint too, in a finite domain: the parameters, symbols and
+    # call records of the code. A rule reading the index without joining would break
+    # this, and the loop's termination with it.
     while True:
-        updated = SummaryIndex(
-            {
-                **seed.summaries,
-                **{
-                    project_symbol(module, function): summary
-                    for name, module in names.items()
-                    for function, summary in _summaries_of(managers[name]).items()
-                },
-            }
-        )
+        updated = indexes({name: _summaries_of(manager) for name, manager in managers.items()})
         if updated == index:
             break
         index = updated
-        for manager in managers.values():
+        for name, manager in managers.items():
             manager.run(ProjectSummariesUpdated)
-            manager.provide(ProjectSummaries, index)
+            manager.provide(ProjectSummaries, index[views[name]])
     return {name: _analyse_module(manager, plugins, affected, suffixes, root) for name, manager in managers.items()}
 
 
@@ -947,11 +990,13 @@ class _Project:
 @dataclass(frozen=True)
 class _Batch:
     """One component handed to a worker process: its files under the engine's module
-    names, and the modules its summaries start from, each with its import name and the
-    key of its entry in the spool. Only these travel, not the summaries themselves."""
+    names, the key in the spool of each module it imports, and the names each member
+    reads each module by (``_imported_names``). Only these travel, not the summaries
+    themselves."""
 
     paths: Mapping[str, Path]
-    imported: Mapping[str, tuple[str, str]]
+    keys: Mapping[str, str]
+    names: Mapping[str, Mapping[str, tuple[str, ...]]]
 
 
 @dataclass
@@ -967,9 +1012,9 @@ class _Worker:
     root: Path
     read: dict[str, CachedModule] = field(default_factory=dict)
 
-    def entries(self, imported: Mapping[str, tuple[str, str]]) -> dict[str, CachedModule]:
+    def entries(self, keys: Mapping[str, str]) -> dict[str, CachedModule]:
         found: dict[str, CachedModule] = {}
-        for name, (_, key) in imported.items():
+        for name, key in keys.items():
             entry = self.read.get(key)
             if entry is None:
                 entry = self.spool.load(key)
@@ -1033,12 +1078,19 @@ def _start_worker(project: _Project) -> None:
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     worker = _WORKER
     assert worker is not None, "the pool starts every worker with _start_worker"
-    sources = SourceManager()
-    managers = {name: _register_all(build_hir(sources.load_file(path))) for name, path in batch.paths.items()}
+    sources = {name: SourceManager().load_file(path, worker.root) for name, path in batch.paths.items()}
+    managers = {name: _register_all(build_hir(source)) for name, source in sources.items()}
     for manager in managers.values():
         worker.managed(manager)
-    seed = _index(worker.entries(batch.imported), {name: import_name for name, (import_name, _) in batch.imported.items()})
-    results = _analyse_managers(managers, seed, worker.plugins, worker.affected, worker.suffixes, worker.root)
+    results = _analyse_managers(
+        managers,
+        worker.entries(batch.keys),
+        batch.names,
+        worker.plugins,
+        worker.affected,
+        worker.suffixes,
+        worker.root,
+    )
     return {name: encode(entry) for name, entry in results.items()}
 
 

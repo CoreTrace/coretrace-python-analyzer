@@ -67,9 +67,16 @@ coretrace-python-analyzer [--check | --emit-ir [--ssa]] [options] [path]
 ## What is analysed
 
 Given a directory, every `.py` file below it is a module of one project, named after
-its package (`app/views.py` is `app.views`). Two files that would share a name, `a/app.py`
-and `z/app.py` outside any package, are told apart by their path from the root, `a.app`
-and `z.app`, and reported: each carries an `ambiguous-module` note, since a symbol
+its package (`app/views.py` is `app.views`). A directory without `__init__.py` inside a
+package is a portion of it, as Python reads one: `pkg/sub/app.py` is `pkg.sub.app`, and
+its relative imports resolve against `pkg`. A module there can also be imported by the
+name a script run from its directory gives it, `app`: an absolute import from that
+directory reaches what lies beside it first, then what the package's root holds, and
+files sharing only such a name are told apart by the importer's directory. From another
+directory that name answers nothing, as Python finds no such module there: at the
+project root, `import os` is the library even beside a `pkg/sub/os.py`. Two files
+that would share a module name, `a/app.py` and `z/app.py` outside any package, are told
+apart by their path from the root, `a.app` and `z.app`, and reported: each carries an `ambiguous-module` note, since a symbol
 `python.app.main` may name a function of either and an import of `app` resolves only
 from the importer's own directory, and each is covered as `ambiguous` rather than
 analysed. An import of such a name that no file of the importer's own directory answers
