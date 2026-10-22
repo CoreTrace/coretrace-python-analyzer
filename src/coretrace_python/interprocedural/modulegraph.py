@@ -331,6 +331,7 @@ __all__ = [
     "SummaryIndex",
     "build_module_graph",
     "discover_sources",
+    "import_names",
     "name_modules",
     "project_symbol",
 ]

@@ -95,6 +95,7 @@ from coretrace_python.interprocedural import (
     TemplateCallsAnalysis,
     build_module_graph,
     discover_sources,
+    import_names,
     name_modules,
     project_symbol,
     starting_summaries,
@@ -596,7 +597,13 @@ def analyze_project(
                     batch = {name: analysable[name] for name in sorted(component)}
                     computed.update(
                         _analyse_managers(
-                            batch, _seed(results, graph, component), module_plugins, affected, suffixes, root
+                            batch,
+                            _seed(results, graph, component),
+                            module_plugins,
+                            affected,
+                            suffixes,
+                            root,
+                            {name: _names_of(files[name]) for name in batch},
                         )
                     )
                     for manager in batch.values():
@@ -608,8 +615,8 @@ def analyze_project(
                         _Batch(
                             {name: _path_of(files[name]) for name in sorted(component)},
                             {
-                                name: (import_name, keys[name])
-                                for name, import_name in _imported_names(graph, component, results).items()
+                                name: (names, keys[name])
+                                for name, names in _imported_names(graph, component, results).items()
                             },
                         ),
                     )
@@ -628,7 +635,7 @@ def analyze_project(
         if spooled is not None:
             spooled.cleanup()
 
-    index = _index(results, {name: name for name in results})
+    index = _index(results, {name: (name,) for name in results})
     call_graphs: dict[str, CallGraph] = {}
     functions: dict[str, tuple[ModuleFunction, ...]] = {}
     for name in sorted(analysable):
@@ -823,13 +830,14 @@ def _seed(results: Mapping[str, CachedModule], graph: ModuleGraph, component: fr
 
 def _imported_names(
     graph: ModuleGraph, component: frozenset[str], results: Mapping[str, CachedModule]
-) -> dict[str, str]:
-    """The modules whose summaries a component starts from, each with the import name the
-    component's code refers to it by: every module it imports, transitively, all final
-    by the time its wave runs. Of several files with one import name, only the one a
-    member imports directly, resolved in its own root, goes under that name: the others
-    are reached through summaries that inline them already, and a name no member's root
-    resolved is followed into neither file."""
+) -> dict[str, tuple[str, ...]]:
+    """The modules whose summaries a component starts from, each with the import names
+    the component's code refers to it by: every module it imports, transitively, all
+    final by the time its wave runs. A member's own import goes under the name it
+    resolved by, unless another member resolved that name to another file. Of several
+    files with one import name, only the one a member imports directly goes under that
+    name: the others are reached through summaries that inline them already, and a name
+    no member's root resolved is followed into neither file."""
 
     wanted: set[str] = set()
     pending = list(component)
@@ -838,29 +846,46 @@ def _imported_names(
             if imported in results and imported not in wanted:
                 wanted.add(imported)
                 pending.append(imported)
+    chosen: dict[str, str | None] = {}
+    for member in sorted(component):
+        for import_name, module in graph.resolved(member).items():
+            if module in results and chosen.setdefault(import_name, module) != module:
+                chosen[import_name] = None
     direct = {imported for member in component for imported in graph.imports(member)}
     by_import: dict[str, list[str]] = {}
     for name in wanted:
-        by_import.setdefault(graph.source(name).module_name, []).append(name)
-    names: dict[str, str] = {}
+        for import_name, _ in import_names(graph.source(name)):
+            by_import.setdefault(import_name, []).append(name)
     for import_name, modules in by_import.items():
-        chosen = modules if len(modules) == 1 else [name for name in modules if name in direct]
-        if len(chosen) == 1:
-            names[chosen[0]] = import_name
-    return names
+        picked = modules if len(modules) == 1 else [name for name in modules if name in direct]
+        if import_name not in chosen and len(picked) == 1:
+            chosen[import_name] = picked[0]
+    names: dict[str, list[str]] = {}
+    for import_name, reached in sorted(chosen.items()):
+        if reached is not None:
+            names.setdefault(reached, []).append(import_name)
+    return {module: tuple(module_names) for module, module_names in names.items()}
 
 
-def _index(results: Mapping[str, CachedModule], names: Mapping[str, str]) -> SummaryIndex:
+def _index(results: Mapping[str, CachedModule], names: Mapping[str, Iterable[str]]) -> SummaryIndex:
     """The summaries of the modules in ``names``, each function under the project symbol
-    of the module name given for its module."""
+    of every module name given for its module: one module, reached by several names,
+    has its summaries computed once."""
 
     return SummaryIndex(
         {
             project_symbol(module, function): summary
-            for name, module in sorted(names.items())
+            for name, module_names in sorted(names.items())
+            for module in module_names
             for function, summary in results[name].summaries.items()
         }
     )
+
+
+def _names_of(source: SourceFile) -> tuple[str, ...]:
+    """The import names of ``source`` (``import_names``), without their roots."""
+
+    return tuple(name for name, _ in import_names(source))
 
 
 def _analyse_managers(
@@ -870,14 +895,15 @@ def _analyse_managers(
     affected: Affected,
     suffixes: SuffixIndex,
     root: Path,
+    member_names: Mapping[str, tuple[str, ...]],
 ) -> dict[str, CachedModule]:
     """Analyse one component: iterate its summaries to a fixpoint over ``seed`` (§21),
     then extract what the rest of the run needs from each module. Each member registers
-    its functions under its import name, what the others' code refers to it by; a name
-    two members share, a cycle across roots, is registered by neither."""
+    its functions under its import names (``member_names``), what the others' code refers
+    to it by; a name two members share, a cycle across roots, is registered by neither."""
 
-    counts = Counter(manager.module.name for manager in managers.values())
-    names = {name: manager.module.name for name, manager in managers.items() if counts[manager.module.name] == 1}
+    counts = Counter(module for name in managers for module in member_names[name])
+    names = {name: tuple(module for module in member_names[name] if counts[module] == 1) for name in managers}
     # The members' functions start from the summaries ``SummaryAnalysis`` starts from.
     # Left out, a call from one member to another is a call to an unknown symbol on the
     # first iteration and a project call on the next: around a cycle of modules, the
@@ -887,7 +913,8 @@ def _analyse_managers(
             **seed.summaries,
             **{
                 project_symbol(module, function): summary
-                for name, module in names.items()
+                for name, modules in names.items()
+                for module in modules
                 for function, summary in starting_summaries(managers[name].get(CallGraphAnalysis)).items()
             },
         }
@@ -910,7 +937,8 @@ def _analyse_managers(
                 **seed.summaries,
                 **{
                     project_symbol(module, function): summary
-                    for name, module in names.items()
+                    for name, modules in names.items()
+                    for module in modules
                     for function, summary in _summaries_of(managers[name]).items()
                 },
             }
@@ -947,11 +975,11 @@ class _Project:
 @dataclass(frozen=True)
 class _Batch:
     """One component handed to a worker process: its files under the engine's module
-    names, and the modules its summaries start from, each with its import name and the
+    names, and the modules its summaries start from, each with its import names and the
     key of its entry in the spool. Only these travel, not the summaries themselves."""
 
     paths: Mapping[str, Path]
-    imported: Mapping[str, tuple[str, str]]
+    imported: Mapping[str, tuple[tuple[str, ...], str]]
 
 
 @dataclass
@@ -967,7 +995,7 @@ class _Worker:
     root: Path
     read: dict[str, CachedModule] = field(default_factory=dict)
 
-    def entries(self, imported: Mapping[str, tuple[str, str]]) -> dict[str, CachedModule]:
+    def entries(self, imported: Mapping[str, tuple[tuple[str, ...], str]]) -> dict[str, CachedModule]:
         found: dict[str, CachedModule] = {}
         for name, (_, key) in imported.items():
             entry = self.read.get(key)
@@ -1033,12 +1061,20 @@ def _start_worker(project: _Project) -> None:
 def _analyse_batch(batch: _Batch) -> dict[str, dict[str, Any]]:
     worker = _WORKER
     assert worker is not None, "the pool starts every worker with _start_worker"
-    sources = SourceManager()
-    managers = {name: _register_all(build_hir(sources.load_file(path))) for name, path in batch.paths.items()}
+    sources = {name: SourceManager().load_file(path) for name, path in batch.paths.items()}
+    managers = {name: _register_all(build_hir(source)) for name, source in sources.items()}
     for manager in managers.values():
         worker.managed(manager)
-    seed = _index(worker.entries(batch.imported), {name: import_name for name, (import_name, _) in batch.imported.items()})
-    results = _analyse_managers(managers, seed, worker.plugins, worker.affected, worker.suffixes, worker.root)
+    seed = _index(worker.entries(batch.imported), {name: names for name, (names, _) in batch.imported.items()})
+    results = _analyse_managers(
+        managers,
+        seed,
+        worker.plugins,
+        worker.affected,
+        worker.suffixes,
+        worker.root,
+        {name: _names_of(source) for name, source in sources.items()},
+    )
     return {name: encode(entry) for name, entry in results.items()}
 
 

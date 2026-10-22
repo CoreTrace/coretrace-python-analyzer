@@ -20,6 +20,7 @@ from coretrace_python.interprocedural.modulegraph import (
     build_module_graph,
     discover_files,
     discover_sources,
+    import_names,
     name_modules,
     project_symbol,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "cleared_by",
     "discover_files",
     "discover_sources",
+    "import_names",
     "name_modules",
     "project_symbol",
     "starting_summaries",
