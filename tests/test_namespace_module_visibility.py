@@ -152,3 +152,20 @@ def test_a_module_reached_through_its_package_is_followed_by_its_module_name(tmp
     )
 
     assert injections(tmp_path, root, run) == [("main.py", 5)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_name_one_member_of_a_cycle_resolved_does_not_change_another(tmp_path: Path, run: str) -> None:
+    # main.py and x/a.py import each other; x/a.py's helper is x/helper.py, while main.py,
+    # at the root, cannot tell x/helper.py from y/helper.py.
+    root = project(
+        tmp_path,
+        {
+            "x/helper.py": 'def execute(command):\n    return "constant"\n',
+            "x/a.py": 'import helper\nimport main\n\n\ndef use():\n    return helper.execute("x")\n',
+            "y/helper.py": "def execute(command):\n    return command\n",
+            "main.py": "import os\nimport helper\nimport a\n\n\ndef run():\n    a.use()\n    os.system(helper.execute(input()))\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 8)]
