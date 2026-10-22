@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
-from coretrace_python.findings import Component, Finding, Severity
-from coretrace_python.findings.rules import describe_rule
+from coretrace_python.findings import Component, Finding, RuleDescription, Severity
 from coretrace_python.reporters.report import Report
 from coretrace_python.source import SourceSpan
 
@@ -120,11 +120,11 @@ def _region(span: SourceSpan) -> dict[str, int]:
     return region
 
 
-def _rule(rule_id: str) -> dict[str, object]:
-    """A rule as the log lists it: its title and description when the analyzer has them, its
+def _rule(rule_id: str, rules: Mapping[str, RuleDescription]) -> dict[str, object]:
+    """A rule as the log lists it: its title and description when the report has them, its
     id alone otherwise, never the id repeated as a title."""
 
-    described = describe_rule(rule_id)
+    described = rules.get(rule_id)
     if described is None:
         return {"id": rule_id}
     return {
@@ -149,7 +149,7 @@ def render_sarif(report: Report) -> str:
                     "driver": {
                         "name": report.tool_name,
                         "version": report.tool_version,
-                        "rules": [_rule(rule_id) for rule_id in rule_ids],
+                        "rules": [_rule(rule_id, report.rules) for rule_id in rule_ids],
                     },
                     **({"extensions": [_extension(c) for c in report.components]} if report.components else {}),
                 },

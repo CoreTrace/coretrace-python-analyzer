@@ -21,6 +21,7 @@ from coretrace_python.findings import (
     Confidence,
     Finding,
     RelatedLocation,
+    RuleDescription,
     Severity,
 )
 from coretrace_python.source import SourceId, SourceSpan
@@ -177,35 +178,27 @@ def test_sarif_reporter_emits_a_single_run_with_rules_and_results() -> None:
     ]
 
 
-def test_sarif_rules_carry_a_title_and_a_description() -> None:
-    document = json.loads(render_sarif(report(finding("dangerous-eval", 2), finding("weak-crypto", 8))))
+def test_sarif_rules_carry_the_description_the_report_gives_them() -> None:
+    described = Report(
+        findings=(finding("dangerous-eval", 2),),
+        tool_name="coretrace-python-analyzer",
+        tool_version="0.1.0",
+        rules={"dangerous-eval": RuleDescription("Dynamic code execution", "A call to eval or exec.")},
+    )
 
-    for rule in document["runs"][0]["tool"]["driver"]["rules"]:
-        assert rule["shortDescription"]["text"] not in ("", rule["id"])
-        assert rule["fullDescription"]["text"]
+    assert json.loads(render_sarif(described))["runs"][0]["tool"]["driver"]["rules"] == [
+        {
+            "id": "dangerous-eval",
+            "shortDescription": {"text": "Dynamic code execution"},
+            "fullDescription": {"text": "A call to eval or exec."},
+        }
+    ]
 
 
 def test_a_rule_without_a_description_keeps_its_id_alone() -> None:
     document = json.loads(render_sarif(report(finding("from-a-third-party-plugin", 1))))
 
     assert document["runs"][0]["tool"]["driver"]["rules"] == [{"id": "from-a-third-party-plugin"}]
-
-
-def documented_rules() -> list[str]:
-    """The rule ids the Rules section of the usage guide lists, and ``unsupported-syntax``."""
-
-    usage = (Path(__file__).resolve().parent.parent / "docs" / "usage.md").read_text(encoding="utf-8")
-    section = usage.split("\n## Rules\n", 1)[1].split("\n## ", 1)[0]
-    rules = {line.split("`")[1] for line in section.splitlines() if line.startswith("| `")}
-    return sorted(rules | {"unsupported-syntax"})
-
-
-@pytest.mark.parametrize("rule", documented_rules())
-def test_every_documented_rule_is_described(rule: str) -> None:
-    (described,) = json.loads(render_sarif(report(finding(rule, 1))))["runs"][0]["tool"]["driver"]["rules"]
-
-    assert described["shortDescription"]["text"] not in ("", rule)
-    assert described["fullDescription"]["text"]
 
 
 def test_sarif_results_carry_their_confidence() -> None:

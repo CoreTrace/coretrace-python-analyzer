@@ -280,6 +280,7 @@ def main(argv: list[str] | None = None) -> int:
                 coverage = analysis.coverage
                 suppressed = analysis.suppressed
                 components = analysis.components
+                rules = analysis.rules
                 if args.sbom is not None:
                     args.sbom.write_text(
                         render_sbom(
@@ -307,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
                 findings, coverage = file_analysis.findings, file_analysis.coverage
                 suppressed = file_analysis.suppressed
                 components = ()
+                rules = file_analysis.rules
             baselined = None
             recorded = None
             if previous is not None:
@@ -317,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
             elif args.baseline is not None:
                 recorded = Baseline.of(findings, root, key)
                 findings, baselined = (), findings
-            report = engine.report(findings, coverage, root, suppressed, baselined, components)
+            report = engine.report(findings, coverage, root, suppressed, baselined, components, rules)
             text = render(args.format or "text", report)
             # Recorded once the report is rendered, so that a failed check keeps the
             # previous baseline.

@@ -11,9 +11,15 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
+from coretrace_python import engine
 from coretrace_python.cli import main
+from coretrace_python.findings import RuleDescription
+from coretrace_python.source import SourceManager
 
 MANIFEST = (
     'name = "{name}"\nversion = "1.0.0"\nplugin_api = ">=1,<2"\n'
@@ -90,3 +96,27 @@ def test_a_plugin_that_describes_nothing_still_reports_by_id(tmp_path: Path) -> 
     rules = sarif_rules(tmp_path, "import tempfile\n\ndef run():\n    return tempfile.gettempprefix()\n")
 
     assert rules["quiet-call"] == {"id": "quiet-call"}
+
+
+def bundled_rules() -> Mapping[str, RuleDescription]:
+    """What the bundled plugins and the engine describe, as a check carries it to its report."""
+
+    return engine.analyze_file(SourceManager().add_source("app.py", ""), [engine.BUNDLED_PLUGINS]).rules
+
+
+def documented_rules() -> list[str]:
+    """The rule ids the Rules section of the usage guide lists, and ``unsupported-syntax``."""
+
+    usage = (Path(__file__).resolve().parent.parent / "docs" / "usage.md").read_text(encoding="utf-8")
+    section = usage.split("\n## Rules\n", 1)[1].split("\n## ", 1)[0]
+    rules = {line.split("`")[1] for line in section.splitlines() if line.startswith("| `")}
+    return sorted(rules | {"unsupported-syntax"})
+
+
+@pytest.mark.parametrize("rule", documented_rules())
+def test_every_documented_rule_is_described(rule: str) -> None:
+    described = bundled_rules().get(rule)
+
+    assert described is not None
+    assert described.title not in ("", rule)
+    assert described.description

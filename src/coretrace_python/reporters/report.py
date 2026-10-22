@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 
-from coretrace_python.findings import Component, Coverage, Finding
+from coretrace_python.findings import Component, Coverage, Finding, RuleDescription
 from coretrace_python.source import FileLocation
 
 
@@ -34,6 +36,8 @@ class Report:
     with_baseline: bool = False
     # The plugins and advisory files the result was produced with.
     components: tuple[Component, ...] = ()
+    # What each rule detects, as the plugin reporting it or the engine describes it.
+    rules: Mapping[str, RuleDescription] = field(default_factory=lambda: MappingProxyType({}))
 
     def __post_init__(self) -> None:
         for name in ("findings", "suppressed", "baselined"):
