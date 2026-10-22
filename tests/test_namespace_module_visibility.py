@@ -239,3 +239,18 @@ def test_each_member_of_a_cycle_reads_the_module_it_resolved(tmp_path: Path, run
     )
 
     assert injections(tmp_path, root, run) == [("pkg/a/run.py", 7)]
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_a_member_of_a_cycle_reached_through_its_package_is_followed_by_its_module_name(tmp_path: Path, run: str) -> None:
+    # main.py, pkg/__init__.py and pkg/helpers.py import one another in turn.
+    root = project(
+        tmp_path,
+        {
+            "pkg/__init__.py": "from . import helpers\n",
+            "pkg/helpers.py": "import os\nimport main\n\n\ndef run(command):\n    os.system(command)\n",
+            "main.py": "import pkg\n\n\ndef go():\n    pkg.helpers.run(input())\n",
+        },
+    )
+
+    assert injections(tmp_path, root, run) == [("main.py", 5)]
