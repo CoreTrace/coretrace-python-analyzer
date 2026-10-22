@@ -61,6 +61,21 @@ def test_dangerous_eval_still_reports_the_call_beside_the_injection() -> None:
     assert rules == ["code-injection", "dangerous-eval"]
 
 
+def test_the_sink_inside_a_project_function_is_a_related_location() -> None:
+    text = "def evaluate(expression):\n    return eval(expression)\n\ndef run():\n    return evaluate(input())\n"
+
+    (finding,) = [f for f in check(text) if f.rule_id == "code-injection"]
+    (related,) = finding.related
+    assert (str(related.span.source_id), related.span.start_line) == ("app.py", 2)
+    assert related.message == "the input reaches python.builtins.eval here, in evaluate"
+
+
+def test_a_sink_in_the_function_itself_has_no_related_location() -> None:
+    (finding,) = [f for f in check("def run():\n    return eval(input())\n") if f.rule_id == "code-injection"]
+
+    assert finding.related == ()
+
+
 def test_code_reaching_eval_through_a_project_function_is_reported_at_the_call() -> None:
     text = "def evaluate(expression):\n    return eval(expression)\n\ndef run():\n    return evaluate(input())\n"
 
