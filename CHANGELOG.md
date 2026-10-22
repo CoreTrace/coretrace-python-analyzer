@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Compatibility and migration
+
+- The cache format changes (18): caches built by an earlier version miss once.
+- SARIF: each rule carries a title (`shortDescription`) and a description (`fullDescription`)
+  instead of repeating its id (#270), and each result carries its confidence as the
+  `confidence` property (#271). A flow reaching its sink inside a project function points at
+  that sink as a related location (#271).
+- Plugin API, additive: `Finding.related` lists `RelatedLocation`s (a span and a message), and
+  `coretrace_python.findings.rules` describes the bundled rules.
+
 ## 0.23.0 (2026-10-16)
 
 ### Compatibility and migration
