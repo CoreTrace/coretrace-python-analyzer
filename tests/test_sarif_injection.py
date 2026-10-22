@@ -47,12 +47,14 @@ def results(
 def test_a_result_carries_the_injection_its_rule_established(
     results: dict[str, dict[str, object]],
 ) -> None:
-    assert results["option.py"]["properties"] == {"injection": "option"}
-    assert results["command.py"]["properties"] == {"injection": "command"}
+    # Beside the confidence every result carries (#271), the injection is the only property.
+    assert results["option.py"]["properties"] == {"confidence": "high", "injection": "option"}
+    assert results["command.py"]["properties"] == {"confidence": "high", "injection": "command"}
 
 
 def test_a_result_whose_injection_is_not_established_has_none(
     results: dict[str, dict[str, object]],
 ) -> None:
-    assert "properties" not in results["unknown.py"]
-    assert "properties" not in results["shell.py"]
+    # Every result carries its confidence (#271): nothing else, and no injection.
+    assert set(results["unknown.py"]["properties"]) == {"confidence"}
+    assert set(results["shell.py"]["properties"]) == {"confidence"}

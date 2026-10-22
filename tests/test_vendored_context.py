@@ -122,9 +122,10 @@ def test_the_sarif_result_carries_both_facts(tmp_path: Path) -> None:
 
     results = json.loads(render_sarif(engine.report(analysis.findings, root=root)))["runs"][0]["results"]
 
+    # Test code is reported at low confidence, which every result carries (#271).
     assert {r["ruleId"]: r["properties"] for r in results} == {
-        "hardcoded-credential": {"context": "test", "origin": "vendored"},
-        "unsafe-xml": {"context": "test", "origin": "vendored"},
+        "hardcoded-credential": {"confidence": "low", "context": "test", "origin": "vendored"},
+        "unsafe-xml": {"confidence": "low", "context": "test", "origin": "vendored"},
     }
 
 

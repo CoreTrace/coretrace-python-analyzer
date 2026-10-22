@@ -60,7 +60,7 @@ def _result(
         "message": {"text": finding.message},
         "locations": [location],
     }
-    properties: dict[str, str] = {}
+    properties: dict[str, str] = {"confidence": finding.confidence.value}
     injection = finding.metadata.get("injection")
     if injection in _INJECTIONS:
         properties["injection"] = injection
@@ -70,8 +70,7 @@ def _result(
     origin = finding.metadata.get("origin")
     if origin in _ORIGINS:
         properties["origin"] = origin
-    if properties:
-        result["properties"] = properties
+    result["properties"] = properties
     if suppressed:
         result["suppressions"] = [{"kind": "inSource"}]
     if baseline_state is not None:
