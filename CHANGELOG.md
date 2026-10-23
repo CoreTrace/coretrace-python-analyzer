@@ -34,6 +34,14 @@
   `Finding.related` lists `RelatedLocation`s (a span and a message). `Report.rules` carries the
   descriptions to the reporters.
 
+### Performance
+
+- Collecting the filters a template's render reaches walks each template once for each set
+  of blocks the templates extending it override (#279). It followed every path through
+  nested includes: two includes of one template at each of 20 levels took 31 s.
+  A template in a cycle of includes is still walked again wherever the cycle cuts its
+  walk short.
+
 ## 0.23.0 (2026-10-16)
 
 ### Compatibility and migration
