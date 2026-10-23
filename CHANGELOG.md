@@ -87,6 +87,13 @@
   A template in a cycle of includes is still walked again wherever the cycle cuts its
   walk short.
 
+### Documentation
+
+- `docs/usage.md` documents how templates are read and each page is put together, the
+  modules of a directory without `__init__.py`, assignment expressions in annotations,
+  and the rule descriptions and related locations of the SARIF report; `docs/plugins.md`
+  documents `Plugin.rules` and `Finding.related`.
+
 ## 0.23.0 (2026-10-16)
 
 ### Compatibility and migration
