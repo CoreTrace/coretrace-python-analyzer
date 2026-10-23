@@ -14,6 +14,9 @@ it extends or includes, can output data unescaped:
   leaves open, which once included runs into the markup that follows;
 - no include of a template that ends inside a ``<script>`` or ``<style>`` block, a tag
   or an end tag, which the markup after the include then continues;
+- none of this either once the page is put together as Django renders it, its blocks
+  and includes in place (``_Composition``): what a block or an include puts inside a
+  construct of another file is read there (#273);
 - no Python file of the project turning autoescaping off.
 
 A comment hides what it holds only up to its first template tag: an include there may
