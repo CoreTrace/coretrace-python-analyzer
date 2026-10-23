@@ -9,10 +9,16 @@ not share them, and a result cut short by a cycle of includes is not reused.
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from coretrace_python.taint.templates import project_templates
 
+TIMEOUT = 60
 FILTERS = "python.django.template.defaultfilters"
 
 
@@ -119,3 +125,28 @@ def test_a_template_reached_inside_a_cycle_and_from_outside_it(tmp_path: Path) -
         "b.html": [(f"{FILTERS}.lower", "b.html", 1, 6, "b.html", ("y",), ()), (f"{FILTERS}.upper", "a.html", 1, 6, "a.html", ("x",), ())],
         "c.html": [(f"{FILTERS}.lower", "b.html", 1, 6, "b.html", ("y",), ()), (f"{FILTERS}.upper", "a.html", 1, 6, "a.html", ("x",), ())],
     }
+
+
+COUNT_FILTERS = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "from coretrace_python.taint.templates import project_templates\n"
+    "print(json.dumps({name: len(found) for name, found in project_templates(Path(sys.argv[1])).filters.items()}))\n"
+)
+
+
+def test_includes_doubled_at_every_level_are_walked_in_linear_time(tmp_path: Path) -> None:
+    # Followed path by path, level30.html leads to level0.html 2 ** 30 times.
+    templates = {"level0.html": "{{ name|upper }}"}
+    for level in range(1, 31):
+        templates[f"level{level}.html"] = f"{{% include 'level{level - 1}.html' %}}" * 2
+    root = write(tmp_path, templates)
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", COUNT_FILTERS, str(root)], capture_output=True, text=True, check=False, timeout=TIMEOUT
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"the walk did not end within {TIMEOUT} s")
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {name: 1 for name in templates}

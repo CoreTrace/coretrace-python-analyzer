@@ -992,11 +992,14 @@ def project_templates(root: Path) -> ProjectTemplates:
             reason = "not found" if library is None else "not read" if library.uncertain is None else "found in several files"
             unread.append(f"{relative}:{_position(text, load.offset)[0]} loads {load.library!r}, {reason}")
     calls = tuple(FilterCall(a.symbol, a.span) for template in read.values() for a in template.applications)
+    # The filters each template reaches, by template and blocks overridden, for this
+    # analysis only (#279).
+    reached: dict[tuple[str, frozenset[str]], list[_Reached]] = {}
     filters = {
         name: tuple(
             dict.fromkeys(
                 TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
-                for symbol, span, where, value, argument in _reaching(name, files, read, frozenset())
+                for symbol, span, where, value, argument in _reaching(name, files, read, frozenset(), frozenset(), reached)[0]
             )
         )
         for name in files
@@ -1004,36 +1007,59 @@ def project_templates(root: Path) -> ProjectTemplates:
     return ProjectTemplates(frozenset(files), calls, tuple(unread), filters)
 
 
+# A filter a template's render reaches: the function, where it is applied, the template
+# applying it, and the names free in the rendered template reaching its value and argument.
+_Reached = tuple[SymbolId, SourceSpan, str, frozenset[str], frozenset[str]]
+
+
 def _reaching(
     name: str,
     files: Mapping[str, list[Path]],
     read: Mapping[Path, _Template],
     visiting: frozenset[str],
-    overridden: frozenset[str] = frozenset(),
-) -> Iterator[tuple[SymbolId, SourceSpan, str, frozenset[str], frozenset[str]]]:
+    overridden: frozenset[str],
+    reached: dict[tuple[str, frozenset[str]], list[_Reached]],
+) -> tuple[list[_Reached], bool]:
     """The filters rendering the template ``name`` applies, in it and in what it includes
     or extends, each with the template applying it and the names free in ``name`` whose
     values reach its value and its argument; the templates extending ``name`` on the way
-    define the ``overridden`` blocks."""
+    define the ``overridden`` blocks. Also whether a cycle of includes, through a template
+    ``visiting``, cut the walk short.
+
+    Each template is walked once for each set of blocks overridden: ``reached`` keeps what
+    a walk found, its first occurrences in order, which mapped through a reference give
+    the first occurrences a walk path by path gives. A walk cut short by a cycle depends
+    on where the cycle was entered, and is not kept (#279)."""
 
     paths = files.get(name, [])
-    if len(paths) != 1 or paths[0] not in read or name in visiting:
-        return
+    if len(paths) != 1 or paths[0] not in read:
+        return [], False
+    if name in visiting:
+        return [], True
+    if (name, overridden) in reached:
+        return reached[name, overridden], False
     template = read[paths[0]]
+    found: dict[_Reached, None] = {}
+    cut = False
     for application in template.applications:
         if template.rendered(application.blocks, overridden):
-            yield application.symbol, application.span, name, application.value, application.argument
+            found.setdefault((application.symbol, application.span, name, application.value, application.argument))
     for reference in template.references:
         if reference.name is None:
             continue
         if reference.extends:
-            found = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced)
+            below, below_cut = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced, reached)
         elif template.rendered(reference.blocks, overridden):
-            found = _reaching(reference.name, files, read, visiting | {name})
+            below, below_cut = _reaching(reference.name, files, read, visiting | {name}, frozenset(), reached)
         else:
             continue
-        for symbol, span, where, value, argument in found:
-            yield symbol, span, where, reference.maps(value), reference.maps(argument)
+        cut = cut or below_cut
+        for symbol, span, where, value, argument in below:
+            found.setdefault((symbol, span, where, reference.maps(value), reference.maps(argument)))
+    result = list(found)
+    if not cut:
+        reached[name, overridden] = result
+    return result, cut
 
 
 def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library]) -> _Template:
