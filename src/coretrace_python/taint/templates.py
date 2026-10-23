@@ -773,7 +773,8 @@ def _read_markup(html: str) -> _Reading:
     include there may close the comment, a condition around its ``<!--`` leave it out.
     A variable cannot close it, escaped. A comment left open, with no tag after it,
     hides the rest of the text, and hands nothing on: what follows its include stays
-    inside it.
+    inside it. One holding tags and left open does not end in data either: its tags may
+    render nothing, and it then hides what follows (#278).
 
     An inserted markup (``_INSERTED``) may hold anything a file of its name holds: it is
     accepted only in HTML data, never in a comment, a script or style block, a tag or
@@ -786,6 +787,7 @@ def _read_markup(html: str) -> _Reading:
     # comments that open before it; and the position after which none closes.
     close: re.Match[str] | None = None
     unclosed_from = len(html) + 1
+    left_open = False
     while (start := html.find("<", position)) != -1:
         if html.startswith("<!--", start):
             if start >= unclosed_from:
@@ -799,6 +801,7 @@ def _read_markup(html: str) -> _Reading:
             if html.find(_INSERTED, start + 4, hidden_to if first_tag == -1 else first_tag) != -1:
                 return _NOT_READ
             if first_tag != -1:
+                left_open = left_open or close is None
                 position, open_end = first_tag + 1, False
             elif close is not None:
                 position, open_end = close.end(), False
@@ -820,7 +823,8 @@ def _read_markup(html: str) -> _Reading:
             return _NOT_READ
         else:
             position = start + 1
-    return _Reading(escapes=True, open_end=open_end, settled=not open_end and not _ENDING_OPENER.search(html))
+    settled = not open_end and not left_open and not _ENDING_OPENER.search(html)
+    return _Reading(escapes=True, open_end=open_end, settled=settled)
 
 
 def _attributes_escape(attributes: str) -> bool:
