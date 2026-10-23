@@ -10,13 +10,20 @@ went through a template already on the way, where the walk would be cut.
 
 from __future__ import annotations
 
+import itertools
 import json
+import random
 import subprocess
 import sys
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from coretrace_python.interprocedural import TemplateFilter, discover_files
+from coretrace_python.source import SourceId
+from coretrace_python.taint import templates
 from coretrace_python.taint.templates import project_templates
 
 TIMEOUT = 60
@@ -181,3 +188,92 @@ def test_a_child_its_parent_includes_back_gets_the_same_filters_whichever_is_wal
             (f"{FILTERS}.upper", child, 2, 22, child, ("other",), ()),
         ],
     }
+
+
+def path_by_path(
+    name: str,
+    files: dict[str, list[Path]],
+    read: dict[Path, Any],
+    visiting: frozenset[str],
+    overridden: frozenset[str] = frozenset(),
+) -> Iterator[tuple[Any, ...]]:
+    """The walk of main, every path through includes and extends followed, a cycle cut at
+    a template already on the way: the reference the walk of the engine must equal."""
+
+    paths = files.get(name, [])
+    if len(paths) != 1 or paths[0] not in read or name in visiting:
+        return
+    template = read[paths[0]]
+    for application in template.applications:
+        if template.rendered(application.blocks, overridden):
+            yield application.symbol, application.span, name, application.value, application.argument
+    for reference in template.references:
+        if reference.name is None:
+            continue
+        if reference.extends:
+            found = path_by_path(reference.name, files, read, visiting | {name}, overridden | template.replaced)
+        elif template.rendered(reference.blocks, overridden):
+            found = path_by_path(reference.name, files, read, visiting | {name})
+        else:
+            continue
+        for symbol, span, where, value, argument in found:
+            yield symbol, span, where, reference.maps(value), reference.maps(argument)
+
+
+def reference_filters(root: Path) -> dict[str, list[TemplateFilter]]:
+    """The filters of each template, as project_templates gives them, from the walk of main."""
+
+    found = {path: tuple(templates._names(path.relative_to(root).parts)) for path in discover_files(root)}
+    libraries = templates._libraries(found)
+    paths = sorted(path for path, names in found.items() if names)
+    files: dict[str, list[Path]] = {}
+    for path in paths:
+        for name in found[path]:
+            files.setdefault(name, []).append(path)
+    read = {path: templates._read_scopes(text, SourceId(str(path)), libraries) for path in paths if (text := templates._text(path))}
+    return {
+        name: list(
+            dict.fromkeys(
+                TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
+                for symbol, span, where, value, argument in path_by_path(name, files, read, frozenset())
+            )
+        )
+        for name in files
+    }
+
+
+NAMES = [f"t{index}.html" for index in range(4)]
+
+
+def generated(rng: random.Random, fresh: Iterator[str], depth: int = 0) -> str:
+    """Markup applying filters, including other templates, inside blocks of two names and
+    outside them. An include binds the variable to a name of its own, so that what reaches
+    a filter tells the paths apart."""
+
+    pieces: list[Callable[[], str]] = [
+        lambda: "{{ v|upper }}",
+        lambda: "{{ v|striptags }}",
+        lambda: "{% include '" + rng.choice(NAMES) + "' %}",
+        lambda: "{% include '" + rng.choice(NAMES) + "' with v=" + next(fresh) + " %}",
+    ]
+    if depth < 2:
+        block = rng.choice(["body", "side"])
+        pieces.append(lambda: "{% block " + block + " %}" + generated(rng, fresh, depth + 1) + "{% endblock %}")
+    return "".join(rng.choice(pieces)() for _ in range(rng.randint(1, 3)))
+
+
+def test_the_walk_gives_the_filters_of_main_on_inheritance_overridden_blocks_and_cycles(tmp_path: Path) -> None:
+    """Generated projects of four templates extending and including one another, cycles
+    among them, each walked by the engine and by the walk of main, path by path."""
+
+    rng = random.Random(279)
+    for index in range(1_500):
+        fresh = (f"n{number}" for number in itertools.count())
+        texts = {}
+        for name in NAMES:
+            extends = "{% extends '" + rng.choice(NAMES) + "' %}" if rng.random() < 0.5 else ""
+            texts[name] = extends + generated(rng, fresh) + "\n"
+        root = write(tmp_path / str(index), texts)
+        filters = project_templates(root).filters
+
+        assert {name: list(found) for name, found in filters.items()} == reference_filters(root), texts
