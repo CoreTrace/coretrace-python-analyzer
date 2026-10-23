@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.24.0 (2026-10-23)
 
 ### Compatibility and migration
 
@@ -20,6 +20,10 @@
   instead of repeating its id (#270), and each result carries its confidence as the
   `confidence` property (#271). A flow reaching its sink inside a project function points at
   that sink as a related location, which the result's message links to (#271).
+- Django templates are read as a browser reads them (#263, #272, #278): a template that
+  leaves a tag, a `<script>` or `<style>` block or an end tag open, or includes one that
+  ends inside such a construct, is no longer established as escaping, so `xss` may be
+  reported where it was not.
 - Django templates are also read as each page is put together (#273): a variable a
   child's `{% block %}` prints inside its parent's `<script>`, an `{% include %}` that ends
   the attribute value it stands in, or one of a name several files have outside HTML data,
@@ -33,6 +37,47 @@
   `RuleDescription`, optional, so that third-party plugins describe their own rules;
   `Finding.related` lists `RelatedLocation`s (a span and a message). `Report.rules` carries the
   descriptions to the reporters.
+- Plugin API: `coretrace_python.interprocedural.starting_summaries` gives the summaries an
+  import cycle's members start from, and `coretrace_python.engine.MAX_PROJECT_ITERATIONS`
+  is removed, since the project's summaries are iterated until they settle (#261).
+- A summary lists its external calls in source order (#261): a finding naming the first
+  call of a callee's summary may name another of that callee, at the same line, as 4 of
+  saleor's 228 `orm-n-plus-one` findings do.
+
+### Analysis
+
+- `--check` ends on projects whose summaries never settled (#261). Around a call cycle of
+  three functions or more, a caller copied its callee's external calls in an order that
+  rotated forever, so ansible, fastapi, sentry and home-assistant never ended: those calls
+  are now kept in source order. Around an import cycle of three modules or more, the
+  project's iteration shifted by one module each time and stopped at its bound, which
+  could miss a sink reached through the cycle: its members now start from the summaries a
+  module starts from, and the iteration goes on until the project's summaries settle.
+- A lambda or comprehension in the annotation of a parameter or a variable no longer
+  stops the analysis of a directory with a `KeyError` (#262). An assignment expression in
+  an annotation binds its name as Python 3.11 to 3.13 do: in a function, the name is a
+  local whether the annotation is evaluated or not; at module level, it exists only once
+  the annotation is evaluated.
+
+### Templates
+
+- Start tags and their attributes are read as the HTML tokenizer reads them, in time
+  linear in the size of the template (#263): a few dozen characters under a `templates`
+  directory, a PNG or `<a ` followed by 40 letters, stopped the analysis. A tag a template
+  leaves open is read to its end and its attributes are checked; a quoted value left open
+  stays quoted to the end of the template.
+- A `<script>` or `<style>` block or an end tag a template leaves open runs to the end of
+  the template, and a variable inside it is refused, even where the page ends there
+  (#272). A template that ends inside such a construct or a tag is not established where
+  it is included, since the markup after the include continues it, and a template
+  extending another ends where that one ends.
+- A comment ends where a browser ends it (`-->`, `--!>`, at once for `<!-->` and
+  `<!--->`), and one left open hides the rest of the template (#272). A comment holding
+  template tags may end at any of them, since an include there may close it and a
+  condition around its `<!--` may leave it out, or run to its close when they render
+  nothing: it is read on from its first tag, and that reading must be in HTML data right
+  after each later tag and right after the close (#278). Such a comment left open does
+  not end in HTML data.
 
 ### Performance
 
@@ -41,6 +86,13 @@
   nested includes: two includes of one template at each of 20 levels took 31 s.
   A template in a cycle of includes is still walked again wherever the cycle cuts its
   walk short.
+
+### Documentation
+
+- `docs/usage.md` documents how templates are read and each page is put together, the
+  modules of a directory without `__init__.py`, assignment expressions in annotations,
+  and the rule descriptions and related locations of the SARIF report; `docs/plugins.md`
+  documents `Plugin.rules` and `Finding.related`.
 
 ## 0.23.0 (2026-10-16)
 
