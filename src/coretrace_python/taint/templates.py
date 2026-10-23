@@ -46,7 +46,7 @@ is listed among what the engine could not read. ``OPTIONS["builtins"]`` and
 from __future__ import annotations
 
 import re
-from collections.abc import Container, Iterable, Iterator, Mapping
+from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -195,7 +195,9 @@ def escaped_templates(root: Path) -> frozenset[str]:
     as ``render_to_string`` names them (their path below a ``templates`` directory). A
     template including one that ends inside a script or style block, a tag or an end tag
     is not among them: the markup after its include continues that construct. A
-    template extending another renders it, and ends where it ends."""
+    template extending another renders it, and ends where it ends. Each file is read on
+    its own, then the page it renders is put together and read too (``_Composition``):
+    what a block or an include puts inside a construct of another file is read there."""
 
     found: dict[str, list[Path]] = {}
     for path in discover_files(root):
@@ -203,14 +205,16 @@ def escaped_templates(root: Path) -> frozenset[str]:
             return frozenset()
         for name in _names(path.relative_to(root).parts):
             found.setdefault(name, []).append(path)
+    parsed = {path: _parse_file(path) for paths in found.values() for path in paths}
+    composition = _Composition(found, parsed)
     local: dict[str, bool] = {}
     requires: dict[str, set[str]] = {}
     extends: dict[str, set[str]] = {}
     includes: dict[str, set[str]] = {}
     open_ended: set[str] = set()
     for name, paths in found.items():
-        verdicts = [_verdict(path) for path in paths]
-        local[name] = all(verdict.escapes for verdict in verdicts)
+        verdicts = [_verdict(parsed[path]) for path in paths]
+        local[name] = all(verdict.escapes for verdict in verdicts) and all(map(composition.escapes, paths))
         requires[name] = {needed for verdict in verdicts for needed in verdict.extends | verdict.includes}
         extends[name] = {extended for verdict in verdicts for extended in verdict.extends}
         includes[name] = {included for verdict in verdicts for included in verdict.includes}
@@ -251,12 +255,21 @@ class _Verdict(NamedTuple):
 _REFUSED = _Verdict(escapes=False, extends=frozenset(), includes=frozenset(), open_end=False)
 
 
-def _verdict(path: Path) -> _Verdict:
-    """What one template file establishes: a file the engine cannot read is not
-    established to escape, like a template it cannot find."""
+def _verdict(parsed: _Parsed) -> _Verdict:
+    """What one template file establishes, read on its own."""
+
+    if not parsed.ok:
+        return _REFUSED
+    reading = _read_markup(_flattened(parsed.nodes))
+    return _Verdict(reading.escapes, parsed.extends, parsed.includes, reading.open_end)
+
+
+def _parse_file(path: Path) -> _Parsed:
+    """The template file ``path``: one the engine cannot read is not established to
+    escape, like a template it cannot find."""
 
     text = _text(path)
-    return _REFUSED if text is None else _inspect(text)
+    return _NOT_ESCAPING if text is None else _parse(text)
 
 
 def _text(path: Path) -> str | None:
@@ -266,16 +279,6 @@ def _text(path: Path) -> str | None:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-
-
-def _inspect(text: str) -> _Verdict:
-    """What the template of ``text`` establishes (``_Verdict``)."""
-
-    parsed = _parse(text)
-    if not parsed.ok:
-        return _REFUSED
-    reading = _read_markup(_flattened(parsed.nodes))
-    return _Verdict(reading.escapes, parsed.extends, parsed.includes, reading.open_end)
 
 
 _Node: TypeAlias = "str | _Block | _Include | _Super"
@@ -412,6 +415,152 @@ def _flattened(nodes: Iterable[_Node]) -> str:
         else:
             parts.append(_OUTPUT)
     return "".join(parts)
+
+
+# The size a page put together may reach, in characters, checked as it grows: nested
+# includes can multiply a page beyond any size.
+_PAGE_LIMIT = 8 * 1024 * 1024
+
+
+class _Unrenderable(Exception):
+    """A page Django could not render: a block holding a block of its own name."""
+
+
+class _Composition:
+    """The page each template file renders, put together as Django renders it (#273):
+    its extends chain from the root, each block taking the definition of the most derived
+    template defining it and ``{{ block.super }}`` the next definition up, each include
+    the page of the included template. A child's text outside its blocks is not part of
+    it. A page that cannot be put together in place is not established: a template it
+    needs is missing, refused by its own syntax or given by several files, it includes
+    itself, a block of it holds itself, or it grows beyond ``_PAGE_LIMIT``, which
+    ``too_large`` then lists."""
+
+    def __init__(self, found: Mapping[str, Sequence[Path]], parsed: Mapping[Path, _Parsed]) -> None:
+        self._found = found
+        self._parsed = parsed
+        # Only the pages another one includes are kept: a page is read once, and its
+        # markup is needed again only where it is included.
+        self._included = {
+            paths[0]
+            for p in parsed.values()
+            for name in p.includes
+            if len(paths := found.get(name, ())) == 1
+        }
+        self._pages: dict[Path, str | None] = {}
+        self.too_large: set[Path] = set()
+
+    def escapes(self, path: Path) -> bool:
+        """Whether the page ``path`` renders, put together, is read as escaping."""
+
+        page = self._page(path)
+        return page is not None and _read_markup(page).escapes
+
+    def _page(self, path: Path) -> str | None:
+        if path in self._pages:
+            return self._pages[path]
+        # Depth first over the includes each page renders, without recursion: a page is
+        # put together once the pages it includes are.
+        stack = [path]
+        waiting: set[Path] = set()
+        result: str | None = None
+        while stack:
+            current = stack[-1]
+            if current in self._pages:
+                stack.pop()
+                continue
+            chain = self._chain(current)
+            targets = None if chain is None else self._targets(chain)
+            if targets is None or any(target in waiting for target in targets):
+                page = None
+            elif pending := [target for target in targets if target not in self._pages]:
+                waiting.add(current)
+                stack.extend(pending)
+                continue
+            else:
+                assert chain is not None
+                page = self._render(current, chain)
+            waiting.discard(current)
+            stack.pop()
+            if current == path:
+                result = page
+            if current in self._included or current != path:
+                self._pages[current] = page
+        return result
+
+    def _chain(self, path: Path) -> list[_Parsed] | None:
+        """``path``, then what it extends, up to the root."""
+
+        chain = [self._parsed[path]]
+        seen = {path}
+        while chain[-1].extends:
+            if len(chain[-1].extends) != 1:
+                return None
+            (name,) = chain[-1].extends
+            paths = self._found.get(name, ())
+            if len(paths) != 1 or paths[0] in seen:
+                return None
+            seen.add(paths[0])
+            chain.append(self._parsed[paths[0]])
+        return chain if all(parsed.ok for parsed in chain) else None
+
+    def _targets(self, chain: Sequence[_Parsed]) -> list[Path] | None:
+        """The files the page of ``chain`` includes, or None when one has not exactly one."""
+
+        targets: list[Path] = []
+        try:
+            for node in _rendered(chain):
+                if isinstance(node, _Include):
+                    paths = self._found.get(node.name, ())
+                    if len(paths) != 1:
+                        return None
+                    targets.append(paths[0])
+        except _Unrenderable:
+            return None
+        return targets
+
+    def _render(self, path: Path, chain: Sequence[_Parsed]) -> str | None:
+        parts: list[str] = []
+        size = 0
+        for node in _rendered(chain):
+            if isinstance(node, _Include):
+                included = self._pages[self._found[node.name][0]]
+                if included is None:
+                    return None
+                node = included
+            parts.append(node)
+            size += len(node)
+            if size > _PAGE_LIMIT:
+                self.too_large.add(path)
+                return None
+        return "".join(parts)
+
+
+def _rendered(chain: Sequence[_Parsed]) -> Iterator[str | _Include]:
+    """The markup and the includes of the page ``chain`` renders (a template, then what it
+    extends, up to the root), in order: the root's nodes, each block taking the most
+    derived definition, ``{{ block.super }}`` the next one up."""
+
+    # The nodes being rendered, each run with the level of ``chain`` they come from and
+    # the block they define.
+    stack: list[tuple[Iterator[_Node], int, str | None]] = [(iter(chain[-1].nodes), len(chain) - 1, None)]
+    while stack:
+        nodes, level, block = stack[-1]
+        node = next(nodes, None)
+        if node is None:
+            stack.pop()
+        elif isinstance(node, (str, _Include)):
+            yield node
+        elif isinstance(node, _Block):
+            if any(open_block == node.name for _, _, open_block in stack):
+                raise _Unrenderable(node.name)
+            defining = next((index for index, parsed in enumerate(chain) if node.name in parsed.blocks), None)
+            content = node.nodes if defining is None else chain[defining].blocks[node.name]
+            stack.append((iter(content), level if defining is None else defining, node.name))
+        elif block is not None:
+            parent = next((index for index in range(level + 1, len(chain)) if block in chain[index].blocks), None)
+            if parent is not None:
+                stack.append((iter(chain[parent].blocks[block]), parent, block))
 
 
 def _loaded(words: list[str]) -> list[str]:
