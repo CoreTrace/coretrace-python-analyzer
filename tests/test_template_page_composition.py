@@ -10,7 +10,9 @@ so that one that does not end fails instead of hanging the suite.
 
 from __future__ import annotations
 
+import itertools
 import json
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -165,3 +167,84 @@ def test_a_page_beyond_eight_mebibytes_is_not_established(tmp_path: Path) -> Non
     templates["page.html"] = "{% include 'level24.html' %}"
 
     assert escaped(tmp_path, templates) == sorted(f"level{level}.html" for level in range(24))
+
+
+# Two files give part.html. Django renders the first its loaders find, which the analyzer
+# does not know: the include stands for each of them.
+def test_an_include_of_a_name_two_files_have_is_established_in_html_data(tmp_path: Path) -> None:
+    templates = {
+        "part.html": "<p>{{ name }}</p>\n",
+        "other/templates/part.html": "<span>x</span>\n",
+        "page.html": "<div>{% include 'part.html' %}</div>\n",
+    }
+
+    assert escaped(tmp_path, templates) == ["page.html", "part.html"]
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        '<a title="{% include "part.html" %}">x</a>',
+        "<a {% include 'part.html' %}>x</a>",
+        "<{% include 'part.html' %}>",
+        "</{% include 'part.html' %}>",
+        "<script>{% include 'part.html' %}</script>",
+        "<style>{% include 'part.html' %}</style>",
+        "<!-- {% include 'part.html' %} -->",
+        "<!{% include 'part.html' %}",
+        "<!-{% include 'part.html' %}",
+    ],
+    ids=["attribute-value", "attribute", "tag-name", "end-tag", "script", "style", "comment", "after-bang", "after-bang-dash"],
+)
+def test_an_include_of_a_name_two_files_have_is_refused_outside_html_data(tmp_path: Path, page: str) -> None:
+    # Both files are harmless here: what matters is that either could end the construct.
+    templates = {"part.html": "x\n", "other/templates/part.html": "y\n", "page.html": page}
+
+    assert escaped(tmp_path, templates) == ["part.html"]
+
+
+@pytest.mark.parametrize(
+    "other",
+    ["<script>\n", "<!-- note", "x <", "<!-", "</"],
+    ids=["construct", "comment", "less-than", "comment-opener", "end-tag-opener"],
+)
+def test_an_include_of_a_name_two_files_have_needs_each_to_end_in_html_data(tmp_path: Path, other: str) -> None:
+    templates = {"part.html": "x\n", "other/templates/part.html": other, "page.html": "<div>{% include 'part.html' %}</div>\n"}
+
+    assert escaped(tmp_path, templates) == ["part.html"]
+
+
+# Markup, a variable and a template tag, as the reader sees a page.
+PIECES = ["x", " ", "<p>", "</p>", "<script>", "</script>", '<a title="', '<a onclick="', '"', ">", "<!--", "-->", "<", "</", "<!", "<!-", "-"]
+
+
+def test_text_accepted_in_place_of_the_marker_keeps_the_page_accepted() -> None:
+    """The marker stands for a text the reader accepts and that ends in HTML data. Where
+    the reader accepts the marker, any such text in its place keeps the page accepted,
+    and ending in HTML data: a page made of such texts, nested to any depth, is accepted
+    whatever the texts, which is why one marker may stand for several files. Checked on
+    every text of up to two pieces around the marker, and on random longer ones."""
+
+    from coretrace_python.taint import templates
+
+    pieces = [*PIECES, templates._OUTPUT, templates._TAG]
+    rng = random.Random(273)
+
+    def text(low: int, high: int) -> str:
+        return "".join(rng.choice(pieces) for _ in range(rng.randint(low, high)))
+
+    def accepted(candidate: str) -> bool:
+        reading = templates._read_markup(candidate)
+        return reading.escapes and reading.settled
+
+    short = ["", *pieces, *("".join(pair) for pair in itertools.product(pieces, repeat=2))]
+    contents = [candidate for candidate in short + [text(3, 6) for _ in range(2_000)] if accepted(candidate)]
+    around = [*itertools.product(short, repeat=2), *((text(2, 8), text(2, 8)) for _ in range(20_000))]
+    for prefix, suffix in around:
+        marked = templates._read_markup(prefix + templates._INSERTED + suffix)
+        if not marked.escapes:
+            continue
+        for content in rng.sample(contents, 8):
+            spliced = templates._read_markup(prefix + content + suffix)
+            assert spliced.escapes, (prefix, content, suffix)
+            assert spliced.settled or not marked.settled, (prefix, content, suffix)
