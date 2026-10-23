@@ -50,7 +50,7 @@ from collections.abc import Container, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import ClassVar, NamedTuple
+from typing import ClassVar, NamedTuple, TypeAlias
 
 from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -271,27 +271,91 @@ def _text(path: Path) -> str | None:
 def _inspect(text: str) -> _Verdict:
     """What the template of ``text`` establishes (``_Verdict``)."""
 
+    parsed = _parse(text)
+    if not parsed.ok:
+        return _REFUSED
+    reading = _read_markup(_flattened(parsed.nodes))
+    return _Verdict(reading.escapes, parsed.extends, parsed.includes, reading.open_end)
+
+
+_Node: TypeAlias = "str | _Block | _Include | _Super"
+
+
+class _Block(NamedTuple):
+    """A ``{% block %}``: its name, what it holds, and whether its ``{% endblock %}``
+    closes it."""
+
+    name: str
+    nodes: tuple[_Node, ...]
+    closed: bool
+
+
+class _Include(NamedTuple):
+    """An ``{% include %}`` of the template ``name``."""
+
+    name: str
+
+
+class _Super(NamedTuple):
+    """``{{ block.super }}``, which renders the parent's definition of its block."""
+
+
+@dataclass(frozen=True)
+class _Parsed:
+    """One template file as its syntax gives it: whether that syntax lets it escape
+    (``ok``: Django's own tags, libraries and escaping filters only); the templates it
+    extends and those it includes; and its ``nodes``, markup in which a variable is
+    ``_OUTPUT``, a ``url`` or ``static`` tag ``_URL`` and any other tag ``_TAG``, with its
+    blocks, includes and ``{{ block.super }}`` kept apart, and its blocks by name."""
+
+    ok: bool
+    extends: frozenset[str] = frozenset()
+    includes: frozenset[str] = frozenset()
+    nodes: tuple[_Node, ...] = ()
+    blocks: Mapping[str, tuple[_Node, ...]] = field(default_factory=dict)
+
+
+_NOT_ESCAPING = _Parsed(ok=False)
+
+
+def _parse(text: str) -> _Parsed:
+    """The template of ``text`` (``_Parsed``)."""
+
     extends: set[str] = set()
     includes: set[str] = set()
-    html: list[str] = []
+    blocks: dict[str, tuple[_Node, ...]] = {}
+    # The blocks open around the position read, each with what it holds so far, under
+    # the nodes the template holds outside them.
+    nodes: list[_Node] = []
+    opened: list[tuple[str, list[_Node]]] = []
     skipping: str | None = None
     position = 0
     text = text.replace(_OUTPUT, "").replace(_TAG, "")
+
+    def held() -> list[_Node]:
+        return opened[-1][1] if opened else nodes
+
+    def close() -> None:
+        name, inside = opened.pop()
+        block = _Block(name, tuple(inside), closed=True)
+        blocks.setdefault(name, block.nodes)
+        held().append(block)
+
     for match in _SYNTAX.finditer(text):
         variable, tag = match.group(1), match.group(2)
         words = tag.split() if tag is not None else []
         if skipping is not None:
             if words[:1] == [skipping]:
                 if skipping == "endverbatim":
-                    html.append(text[position : match.start()])
+                    held().append(text[position : match.start()])
                 skipping, position = None, match.end()
             continue
-        html.append(text[position : match.start()])
+        held().append(text[position : match.start()])
         position = match.end()
         if variable is not None:
             if not _escaping_filters(variable):
-                return _REFUSED
-            html.append(_OUTPUT)
+                return _NOT_ESCAPING
+            held().append(_Super() if variable.strip() == _BLOCK_SUPER else _OUTPUT)
         elif words and words[0] in ("comment", "verbatim"):
             skipping = f"end{words[0]}"
             if words[0] == "verbatim":
@@ -299,24 +363,55 @@ def _inspect(text: str) -> _Verdict:
         elif words:
             name = words[0]
             if name not in _TAGS:
-                return _REFUSED
+                return _NOT_ESCAPING
             if name == "load" and not set(_loaded(words[1:])) <= _LIBRARIES:
-                return _REFUSED
+                return _NOT_ESCAPING
             if name == "autoescape" and words[1:] != ["on"]:
-                return _REFUSED
+                return _NOT_ESCAPING
             if name == "filter" and not _escaping_filters(tag.split(None, 1)[1] if len(words) > 1 else ""):
-                return _REFUSED
+                return _NOT_ESCAPING
             if name in ("extends", "include"):
                 needed = _constant(words[1] if len(words) > 1 else "")
                 if needed is None:
-                    return _REFUSED
-                (extends if name == "extends" else includes).add(needed)
-            html.append(_OUTPUT if name in _PRINTING else _URL if name in ("url", "static") else _TAG)
+                    return _NOT_ESCAPING
+                if name == "extends":
+                    extends.add(needed)
+                    held().append(_TAG)
+                else:
+                    includes.add(needed)
+                    held().append(_Include(needed))
+            elif name == "block" and len(words) > 1:
+                opened.append((words[1], []))
+            elif name == "endblock" and opened:
+                close()
+            else:
+                held().append(_OUTPUT if name in _PRINTING else _URL if name in ("url", "static") else _TAG)
     if skipping is not None:
-        return _REFUSED
-    html.append(text[position:])
-    reading = _read_markup("".join(html))
-    return _Verdict(reading.escapes, frozenset(extends), frozenset(includes), reading.open_end)
+        return _NOT_ESCAPING
+    held().append(text[position:])
+    while opened:
+        name, inside = opened.pop()
+        block = _Block(name, tuple(inside), closed=False)
+        blocks.setdefault(name, block.nodes)
+        held().append(block)
+    return _Parsed(True, frozenset(extends), frozenset(includes), tuple(nodes), MappingProxyType(blocks))
+
+
+def _flattened(nodes: Iterable[_Node]) -> str:
+    """``nodes`` as one markup, each block, include and ``{{ block.super }}`` marked where
+    it stands as the tag or variable it is."""
+
+    parts: list[str] = []
+    for node in nodes:
+        if isinstance(node, str):
+            parts.append(node)
+        elif isinstance(node, _Block):
+            parts.extend((_TAG, _flattened(node.nodes), _TAG if node.closed else ""))
+        elif isinstance(node, _Include):
+            parts.append(_TAG)
+        else:
+            parts.append(_OUTPUT)
+    return "".join(parts)
 
 
 def _loaded(words: list[str]) -> list[str]:
