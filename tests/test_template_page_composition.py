@@ -299,6 +299,33 @@ def test_a_page_extending_a_name_two_files_have_must_escape_with_each(
     assert escaped(tmp_path, templates) == expected
 
 
+
+# A template extending its own name: Django leaves out the files already in the chain and
+# takes one of the others, rendering the user's data escaped here.
+@pytest.mark.parametrize(
+    ("other", "expected_xss"),
+    [
+        ("<p>{% block body %}{% endblock %}</p>\n", []),
+        ("<script>{% block body %}{% endblock %}</script>\n", [("app/views.py", 5)]),
+    ],
+    ids=["the-other-file-escapes", "the-other-file-runs-the-block-as-script"],
+)
+def test_a_template_extending_its_own_name_extends_another_file_of_it(
+    tmp_path: Path, other: str, expected_xss: list[tuple[str, int]]
+) -> None:
+    templates = {
+        "page.html": "{% extends 'page.html' %}{% block body %}<b>{{ name }}</b>{% endblock %}\n",
+        "other/templates/page.html": other,
+    }
+
+    assert xss(tmp_path, templates) == expected_xss
+
+
+def test_a_template_extending_its_own_name_with_no_other_file_is_not_established(tmp_path: Path) -> None:
+    templates = {"page.html": "{% extends 'page.html' %}{% block body %}<b>{{ name }}</b>{% endblock %}\n"}
+
+    assert escaped(tmp_path, templates) == []
+
 @pytest.mark.parametrize(
     ("page", "expected"),
     [

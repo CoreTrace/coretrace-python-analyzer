@@ -556,7 +556,8 @@ class _Composition:
 
     def _chains(self, path: Path) -> list[list[_Parsed]] | None:
         """``path``, then what it extends, up to the root: one chain for each file each
-        name it extends may be."""
+        name it extends may be. As Django's loaders do, the files already in the chain
+        are left out: a template extending its own name extends another file of it."""
 
         chains: list[list[_Parsed]] = []
         pending: list[tuple[list[_Parsed], frozenset[Path]]] = [([self._parsed[path]], frozenset({path}))]
@@ -570,10 +571,10 @@ class _Composition:
             if len(chain[-1].extends) != 1:
                 return None
             (name,) = chain[-1].extends
-            paths = self._found.get(name, ())
-            if not paths or seen.intersection(paths):
+            parents = [parent for parent in self._found.get(name, ()) if parent not in seen]
+            if not parents:
                 return None
-            pending.extend(([*chain, self._parsed[parent]], seen | {parent}) for parent in paths)
+            pending.extend(([*chain, self._parsed[parent]], seen | {parent}) for parent in parents)
             if len(chains) + len(pending) > _VARIANT_LIMIT:
                 self.too_many.add(path)
                 return None
