@@ -19,8 +19,10 @@ it extends or includes, can output data unescaped:
   construct of another file is read there (#273);
 - no Python file of the project turning autoescaping off.
 
-A comment hides what it holds only up to its first template tag: an include there may
-close it, and a condition around its ``<!--`` may leave it out.
+A comment holding template tags may end at any of them, an include there closing it or a
+condition around its ``<!--`` leaving it out, or run to its close when they render
+nothing: the markup after its first tag is read, and must be in HTML data wherever the
+other readings resume (#278).
 
 Templates are found under the project's ``templates`` directories, by their path below
 one. A template the engine cannot find — named by an expression, under a ``DIRS`` entry
