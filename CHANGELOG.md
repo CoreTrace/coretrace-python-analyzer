@@ -23,7 +23,8 @@
 - Django templates are also read as each page is put together (#273): a variable a
   child's `{% block %}` prints inside its parent's `<script>`, an `{% include %}` that ends
   the attribute value it stands in, or one of a name several files have outside HTML data,
-  is reported as `xss` where it was not. So is a template that includes Django's
+  is reported as `xss` where it was not, as is `{{ block.super }}` printed through a
+  filter or a tag. So is a template that includes Django's
   `django/forms/widgets/attrs.html` inside a tag, which prints attribute names, and a
   template including itself inside a tag or a script. A page beyond 8 MiB once put
   together, or a template with more than 64 pages, or 16 MiB in all, through names
