@@ -195,9 +195,12 @@ _VARIABLE = re.compile(r"([A-Za-z_]\w*)(?:\.(\w+))?")
 _LITERALS = frozenset({"True", "False", "None"})
 # The variable a block renders to keep the parent's content, as ``_chain`` reads it.
 _BLOCK_SUPER = "block.super"
-# ``block.super`` anywhere else than a bare ``{{ block.super }}``: Django still gives the
-# parent's markup, marked safe, which a filter such as ``escape`` or ``default`` keeps.
-_BLOCK_SUPER_USE = re.compile(r"\bblock\.super\b")
+# The variable ``block``, which Django binds inside a block to the block itself: named
+# anywhere else than in a bare ``{{ block.super }}``, it may give the parent's markup,
+# marked safe, through a filter such as ``escape`` or ``default`` or through an alias
+# (``{% with parent=block %}{{ parent.super }}``). A name such as Handlebars'
+# ``@partial-block`` is not it.
+_BLOCK_VARIABLE = re.compile(r"(?<![\w.@-])block(?![\w-])")
 
 REQUEST_PROCESSOR = "django.template.context_processors.request"
 _DJANGO_ENGINE = "django.template.backends.django.DjangoTemplates"
@@ -405,7 +408,7 @@ def _parse(text: str) -> _Parsed:
             if variable.strip() == _BLOCK_SUPER:
                 held().append(_Super())
                 continue
-            if not _escaping_filters(variable) or _BLOCK_SUPER_USE.search(variable):
+            if not _escaping_filters(variable) or _names_block(variable):
                 return _NOT_ESCAPING
             held().append(_OUTPUT)
         elif words and words[0] in ("comment", "verbatim"):
@@ -414,7 +417,7 @@ def _parse(text: str) -> _Parsed:
                 position = match.end()
         elif words:
             name = words[0]
-            if name not in _TAGS or _BLOCK_SUPER_USE.search(tag):
+            if name not in _TAGS or name not in ("block", "endblock") and _names_block(tag):
                 return _NOT_ESCAPING
             if name == "load" and not set(_loaded(words[1:])) <= _LIBRARIES:
                 return _NOT_ESCAPING
@@ -447,6 +450,12 @@ def _parse(text: str) -> _Parsed:
         blocks.setdefault(name, block.nodes)
         held().append(block)
     return _Parsed(True, frozenset(extends), frozenset(includes), tuple(nodes), MappingProxyType(blocks))
+
+
+def _names_block(expression: str) -> bool:
+    """Whether ``expression`` names the variable ``block`` outside its string literals."""
+
+    return _BLOCK_VARIABLE.search(re.sub(_STRING, "", expression)) is not None
 
 
 def _flattened(nodes: Iterable[_Node]) -> str:

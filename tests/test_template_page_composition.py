@@ -115,21 +115,38 @@ def test_markup_a_block_or_an_include_puts_inside_a_construct_is_read_there(
 
 
 
-# Only a bare {{ block.super }} is put in place. Through a filter or a tag, Django still
-# prints the parent's markup, marked safe, which escape and default keep as it is: what
-# it does there is not established, so the alert stays.
+# Only a bare {{ block.super }} is put in place. Through a filter, a tag or an alias of the
+# block, Django still prints the parent's markup, marked safe, which escape and default
+# keep as it is: what it does there is not established, so the alert stays.
 @pytest.mark.parametrize(
     "printed",
-    ["{{ block.super|escape }}", '{{ block.super|default:"" }}', "{% with parent=block.super %}{{ parent }}{% endwith %}"],
-    ids=["through-escape", "through-default", "through-with"],
+    [
+        "{{ block.super|escape }}",
+        '{{ block.super|default:"" }}',
+        "{% with parent=block.super %}{{ parent }}{% endwith %}",
+        "{% with parent=block %}{{ parent.super }}{% endwith %}",
+        "{% with parent=block %}{{ parent.super|escape }}{% endwith %}",
+    ],
+    ids=["through-escape", "through-default", "through-with", "alias-of-the-block", "alias-through-escape"],
 )
-def test_block_super_printed_otherwise_than_bare_keeps_the_alert(tmp_path: Path, printed: str) -> None:
+def test_the_block_used_otherwise_than_in_a_bare_block_super_keeps_the_alert(tmp_path: Path, printed: str) -> None:
     templates = {
         "base.html": '<a title="{% block attr %}" onclick="{% endblock %}">x</a>\n',
         "page.html": "{% extends 'base.html' %}{% block attr %}" + printed + "{{ name }}{% endblock %}\n",
     }
 
     assert xss(tmp_path, templates) == [("app/views.py", 5)]
+
+
+def test_block_super_in_an_included_template_renders_nothing_there(tmp_path: Path) -> None:
+    # Django renders an include apart from the blocks around it: block.super gives "" there.
+    templates = {
+        "base.html": '<a title="{% block attr %}" onclick="{% endblock %}">x</a>\n',
+        "parent.html": "{{ block.super }}",
+        "page.html": "{% extends 'base.html' %}{% block attr %}{% include 'parent.html' %}{{ name }}{% endblock %}\n",
+    }
+
+    assert escaped(tmp_path, templates) == ["base.html", "page.html", "parent.html"]
 
 def test_only_the_page_printing_inside_the_parent_script_is_refused(tmp_path: Path) -> None:
     templates = {
