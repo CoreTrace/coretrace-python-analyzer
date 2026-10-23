@@ -212,8 +212,12 @@ checked, a quoted value stays quoted until its quote closes, and a variable in a
 ends there and the browser would never run it. A template including one that ends inside
 such a block, a tag or an end tag is not established either: the markup after the
 include continues it. A template extending another ends where that one ends. A comment
-hides what it holds only up to its first template tag, since an include there may close
-it and a condition around its `<!--` may leave it out.
+holding template tags may end at any of them, since an include there may close it and a
+condition around its `<!--` may leave it out, or run to its close when they render
+nothing (#278). The markup is read on from its first tag, and that reading must be in
+HTML data right after each later tag and right after the close, where the others
+resume; where it is not, the template is not established. Such a comment left open does
+not end in HTML data, since it may hide what follows.
 
 Each page is also put together as Django renders it, and read once more (#273): the
 templates it extends, each block taking the definition of the most derived one and `{{

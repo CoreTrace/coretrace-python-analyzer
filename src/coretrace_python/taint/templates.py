@@ -19,8 +19,10 @@ it extends or includes, can output data unescaped:
   construct of another file is read there (#273);
 - no Python file of the project turning autoescaping off.
 
-A comment hides what it holds only up to its first template tag: an include there may
-close it, and a condition around its ``<!--`` may leave it out.
+A comment holding template tags may end at any of them, an include there closing it or a
+condition around its ``<!--`` leaving it out, or run to its close when they render
+nothing: the markup after its first tag is read, and must be in HTML data wherever the
+other readings resume (#278).
 
 Templates are found under the project's ``templates`` directories, by their path below
 one. A template the engine cannot find — named by an expression, under a ``DIRS`` entry
@@ -49,6 +51,8 @@ is listed among what the engine could not read. ``OPTIONS["builtins"]`` and
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
+from collections import deque
 from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -775,10 +779,23 @@ def _read_markup(html: str) -> _Reading:
     hides the rest of the text, and hands nothing on: what follows its include stays
     inside it.
 
+    A comment holding template tags may also end at a later one of them, or run to its
+    close when they render nothing (#278). Each of these readings resumes, right after
+    that tag or that close, where this one must then be in HTML data: there, they read
+    what it reads. Where it is inside another construct, the text is refused. Such a
+    comment left open does not end in data: its tags may render nothing, and it then
+    hides what follows.
+
     An inserted markup (``_INSERTED``) may hold anything a file of its name holds: it is
     accepted only in HTML data, never in a comment, a script or style block, a tag or
     an end tag, nor after what it could complete into one. In data it is as if the
-    markup were there, provided that markup is accepted and ends in data (#273)."""
+    markup were there, provided that markup is accepted and ends in data (#273).
+
+    The reading stays linear, but for looking up inserted markups by position: it only
+    moves forward, and every part of the text is looked at once. The points where other
+    readings resume come in two sequences that never go back, the later tags of comments
+    as they are listed and the closes of comments as these are read, so a queue of each
+    holds them."""
 
     position = 0
     open_end = False
@@ -786,6 +803,27 @@ def _read_markup(html: str) -> _Reading:
     # comments that open before it; and the position after which none closes.
     close: re.Match[str] | None = None
     unclosed_from = len(html) + 1
+    # Where other readings of comments holding tags resume, which this one must reach in
+    # HTML data; how far the tags inside comments have been listed, a comment read inside
+    # another sharing the rest of its region; whether such a comment is left open; and
+    # where inserted markups stand, for a comment to look for one inside it at once.
+    after_tags: deque[int] = deque()
+    after_closes: deque[int] = deque()
+    tags_listed_to = 0
+    left_open = False
+    inserted = [match.start() for match in re.finditer(_INSERTED, html)] if _INSERTED in html else []
+
+    def crossed(start: int, end: int) -> bool:
+        """Whether a point of resumption lies inside the construct read from ``start``
+        to ``end``: those before it are reached in data, and leave the queues."""
+
+        if not after_tags and not after_closes:
+            return False
+        for points in (after_tags, after_closes):
+            while points and points[0] <= start:
+                points.popleft()
+        return any(points and points[0] < end for points in (after_tags, after_closes))
+
     while (start := html.find("<", position)) != -1:
         if html.startswith("<!--", start):
             if start >= unclosed_from:
@@ -795,32 +833,52 @@ def _read_markup(html: str) -> _Reading:
                 if close is None:
                     unclosed_from = start
             hidden_to = len(html) if close is None else close.start()
-            first_tag = html.find(_TAG, start + 4, hidden_to)
-            if html.find(_INSERTED, start + 4, hidden_to if first_tag == -1 else first_tag) != -1:
+            if inserted and (index := bisect_left(inserted, start + 4)) < len(inserted) and inserted[index] < hidden_to:
                 return _NOT_READ
+            first_tag = html.find(_TAG, start + 4, hidden_to)
             if first_tag != -1:
+                if crossed(start, first_tag + 1):
+                    return _NOT_READ
+                tag = html.find(_TAG, max(first_tag + 1, tags_listed_to), hidden_to)
+                while tag != -1:
+                    after_tags.append(tag + 1)
+                    tag = html.find(_TAG, tag + 1, hidden_to)
+                tags_listed_to = max(tags_listed_to, hidden_to)
+                if close is None:
+                    left_open = True
+                else:
+                    after_closes.append(close.end())
                 position, open_end = first_tag + 1, False
             elif close is not None:
+                if crossed(start, close.end()):
+                    return _NOT_READ
                 position, open_end = close.end(), False
             else:
+                if crossed(start, len(html)):
+                    return _NOT_READ
                 return _Reading(escapes=True, open_end=False)
         elif raw := _RAW_TEXT.match(html, start):
             if _OUTPUT in raw.group(2) or _INSERTED in raw.group(0) or not _attributes_escape(html[start : raw.start(2)]):
                 return _NOT_READ
-            position, open_end = raw.end(), not raw.group(3)
-        elif tag := _START_TAG.match(html, start):
-            if _OUTPUT in tag.group(1) or _INSERTED in tag.group(0) or not _attributes_escape(tag.group(2)):
+            if crossed(start, raw.end()):
                 return _NOT_READ
-            position, open_end = tag.end(), tag.group(3) is None
+            position, open_end = raw.end(), not raw.group(3)
+        elif tag_match := _START_TAG.match(html, start):
+            if _OUTPUT in tag_match.group(1) or _INSERTED in tag_match.group(0) or not _attributes_escape(tag_match.group(2)):
+                return _NOT_READ
+            if crossed(start, tag_match.end()):
+                return _NOT_READ
+            position, open_end = tag_match.end(), tag_match.group(3) is None
         elif end := _END_TAG.match(html, start):
-            if _OUTPUT in end.group(0) or _INSERTED in end.group(0):
+            if _OUTPUT in end.group(0) or _INSERTED in end.group(0) or crossed(start, end.end()):
                 return _NOT_READ
             position, open_end = end.end(), end.group(1) is None
         elif _NAMED_BY_OUTPUT.match(html, start) or _OPENED_BY_INSERTION.match(html, start):
             return _NOT_READ
         else:
             position = start + 1
-    return _Reading(escapes=True, open_end=open_end, settled=not open_end and not _ENDING_OPENER.search(html))
+    settled = not open_end and not left_open and not _ENDING_OPENER.search(html)
+    return _Reading(escapes=True, open_end=open_end, settled=settled)
 
 
 def _attributes_escape(attributes: str) -> bool:
