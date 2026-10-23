@@ -994,12 +994,12 @@ def project_templates(root: Path) -> ProjectTemplates:
     calls = tuple(FilterCall(a.symbol, a.span) for template in read.values() for a in template.applications)
     # The filters each template reaches, by template and blocks overridden, for this
     # analysis only (#279).
-    reached: dict[tuple[str, frozenset[str]], list[_Reached]] = {}
+    reached: dict[tuple[str, frozenset[str]], _Walk] = {}
     filters = {
         name: tuple(
             dict.fromkeys(
                 TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
-                for symbol, span, where, value, argument in _reaching(name, files, read, frozenset(), frozenset(), reached)[0]
+                for symbol, span, where, value, argument in _reaching(name, files, read, frozenset(), frozenset(), reached).found
             )
         )
         for name in files
@@ -1012,14 +1012,24 @@ def project_templates(root: Path) -> ProjectTemplates:
 _Reached = tuple[SymbolId, SourceSpan, str, frozenset[str], frozenset[str]]
 
 
+class _Walk(NamedTuple):
+    """What a walk of a template found, and whether a cycle of includes cut it short."""
+
+    found: list[_Reached]
+    cut: bool
+
+
+_NOTHING = _Walk([], cut=False)
+
+
 def _reaching(
     name: str,
     files: Mapping[str, list[Path]],
     read: Mapping[Path, _Template],
     visiting: frozenset[str],
     overridden: frozenset[str],
-    reached: dict[tuple[str, frozenset[str]], list[_Reached]],
-) -> tuple[list[_Reached], bool]:
+    reached: dict[tuple[str, frozenset[str]], _Walk],
+) -> _Walk:
     """The filters rendering the template ``name`` applies, in it and in what it includes
     or extends, each with the template applying it and the names free in ``name`` whose
     values reach its value and its argument; the templates extending ``name`` on the way
@@ -1033,11 +1043,11 @@ def _reaching(
 
     paths = files.get(name, [])
     if len(paths) != 1 or paths[0] not in read:
-        return [], False
+        return _NOTHING
     if name in visiting:
-        return [], True
+        return _Walk([], cut=True)
     if (name, overridden) in reached:
-        return reached[name, overridden], False
+        return reached[name, overridden]
     template = read[paths[0]]
     found: dict[_Reached, None] = {}
     cut = False
@@ -1048,18 +1058,18 @@ def _reaching(
         if reference.name is None:
             continue
         if reference.extends:
-            below, below_cut = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced, reached)
+            below = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced, reached)
         elif template.rendered(reference.blocks, overridden):
-            below, below_cut = _reaching(reference.name, files, read, visiting | {name}, frozenset(), reached)
+            below = _reaching(reference.name, files, read, visiting | {name}, frozenset(), reached)
         else:
             continue
-        cut = cut or below_cut
-        for symbol, span, where, value, argument in below:
+        cut = cut or below.cut
+        for symbol, span, where, value, argument in below.found:
             found.setdefault((symbol, span, where, reference.maps(value), reference.maps(argument)))
-    result = list(found)
+    walk = _Walk(list(found), cut)
     if not cut:
-        reached[name, overridden] = result
-    return result, cut
+        reached[name, overridden] = walk
+    return walk
 
 
 def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library]) -> _Template:
