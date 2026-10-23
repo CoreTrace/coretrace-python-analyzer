@@ -214,6 +214,73 @@ def test_an_include_of_a_name_two_files_have_needs_each_to_end_in_html_data(tmp_
     assert escaped(tmp_path, templates) == ["part.html"]
 
 
+
+# Two files give base.html: the page is put together with each.
+@pytest.mark.parametrize(
+    ("other", "expected"),
+    [
+        ("<div>{% block body %}{% endblock %}</div>\n", ["base.html", "page.html"]),
+        ("<script>{% block body %}{% endblock %}</script>\n", ["base.html"]),
+    ],
+    ids=["each-escapes", "one-runs-the-block-as-script"],
+)
+def test_a_page_extending_a_name_two_files_have_must_escape_with_each(
+    tmp_path: Path, other: str, expected: list[str]
+) -> None:
+    templates = {
+        "base.html": "<p>{% block body %}{% endblock %}</p>\n",
+        "other/templates/base.html": other,
+        "page.html": "{% extends 'base.html' %}{% block body %}{{ name }}{% endblock %}\n",
+    }
+
+    assert escaped(tmp_path, templates) == expected
+
+
+@pytest.mark.parametrize(
+    ("page", "expected"),
+    [
+        ("<div>{% include 'widget.html' %}</div>\n", ["base.html", "page.html", "widget.html"]),
+        ('<a title="{% include \'widget.html\' %}">x</a>\n', ["base.html", "widget.html"]),
+    ],
+    ids=["in-html-data", "in-an-attribute"],
+)
+def test_an_include_of_a_template_with_several_pages_stands_for_each(
+    tmp_path: Path, page: str, expected: list[str]
+) -> None:
+    templates = {
+        "base.html": "<p>{% block body %}{% endblock %}</p>\n",
+        "other/templates/base.html": "<div>{% block body %}{% endblock %}</div>\n",
+        "widget.html": "{% extends 'base.html' %}{% block body %}x{% endblock %}",
+        "page.html": page,
+    }
+
+    assert escaped(tmp_path, templates) == expected
+
+
+def chain_of_names_two_files_have(levels: int, root: str = "x") -> dict[str, str]:
+    # level{n}.html, given by two files, extends level{n - 1}.html: each file of level n
+    # renders 2 ** n pages, one for each file each level below it may be.
+    templates: dict[str, str] = {}
+    for directory in ("app", "other"):
+        templates[f"{directory}/templates/level0.html"] = f"{root}{{% block body %}}{{% endblock %}}"
+        for level in range(1, levels + 1):
+            templates[f"{directory}/templates/level{level}.html"] = (
+                f"{{% extends 'level{level - 1}.html' %}}{{% block body %}}{{{{ name }}}}{{% endblock %}}"
+            )
+    return templates
+
+
+def test_a_template_rendering_more_than_64_pages_is_not_established(tmp_path: Path) -> None:
+    assert escaped(tmp_path, chain_of_names_two_files_have(7)) == [f"level{level}.html" for level in range(7)]
+
+
+def test_pages_of_a_template_beyond_sixteen_mebibytes_together_are_not_established(tmp_path: Path) -> None:
+    # Each of the 64 pages of level6.html holds 300,000 characters: 19.2 million together.
+    templates = chain_of_names_two_files_have(6, root="x" * 300_000)
+
+    assert escaped(tmp_path, templates) == [f"level{level}.html" for level in range(6)]
+
+
 # Markup, a variable and a template tag, as the reader sees a page.
 PIECES = ["x", " ", "<p>", "</p>", "<script>", "</script>", '<a title="', '<a onclick="', '"', ">", "<!--", "-->", "<", "</", "<!", "<!-", "-"]
 

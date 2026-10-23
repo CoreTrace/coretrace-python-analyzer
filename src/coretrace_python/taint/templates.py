@@ -227,10 +227,12 @@ def escaped_templates(root: Path) -> frozenset[str]:
     for name, paths in found.items():
         verdicts = [_verdict(parsed[path]) for path in paths]
         pages = [composition.page(path) for path in paths]
-        readings = [None if page is None else _read_markup(page.markup) for page in pages]
-        local[name] = all(verdict.escapes for verdict in verdicts) and all(r is not None and r.escapes for r in readings)
+        readings = [
+            [_read_markup(markup) for markup in page.markups] if page is not None else [_NOT_READ] for page in pages
+        ]
+        local[name] = all(verdict.escapes for verdict in verdicts) and all(r.escapes for rs in readings for r in rs)
         inserting[name] = {inserted for page in pages if page is not None for inserted in page.inserted}
-        if all(r is not None and r.settled for r in readings):
+        if all(r.settled for rs in readings for r in rs):
             settled.add(name)
         requires[name] = {needed for verdict in verdicts for needed in verdict.extends | verdict.includes}
         extends[name] = {extended for verdict in verdicts for extended in verdict.extends}
@@ -439,6 +441,10 @@ def _flattened(nodes: Iterable[_Node]) -> str:
 # The size a page put together may reach, in characters, checked as it grows: nested
 # includes can multiply a page beyond any size.
 _PAGE_LIMIT = 8 * 1024 * 1024
+# The pages one template may render with the files each template it extends may be, and
+# their size together: many small pages never reach the bound of one.
+_VARIANT_LIMIT = 64
+_VARIANTS_SIZE_LIMIT = 16 * 1024 * 1024
 
 
 class _Unrenderable(Exception):
@@ -446,10 +452,11 @@ class _Unrenderable(Exception):
 
 
 class _Page(NamedTuple):
-    """The markup a template renders, and the names of the includes it inserts there
-    (``_INSERTED``), its own and those of the pages it includes."""
+    """The markups a template renders, one for each file each template its extends chain
+    names may be, and the names of the includes it inserts there (``_INSERTED``), its
+    own and those of the pages it includes."""
 
-    markup: str
+    markups: tuple[str, ...]
     inserted: frozenset[str] = frozenset()
 
 
@@ -457,12 +464,14 @@ class _Composition:
     """The page each template file renders, put together as Django renders it (#273):
     its extends chain from the root, each block taking the definition of the most derived
     template defining it and ``{{ block.super }}`` the next definition up, each include
-    the page of the included template, or, for a name several files have, an inserted
-    markup standing for each (``_INSERTED``). A child's text outside its blocks is not
-    part of it. A page that cannot be put together is not established: a template it
-    needs is missing, refused by its own syntax or given by several files, it includes
-    itself, a block of it holds itself, or it grows beyond ``_PAGE_LIMIT``, which
-    ``too_large`` then lists."""
+    the page of the included template, or, for a name several files have or a template
+    rendering several pages, an inserted markup standing for each (``_INSERTED``). A
+    name several files have in the chain gives a page for each, up to ``_VARIANT_LIMIT``
+    and ``_VARIANTS_SIZE_LIMIT`` together, beyond which ``too_many`` lists the template.
+    A child's text outside its blocks is not part of a page. A page that cannot be put
+    together is not established: a template it needs is missing or refused by its own
+    syntax, it includes or extends itself, a block of it holds itself, or it grows
+    beyond ``_PAGE_LIMIT``, which ``too_large`` then lists."""
 
     def __init__(self, found: Mapping[str, Sequence[Path]], parsed: Mapping[Path, _Parsed]) -> None:
         self._found = found
@@ -477,6 +486,7 @@ class _Composition:
         }
         self._pages: dict[Path, _Page | None] = {}
         self.too_large: set[Path] = set()
+        self.too_many: set[Path] = set()
 
     def page(self, path: Path) -> _Page | None:
         """The page ``path`` renders, put together; None when it cannot be."""
@@ -493,8 +503,8 @@ class _Composition:
             if current in self._pages:
                 stack.pop()
                 continue
-            chain = self._chain(current)
-            targets = None if chain is None else self._targets(chain)
+            chains = self._chains(current)
+            targets = None if chains is None else self._targets(chains)
             if targets is None or any(target in waiting for target in targets):
                 page = None
             elif pending := [target for target in targets if target not in self._pages]:
@@ -502,8 +512,8 @@ class _Composition:
                 stack.extend(pending)
                 continue
             else:
-                assert chain is not None
-                page = self._render(current, chain)
+                assert chains is not None
+                page = self._render(current, chains)
             waiting.discard(current)
             stack.pop()
             if current == path:
@@ -512,61 +522,79 @@ class _Composition:
                 self._pages[current] = page
         return result
 
-    def _chain(self, path: Path) -> list[_Parsed] | None:
-        """``path``, then what it extends, up to the root."""
+    def _chains(self, path: Path) -> list[list[_Parsed]] | None:
+        """``path``, then what it extends, up to the root: one chain for each file each
+        name it extends may be."""
 
-        chain = [self._parsed[path]]
-        seen = {path}
-        while chain[-1].extends:
+        chains: list[list[_Parsed]] = []
+        pending: list[tuple[list[_Parsed], frozenset[Path]]] = [([self._parsed[path]], frozenset({path}))]
+        while pending:
+            chain, seen = pending.pop()
+            if not chain[-1].ok:
+                return None
+            if not chain[-1].extends:
+                chains.append(chain)
+                continue
             if len(chain[-1].extends) != 1:
                 return None
             (name,) = chain[-1].extends
             paths = self._found.get(name, ())
-            if len(paths) != 1 or paths[0] in seen:
+            if not paths or seen.intersection(paths):
                 return None
-            seen.add(paths[0])
-            chain.append(self._parsed[paths[0]])
-        return chain if all(parsed.ok for parsed in chain) else None
+            pending.extend(([*chain, self._parsed[parent]], seen | {parent}) for parent in paths)
+            if len(chains) + len(pending) > _VARIANT_LIMIT:
+                self.too_many.add(path)
+                return None
+        return chains
 
-    def _targets(self, chain: Sequence[_Parsed]) -> list[Path] | None:
-        """The files the page of ``chain`` includes in place, those of a name one file
-        has; None when a name it includes has none."""
+    def _targets(self, chains: Iterable[Sequence[_Parsed]]) -> list[Path] | None:
+        """The files the pages of ``chains`` include, those of a name one file has; None
+        when a name they include has none."""
 
         targets: list[Path] = []
         try:
-            for node in _rendered(chain):
-                if isinstance(node, _Include):
-                    paths = self._found.get(node.name, ())
-                    if not paths:
-                        return None
-                    if len(paths) == 1:
-                        targets.append(paths[0])
+            for chain in chains:
+                for node in _rendered(chain):
+                    if isinstance(node, _Include):
+                        paths = self._found.get(node.name, ())
+                        if not paths:
+                            return None
+                        if len(paths) == 1:
+                            targets.append(paths[0])
         except _Unrenderable:
             return None
         return targets
 
-    def _render(self, path: Path, chain: Sequence[_Parsed]) -> _Page | None:
-        parts: list[str] = []
+    def _render(self, path: Path, chains: Iterable[Sequence[_Parsed]]) -> _Page | None:
+        markups: list[str] = []
         inserted: set[str] = set()
-        size = 0
-        for node in _rendered(chain):
-            if isinstance(node, _Include):
-                paths = self._found[node.name]
-                if len(paths) > 1:
-                    inserted.add(node.name)
-                    node = _INSERTED
-                else:
-                    included = self._pages[paths[0]]
-                    if included is None:
+        together = 0
+        for chain in chains:
+            parts: list[str] = []
+            size = 0
+            for node in _rendered(chain):
+                if isinstance(node, _Include):
+                    paths = self._found[node.name]
+                    included = self._pages[paths[0]] if len(paths) == 1 else None
+                    if included is not None and len(included.markups) == 1:
+                        inserted |= included.inserted
+                        node = included.markups[0]
+                    elif len(paths) == 1 and included is None:
                         return None
-                    inserted |= included.inserted
-                    node = included.markup
-            parts.append(node)
-            size += len(node)
-            if size > _PAGE_LIMIT:
-                self.too_large.add(path)
-                return None
-        return _Page("".join(parts), frozenset(inserted))
+                    else:
+                        inserted.add(node.name)
+                        node = _INSERTED
+                parts.append(node)
+                size += len(node)
+                together += len(node)
+                if size > _PAGE_LIMIT:
+                    self.too_large.add(path)
+                    return None
+                if together > _VARIANTS_SIZE_LIMIT:
+                    self.too_many.add(path)
+                    return None
+            markups.append("".join(parts))
+        return _Page(tuple(markups), frozenset(inserted))
 
 
 def _rendered(chain: Sequence[_Parsed]) -> Iterator[str | _Include]:
