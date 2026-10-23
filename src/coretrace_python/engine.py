@@ -135,10 +135,10 @@ from coretrace_python.taint import (
     SecurityModelRegistry,
     TaintAnalysis,
     TaintKind,
-    escaped_templates,
     project_templates,
     registered_routes,
     request_processor,
+    template_escaping,
     unread_renders,
 )
 from coretrace_python.taint.urls import flow_url
@@ -532,7 +532,8 @@ def analyze_project(
     for name in sorted(analysable):
         for symbol, registered in _routes_of(analysable[name]).items():
             routes.setdefault(symbol, registered)
-    escaped = escaped_templates(root)
+    escaping = template_escaping(root)
+    escaped = escaping.escaped
     templates = project_templates(root)
     clearing = models.clearing(escaped)
     template_calls = models.template_calls(
@@ -678,7 +679,7 @@ def analyze_project(
     findings = [_sourced(finding, origins) for finding in findings]
     accepted = tuple(f for f in findings if policy.accepts(f))
     kept, suppressed = partition(apply_policy(policy, findings), _text_of(sources))
-    unread = list(templates.unread)
+    unread = [*templates.unread, *escaping.unread]
     for name in sorted(call_graphs):
         unread.extend(unread_renders(name, call_graphs[name], models, templates.names))
     return ProjectAnalysis(

@@ -14,6 +14,9 @@ it extends or includes, can output data unescaped:
   leaves open, which once included runs into the markup that follows;
 - no include of a template that ends inside a ``<script>`` or ``<style>`` block, a tag
   or an end tag, which the markup after the include then continues;
+- none of this either once the page is put together as Django renders it, its blocks
+  and includes in place (``_Composition``): what a block or an include puts inside a
+  construct of another file is read there (#273);
 - no Python file of the project turning autoescaping off.
 
 A comment hides what it holds only up to its first template tag: an include there may
@@ -46,11 +49,11 @@ is listed among what the engine could not read. ``OPTIONS["builtins"]`` and
 from __future__ import annotations
 
 import re
-from collections.abc import Container, Iterable, Iterator, Mapping
+from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import ClassVar, NamedTuple
+from typing import ClassVar, NamedTuple, TypeAlias
 
 from coretrace_python.analysis import Analysis, AnalysisContext
 from coretrace_python.frontend import HIRBuildError, ParseError, build_hir
@@ -79,6 +82,9 @@ TEMPLATES_DIRECTORY = "templates"
 TEMPLATETAGS_DIRECTORY = "templatetags"
 
 _OUTPUT, _TAG, _URL = "\x00", "\x01", "/u"
+# Where a page puts the markup of an include it cannot put in place: a name several files
+# have, which Django resolves through loaders the engine does not read.
+_INSERTED = "\x02"
 _SYNTAX = re.compile(r"{{(.*?)}}|{%(.*?)%}|{#.*?#}", re.DOTALL)
 _AUTOESCAPE_OFF = re.compile(r"""["']autoescape["']\s*:\s*False|\bautoescape\s*=\s*False""")
 
@@ -170,6 +176,11 @@ _END_TAG = re.compile(r"</[A-Za-z][^>]*+(>)?")
 _COMMENT_END = re.compile(r"--!?>")
 # ``<{{ name }}`` or ``</ {{ name }}``: the variable would name a tag.
 _NAMED_BY_OUTPUT = re.compile(rf"<[/ \t\n]*{_OUTPUT}")
+# What an inserted markup could complete into a tag, an end tag or a comment: ``<``,
+# ``</`` or ``<!`` and ``<!-``; before a marker, or at the end of a text.
+_OPENER = r"<(?:[/ \t\n]*|!-?)"
+_OPENED_BY_INSERTION = re.compile(rf"{_OPENER}{_INSERTED}")
+_ENDING_OPENER = re.compile(rf"{_OPENER}\Z")
 # Django's filter expressions: a constant or a variable, then filters, each with an
 # optional argument, the way ``django.template.base.FilterExpression`` reads them.
 _STRING = r"\"[^\"\\]*(?:\\.[^\"\\]*)*\"|'[^'\\]*(?:\\.[^'\\]*)*'"
@@ -184,6 +195,12 @@ _VARIABLE = re.compile(r"([A-Za-z_]\w*)(?:\.(\w+))?")
 _LITERALS = frozenset({"True", "False", "None"})
 # The variable a block renders to keep the parent's content, as ``_chain`` reads it.
 _BLOCK_SUPER = "block.super"
+# The variable ``block``, which Django binds inside a block to the block itself: named
+# anywhere else than in a bare ``{{ block.super }}``, it may give the parent's markup,
+# marked safe, through a filter such as ``escape`` or ``default`` or through an alias
+# (``{% with parent=block %}{{ parent.super }}``). A name such as Handlebars'
+# ``@partial-block`` is not it.
+_BLOCK_VARIABLE = re.compile(r"(?<![\w.@-])block(?![\w-])")
 
 REQUEST_PROCESSOR = "django.template.context_processors.request"
 _DJANGO_ENGINE = "django.template.backends.django.DjangoTemplates"
@@ -191,26 +208,56 @@ _ENGINES_SETTING = "TEMPLATES"
 
 
 def escaped_templates(root: Path) -> frozenset[str]:
+    """The names of the templates under ``root`` that escape every variable they render
+    (``template_escaping``)."""
+
+    return template_escaping(root).escaped
+
+
+class TemplateEscaping(NamedTuple):
+    """The names of the templates established to escape, and the pages the engine could
+    not put together to establish it, as entries of the templates it could not read."""
+
+    escaped: frozenset[str]
+    unread: tuple[str, ...] = ()
+
+
+def template_escaping(root: Path) -> TemplateEscaping:
     """The names of the templates under ``root`` that escape every variable they render,
     as ``render_to_string`` names them (their path below a ``templates`` directory). A
     template including one that ends inside a script or style block, a tag or an end tag
     is not among them: the markup after its include continues that construct. A
-    template extending another renders it, and ends where it ends."""
+    template extending another renders it, and ends where it ends. Each file is read on
+    its own, then the page it renders is put together and read too (``_Composition``):
+    what a block or an include puts inside a construct of another file is read there."""
 
     found: dict[str, list[Path]] = {}
     for path in discover_files(root):
         if path.suffix == ".py" and _AUTOESCAPE_OFF.search(_read(path)):
-            return frozenset()
+            return TemplateEscaping(frozenset())
         for name in _names(path.relative_to(root).parts):
             found.setdefault(name, []).append(path)
+    parsed = {path: _parse_file(path) for paths in found.values() for path in paths}
+    composition = _Composition(found, parsed)
     local: dict[str, bool] = {}
     requires: dict[str, set[str]] = {}
     extends: dict[str, set[str]] = {}
     includes: dict[str, set[str]] = {}
     open_ended: set[str] = set()
+    # The names a page inserts (``_INSERTED``), and those whose every file renders a page
+    # ending in HTML data, as an inserted markup must.
+    inserting: dict[str, set[str]] = {}
+    settled: set[str] = set()
     for name, paths in found.items():
-        verdicts = [_verdict(path) for path in paths]
-        local[name] = all(verdict.escapes for verdict in verdicts)
+        verdicts = [_verdict(parsed[path]) for path in paths]
+        pages = [composition.page(path) for path in paths]
+        readings = [
+            [_read_markup(markup) for markup in page.markups] if page is not None else [_NOT_READ] for page in pages
+        ]
+        local[name] = all(verdict.escapes for verdict in verdicts) and all(r.escapes for rs in readings for r in rs)
+        inserting[name] = {inserted for page in pages if page is not None for inserted in page.inserted}
+        if all(r.settled for rs in readings for r in rs):
+            settled.add(name)
         requires[name] = {needed for verdict in verdicts for needed in verdict.extends | verdict.includes}
         extends[name] = {extended for verdict in verdicts for extended in verdict.extends}
         includes[name] = {included for verdict in verdicts for included in verdict.includes}
@@ -218,13 +265,19 @@ def escaped_templates(root: Path) -> frozenset[str]:
             open_ended.add(name)
     while grown := {name for name, extended in extends.items() if extended & open_ended} - open_ended:
         open_ended |= grown
-    escaped = {name for name, safe in local.items() if safe and not includes[name] & open_ended}
+    escaped = {
+        name for name, safe in local.items() if safe and not includes[name] & open_ended and inserting[name] <= settled
+    }
     changed = True
     while changed:
         kept = {name for name in escaped if requires[name] <= escaped}
         changed = kept != escaped
         escaped = kept
-    return frozenset(escaped)
+    unread = [
+        *(f"{path.relative_to(root).as_posix()}, {_TOO_LARGE}" for path in composition.too_large),
+        *(f"{path.relative_to(root).as_posix()}, {_TOO_MANY}" for path in composition.too_many),
+    ]
+    return TemplateEscaping(frozenset(escaped), tuple(sorted(unread)))
 
 
 def _names(parts: tuple[str, ...]) -> Iterator[str]:
@@ -251,12 +304,21 @@ class _Verdict(NamedTuple):
 _REFUSED = _Verdict(escapes=False, extends=frozenset(), includes=frozenset(), open_end=False)
 
 
-def _verdict(path: Path) -> _Verdict:
-    """What one template file establishes: a file the engine cannot read is not
-    established to escape, like a template it cannot find."""
+def _verdict(parsed: _Parsed) -> _Verdict:
+    """What one template file establishes, read on its own."""
+
+    if not parsed.ok:
+        return _REFUSED
+    reading = _read_markup(_flattened(parsed.nodes))
+    return _Verdict(reading.escapes, parsed.extends, parsed.includes, reading.open_end)
+
+
+def _parse_file(path: Path) -> _Parsed:
+    """The template file ``path``: one the engine cannot read is not established to
+    escape, like a template it cannot find."""
 
     text = _text(path)
-    return _REFUSED if text is None else _inspect(text)
+    return _NOT_ESCAPING if text is None else _parse(text)
 
 
 def _text(path: Path) -> str | None:
@@ -268,55 +330,406 @@ def _text(path: Path) -> str | None:
         return None
 
 
-def _inspect(text: str) -> _Verdict:
-    """What the template of ``text`` establishes (``_Verdict``)."""
+_Node: TypeAlias = "str | _Block | _Include | _Super"
+
+
+class _Block(NamedTuple):
+    """A ``{% block %}``: its name, what it holds, and whether its ``{% endblock %}``
+    closes it."""
+
+    name: str
+    nodes: tuple[_Node, ...]
+    closed: bool
+
+
+class _Include(NamedTuple):
+    """An ``{% include %}`` of the template ``name``."""
+
+    name: str
+
+
+class _Super(NamedTuple):
+    """``{{ block.super }}``, which renders the parent's definition of its block."""
+
+
+@dataclass(frozen=True)
+class _Parsed:
+    """One template file as its syntax gives it: whether that syntax lets it escape
+    (``ok``: Django's own tags, libraries and escaping filters only); the templates it
+    extends and those it includes; and its ``nodes``, markup in which a variable is
+    ``_OUTPUT``, a ``url`` or ``static`` tag ``_URL`` and any other tag ``_TAG``, with its
+    blocks, includes and ``{{ block.super }}`` kept apart, and its blocks by name."""
+
+    ok: bool
+    extends: frozenset[str] = frozenset()
+    includes: frozenset[str] = frozenset()
+    nodes: tuple[_Node, ...] = ()
+    blocks: Mapping[str, tuple[_Node, ...]] = field(default_factory=dict)
+
+
+_NOT_ESCAPING = _Parsed(ok=False)
+
+
+def _parse(text: str) -> _Parsed:
+    """The template of ``text`` (``_Parsed``)."""
 
     extends: set[str] = set()
     includes: set[str] = set()
-    html: list[str] = []
+    blocks: dict[str, tuple[_Node, ...]] = {}
+    # The blocks open around the position read, each with what it holds so far, under
+    # the nodes the template holds outside them.
+    nodes: list[_Node] = []
+    opened: list[tuple[str, list[_Node]]] = []
     skipping: str | None = None
     position = 0
-    text = text.replace(_OUTPUT, "").replace(_TAG, "")
+    text = text.replace(_OUTPUT, "").replace(_TAG, "").replace(_INSERTED, "")
+
+    def held() -> list[_Node]:
+        return opened[-1][1] if opened else nodes
+
+    def close() -> None:
+        name, inside = opened.pop()
+        block = _Block(name, tuple(inside), closed=True)
+        blocks.setdefault(name, block.nodes)
+        held().append(block)
+
     for match in _SYNTAX.finditer(text):
         variable, tag = match.group(1), match.group(2)
         words = tag.split() if tag is not None else []
         if skipping is not None:
             if words[:1] == [skipping]:
                 if skipping == "endverbatim":
-                    html.append(text[position : match.start()])
+                    held().append(text[position : match.start()])
                 skipping, position = None, match.end()
             continue
-        html.append(text[position : match.start()])
+        held().append(text[position : match.start()])
         position = match.end()
         if variable is not None:
-            if not _escaping_filters(variable):
-                return _REFUSED
-            html.append(_OUTPUT)
+            if variable.strip() == _BLOCK_SUPER:
+                held().append(_Super())
+                continue
+            if not _escaping_filters(variable) or _names_block(variable):
+                return _NOT_ESCAPING
+            held().append(_OUTPUT)
         elif words and words[0] in ("comment", "verbatim"):
             skipping = f"end{words[0]}"
             if words[0] == "verbatim":
                 position = match.end()
         elif words:
             name = words[0]
-            if name not in _TAGS:
-                return _REFUSED
+            if name not in _TAGS or name not in ("block", "endblock") and _names_block(tag):
+                return _NOT_ESCAPING
             if name == "load" and not set(_loaded(words[1:])) <= _LIBRARIES:
-                return _REFUSED
+                return _NOT_ESCAPING
             if name == "autoescape" and words[1:] != ["on"]:
-                return _REFUSED
+                return _NOT_ESCAPING
             if name == "filter" and not _escaping_filters(tag.split(None, 1)[1] if len(words) > 1 else ""):
-                return _REFUSED
+                return _NOT_ESCAPING
             if name in ("extends", "include"):
                 needed = _constant(words[1] if len(words) > 1 else "")
                 if needed is None:
-                    return _REFUSED
-                (extends if name == "extends" else includes).add(needed)
-            html.append(_OUTPUT if name in _PRINTING else _URL if name in ("url", "static") else _TAG)
+                    return _NOT_ESCAPING
+                if name == "extends":
+                    extends.add(needed)
+                    held().append(_TAG)
+                else:
+                    includes.add(needed)
+                    held().append(_Include(needed))
+            elif name == "block" and len(words) > 1:
+                opened.append((words[1], []))
+            elif name == "endblock" and opened:
+                close()
+            else:
+                held().append(_OUTPUT if name in _PRINTING else _URL if name in ("url", "static") else _TAG)
     if skipping is not None:
-        return _REFUSED
-    html.append(text[position:])
-    reading = _read_markup("".join(html))
-    return _Verdict(reading.escapes, frozenset(extends), frozenset(includes), reading.open_end)
+        return _NOT_ESCAPING
+    held().append(text[position:])
+    while opened:
+        name, inside = opened.pop()
+        block = _Block(name, tuple(inside), closed=False)
+        blocks.setdefault(name, block.nodes)
+        held().append(block)
+    return _Parsed(True, frozenset(extends), frozenset(includes), tuple(nodes), MappingProxyType(blocks))
+
+
+def _names_block(expression: str) -> bool:
+    """Whether ``expression`` names the variable ``block`` outside its string literals."""
+
+    return _BLOCK_VARIABLE.search(re.sub(_STRING, "", expression)) is not None
+
+
+def _flattened(nodes: Iterable[_Node]) -> str:
+    """``nodes`` as one markup, each block, include and ``{{ block.super }}`` marked where
+    it stands as the tag or variable it is."""
+
+    parts: list[str] = []
+    for node in nodes:
+        if isinstance(node, str):
+            parts.append(node)
+        elif isinstance(node, _Block):
+            parts.extend((_TAG, _flattened(node.nodes), _TAG if node.closed else ""))
+        elif isinstance(node, _Include):
+            parts.append(_TAG)
+        else:
+            parts.append(_OUTPUT)
+    return "".join(parts)
+
+
+# The size a page put together may reach, in characters, checked as it grows: nested
+# includes can multiply a page beyond any size.
+_PAGE_LIMIT = 8 * 1024 * 1024
+# The pages one template may render with the files each template it extends may be, and
+# their size together: many small pages never reach the bound of one.
+_VARIANT_LIMIT = 64
+_VARIANTS_SIZE_LIMIT = 16 * 1024 * 1024
+_TOO_LARGE = "beyond 8 MiB once its blocks and includes are put together"
+_TOO_MANY = "more than 64 pages, or 16 MiB in all, with each file the templates it extends may be"
+
+
+class _Unrenderable(Exception):
+    """A page Django could not render: a block holding a block of its own name."""
+
+
+class _Page(NamedTuple):
+    """The markups a template renders, one for each file each template its extends chain
+    names may be, and the names of the includes it inserts there (``_INSERTED``), its
+    own and those of the pages it includes."""
+
+    markups: tuple[str, ...]
+    inserted: frozenset[str] = frozenset()
+
+
+class _Composition:
+    """The page each template file renders, put together as Django renders it (#273):
+    its extends chain from the root, each block taking the definition of the most derived
+    template defining it and ``{{ block.super }}`` the next definition up, each include
+    the page of the included template, or, for a name several files have, a template
+    rendering several pages or one on the way to itself, an inserted markup standing for
+    each (``_INSERTED``): a page inserted in HTML data reads as the markup it stands for
+    there, nested to any depth, provided that markup is accepted and ends in data. A
+    name several files have in the chain gives a page for each, up to ``_VARIANT_LIMIT``
+    and ``_VARIANTS_SIZE_LIMIT`` together, beyond which ``too_many`` lists the template.
+    A child's text outside its blocks is not part of a page. A page that cannot be put
+    together is not established: a template it needs is missing or refused by its own
+    syntax, it extends itself, a block of it holds itself, or it grows beyond
+    ``_PAGE_LIMIT``, which ``too_large`` then lists."""
+
+    def __init__(self, found: Mapping[str, Sequence[Path]], parsed: Mapping[Path, _Parsed]) -> None:
+        self._found = found
+        self._parsed = parsed
+        # Only the pages another one includes are kept: a page is read once, and its
+        # markup is needed again only where it is included.
+        self._included = {
+            paths[0]
+            for p in parsed.values()
+            for name in p.includes
+            if len(paths := found.get(name, ())) == 1
+        }
+        self._pages: dict[Path, _Page | None] = {}
+        self.too_large: set[Path] = set()
+        self.too_many: set[Path] = set()
+
+    def page(self, path: Path) -> _Page | None:
+        """The page ``path`` renders, put together; None when it cannot be."""
+
+        if path in self._pages:
+            return self._pages[path]
+        # Depth first over the includes each page renders, without recursion: a page is
+        # put together once the pages it includes are.
+        stack = [path]
+        waiting: set[Path] = set()
+        result: _Page | None = None
+        while stack:
+            current = stack[-1]
+            if current in self._pages:
+                stack.pop()
+                continue
+            chains = self._chains(current)
+            targets = None if chains is None else self._targets(chains)
+            if targets is None:
+                page = None
+            elif pending := [target for target in targets if target not in self._pages and target not in waiting]:
+                waiting.add(current)
+                stack.extend(pending)
+                continue
+            else:
+                assert chains is not None
+                page = self._render(current, chains, waiting)
+            waiting.discard(current)
+            stack.pop()
+            if current == path:
+                result = page
+            if current in self._included or current != path:
+                self._pages[current] = page
+        return result
+
+    def _chains(self, path: Path) -> list[list[_Parsed]] | None:
+        """``path``, then what it extends, up to the root: one chain for each file each
+        name it extends may be. As Django's loaders do, the files already in the chain
+        are left out: a template extending its own name extends another file of it."""
+
+        chains: list[list[_Parsed]] = []
+        pending: list[tuple[list[_Parsed], frozenset[Path]]] = [([self._parsed[path]], frozenset({path}))]
+        while pending:
+            chain, seen = pending.pop()
+            if not chain[-1].ok:
+                return None
+            if not chain[-1].extends:
+                chains.append(chain)
+                continue
+            if len(chain[-1].extends) != 1:
+                return None
+            (name,) = chain[-1].extends
+            parents = [parent for parent in self._found.get(name, ()) if parent not in seen]
+            if not parents:
+                return None
+            pending.extend(([*chain, self._parsed[parent]], seen | {parent}) for parent in parents)
+            if len(chains) + len(pending) > _VARIANT_LIMIT:
+                self.too_many.add(path)
+                return None
+        return chains
+
+    def _targets(self, chains: Iterable[Sequence[_Parsed]]) -> list[Path] | None:
+        """The files the pages of ``chains`` include, those of a name one file has; None
+        when a name they include has none, or a page cannot be rendered."""
+
+        targets: list[Path] = []
+        try:
+            for chain in chains:
+                for name in _includes(chain):
+                    paths = self._found.get(name, ())
+                    if not paths:
+                        return None
+                    if len(paths) == 1:
+                        targets.append(paths[0])
+        except _Unrenderable:
+            return None
+        return targets
+
+    def _render(self, path: Path, chains: Iterable[Sequence[_Parsed]], waiting: Container[Path]) -> _Page | None:
+        """The pages ``chains`` render; an include of a page being put together, on the
+        way to itself, inserted (``_INSERTED``)."""
+
+        markups: list[str] = []
+        inserted: set[str] = set()
+        together = 0
+        for chain in chains:
+            markup = self._markup(path, chain, waiting, inserted)
+            if markup is None:
+                return None
+            together += len(markup)
+            if together > _VARIANTS_SIZE_LIMIT:
+                self.too_many.add(path)
+                return None
+            markups.append(markup)
+        return _Page(tuple(markups), frozenset(inserted))
+
+    def _markup(self, path: Path, chain: Sequence[_Parsed], waiting: Container[Path], inserted: set[str]) -> str | None:
+        """The page of ``chain``, each definition put together once however many times
+        the page renders it, and each bounded as it grows: a block rendering its parent
+        twice at every level doubles the page, not the work."""
+
+        made: dict[_Key, str] = {}
+        root = _root(chain)
+        # The definitions being put together, each with what it renders so far and its size.
+        stack: list[tuple[_Key, Iterator[_Node], list[str], list[int]]] = [(root, iter(_definition(chain, root)), [], [0])]
+        while stack:
+            key, nodes, parts, size = stack[-1]
+            node = next(nodes, None)
+            if node is None:
+                stack.pop()
+                made[key] = piece = "".join(parts)
+                if not stack:
+                    return piece
+            elif isinstance(node, str):
+                piece = node
+            elif isinstance(node, _Include):
+                included = self._include_markup(node.name, waiting, inserted)
+                if included is None:
+                    return None
+                piece = included
+            else:
+                inner = _resolved(chain, key, node)
+                if inner is None:
+                    continue
+                if inner not in made:
+                    stack.append((inner, iter(_definition(chain, inner)), [], [0]))
+                    continue
+                piece = made[inner]
+            _, _, parts, size = stack[-1]
+            parts.append(piece)
+            size[0] += len(piece)
+            if size[0] > _PAGE_LIMIT:
+                self.too_large.add(path)
+                return None
+        return None
+
+    def _include_markup(self, name: str, waiting: Container[Path], inserted: set[str]) -> str | None:
+        """What an include of ``name`` puts in a page: the page of its one file, or an
+        inserted markup; None when that page cannot be put together."""
+
+        paths = self._found[name]
+        recursive = len(paths) == 1 and paths[0] in waiting
+        included = self._pages[paths[0]] if len(paths) == 1 and not recursive else None
+        if included is not None and len(included.markups) == 1:
+            inserted |= included.inserted
+            return included.markups[0]
+        if len(paths) == 1 and included is None and not recursive:
+            return None
+        inserted.add(name)
+        return _INSERTED
+
+
+# A definition a page renders: a block's, in the template of ``chain`` at that level, or,
+# with no name, the root's nodes outside its blocks.
+_Key = tuple[str | None, int]
+
+
+def _root(chain: Sequence[_Parsed]) -> _Key:
+    return None, len(chain) - 1
+
+
+def _definition(chain: Sequence[_Parsed], key: _Key) -> tuple[_Node, ...]:
+    name, level = key
+    return chain[level].nodes if name is None else chain[level].blocks[name]
+
+
+def _resolved(chain: Sequence[_Parsed], key: _Key, node: _Block | _Super) -> _Key | None:
+    """The definition ``node`` renders, standing in the definition ``key``: for a block,
+    that of the most derived template defining it; for ``{{ block.super }}``, the next
+    one up, if any."""
+
+    name, level = key
+    if isinstance(node, _Block):
+        return node.name, next(index for index, parsed in enumerate(chain) if node.name in parsed.blocks)
+    if name is None:
+        return None
+    parent = next((index for index in range(level + 1, len(chain)) if name in chain[index].blocks), None)
+    return None if parent is None else (name, parent)
+
+
+def _includes(chain: Sequence[_Parsed]) -> list[str]:
+    """The names the page of ``chain`` includes, each definition it renders visited once
+    however many times it is rendered: a block holding itself, which Django cannot
+    render, raises ``_Unrenderable``."""
+
+    found: list[str] = []
+    visited = {_root(chain)}
+    stack: list[tuple[_Key, Iterator[_Node]]] = [(_root(chain), iter(_definition(chain, _root(chain))))]
+    while stack:
+        key, nodes = stack[-1]
+        node = next(nodes, None)
+        if node is None:
+            stack.pop()
+        elif isinstance(node, _Include):
+            found.append(node.name)
+        elif not isinstance(node, str) and (inner := _resolved(chain, key, node)) is not None:
+            if any(inner == open_key for open_key, _ in stack):
+                raise _Unrenderable(inner[0])
+            if inner not in visited:
+                visited.add(inner)
+                stack.append((inner, iter(_definition(chain, inner))))
+    return found
 
 
 def _loaded(words: list[str]) -> list[str]:
@@ -336,11 +749,17 @@ def _constant(word: str) -> str | None:
 
 class _Reading(NamedTuple):
     """What one pass over a template's markup establishes: whether every output marker
-    stands where HTML escaping protects it, and whether the text ends inside a script or
-    style block, a tag or an end tag, which the markup after its include continues."""
+    stands where HTML escaping protects it; whether the text ends inside a script or
+    style block, a tag or an end tag, which the markup after its include continues; and
+    whether it ends in HTML data, ``settled``: nothing of it left open, comment included,
+    and no ``<``, ``</``, ``<!`` or ``<!-`` at its end for what follows to complete."""
 
     escapes: bool
     open_end: bool
+    settled: bool = False
+
+
+_NOT_READ = _Reading(escapes=False, open_end=False)
 
 
 def _read_markup(html: str) -> _Reading:
@@ -354,7 +773,12 @@ def _read_markup(html: str) -> _Reading:
     include there may close the comment, a condition around its ``<!--`` leave it out.
     A variable cannot close it, escaped. A comment left open, with no tag after it,
     hides the rest of the text, and hands nothing on: what follows its include stays
-    inside it."""
+    inside it.
+
+    An inserted markup (``_INSERTED``) may hold anything a file of its name holds: it is
+    accepted only in HTML data, never in a comment, a script or style block, a tag or
+    an end tag, nor after what it could complete into one. In data it is as if the
+    markup were there, provided that markup is accepted and ends in data (#273)."""
 
     position = 0
     open_end = False
@@ -370,30 +794,33 @@ def _read_markup(html: str) -> _Reading:
                 close = _COMMENT_END.search(html, start + 2)
                 if close is None:
                     unclosed_from = start
-            first_tag = html.find(_TAG, start + 4, len(html) if close is None else close.start())
+            hidden_to = len(html) if close is None else close.start()
+            first_tag = html.find(_TAG, start + 4, hidden_to)
+            if html.find(_INSERTED, start + 4, hidden_to if first_tag == -1 else first_tag) != -1:
+                return _NOT_READ
             if first_tag != -1:
-                position = first_tag + 1
+                position, open_end = first_tag + 1, False
             elif close is not None:
-                position = close.end()
+                position, open_end = close.end(), False
             else:
-                break
+                return _Reading(escapes=True, open_end=False)
         elif raw := _RAW_TEXT.match(html, start):
-            if _OUTPUT in raw.group(2) or not _attributes_escape(html[start : raw.start(2)]):
-                return _Reading(escapes=False, open_end=False)
+            if _OUTPUT in raw.group(2) or _INSERTED in raw.group(0) or not _attributes_escape(html[start : raw.start(2)]):
+                return _NOT_READ
             position, open_end = raw.end(), not raw.group(3)
         elif tag := _START_TAG.match(html, start):
-            if _OUTPUT in tag.group(1) or not _attributes_escape(tag.group(2)):
-                return _Reading(escapes=False, open_end=False)
+            if _OUTPUT in tag.group(1) or _INSERTED in tag.group(0) or not _attributes_escape(tag.group(2)):
+                return _NOT_READ
             position, open_end = tag.end(), tag.group(3) is None
         elif end := _END_TAG.match(html, start):
-            if _OUTPUT in end.group(0):
-                return _Reading(escapes=False, open_end=False)
+            if _OUTPUT in end.group(0) or _INSERTED in end.group(0):
+                return _NOT_READ
             position, open_end = end.end(), end.group(1) is None
-        elif _NAMED_BY_OUTPUT.match(html, start):
-            return _Reading(escapes=False, open_end=False)
+        elif _NAMED_BY_OUTPUT.match(html, start) or _OPENED_BY_INSERTION.match(html, start):
+            return _NOT_READ
         else:
             position = start + 1
-    return _Reading(escapes=True, open_end=open_end)
+    return _Reading(escapes=True, open_end=open_end, settled=not open_end and not _ENDING_OPENER.search(html))
 
 
 def _attributes_escape(attributes: str) -> bool:

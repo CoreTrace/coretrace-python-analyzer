@@ -213,8 +213,25 @@ ends there and the browser would never run it. A template including one that end
 such a block, a tag or an end tag is not established either: the markup after the
 include continues it. A template extending another ends where that one ends. A comment
 hides what it holds only up to its first template tag, since an include there may close
-it and a condition around its `<!--` may leave it out. A `{% block %}` or
-`{% include %}` placed inside a parent's `<script>` is not covered yet (#273).
+it and a condition around its `<!--` may leave it out.
+
+Each page is also put together as Django renders it, and read once more (#273): the
+templates it extends, each block taking the definition of the most derived one and `{{
+block.super }}` the next one up, and each template it includes in place. What a child's
+block prints inside its parent's `<script>`, or what an include puts inside an
+attribute, is read where it lands. `{{ block.super }}` is put in place only bare: the
+variable `block` named anywhere else, through a filter, a tag or an alias (`{% with
+parent=block %}{{ parent.super }}`), may still print the parent's markup, marked safe,
+and the template is not established. A name several files have, which Django resolves
+through loaders the analyzer does not read, counts as each of them: a page extending it
+must escape with each file, except those already in its chain, which Django leaves out,
+so that a template extending its own name extends another file of it; an include of it
+is accepted only in HTML data, never inside an attribute, a tag, a `<script>` or
+`<style>` block or a comment, and only when each file ends in HTML data, nothing of it
+left open. A template including itself is read the same way. A page beyond 8 MiB once
+put together, or a template with more than 64 pages, or 16 MiB in all, through the files
+the templates it extends may be, is not established, and is listed among the templates
+the analyzer could not read.
 
 The analyzer never assumes escaping where it cannot read the template. That covers a
 template file it cannot read, a template named by an expression, a template found

@@ -20,6 +20,15 @@
   instead of repeating its id (#270), and each result carries its confidence as the
   `confidence` property (#271). A flow reaching its sink inside a project function points at
   that sink as a related location, which the result's message links to (#271).
+- Django templates are also read as each page is put together (#273): a variable a
+  child's `{% block %}` prints inside its parent's `<script>`, an `{% include %}` that ends
+  the attribute value it stands in, or one of a name several files have outside HTML data,
+  is reported as `xss` where it was not, as is the variable `block` named anywhere but in
+  a bare `{{ block.super }}`. So is a template that includes Django's
+  `django/forms/widgets/attrs.html` inside a tag, which prints attribute names, and a
+  template including itself inside a tag or a script. A page beyond 8 MiB once put
+  together, or a template with more than 64 pages, or 16 MiB in all, through names
+  several files have, is not established and is listed in `Coverage.unread_templates`.
 - Plugin API, additive: `Plugin.rules` maps the rules a plugin reports to their
   `RuleDescription`, optional, so that third-party plugins describe their own rules;
   `Finding.related` lists `RelatedLocation`s (a span and a message). `Report.rules` carries the
