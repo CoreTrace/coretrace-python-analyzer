@@ -114,6 +114,23 @@ def test_markup_a_block_or_an_include_puts_inside_a_construct_is_read_there(
     assert xss(tmp_path, templates) == [("app/views.py", 5)]
 
 
+
+# Only a bare {{ block.super }} is put in place. Through a filter or a tag, Django still
+# prints the parent's markup, marked safe, which escape and default keep as it is: what
+# it does there is not established, so the alert stays.
+@pytest.mark.parametrize(
+    "printed",
+    ["{{ block.super|escape }}", '{{ block.super|default:"" }}', "{% with parent=block.super %}{{ parent }}{% endwith %}"],
+    ids=["through-escape", "through-default", "through-with"],
+)
+def test_block_super_printed_otherwise_than_bare_keeps_the_alert(tmp_path: Path, printed: str) -> None:
+    templates = {
+        "base.html": '<a title="{% block attr %}" onclick="{% endblock %}">x</a>\n',
+        "page.html": "{% extends 'base.html' %}{% block attr %}" + printed + "{{ name }}{% endblock %}\n",
+    }
+
+    assert xss(tmp_path, templates) == [("app/views.py", 5)]
+
 def test_only_the_page_printing_inside_the_parent_script_is_refused(tmp_path: Path) -> None:
     templates = {
         "base.html": BASE_WITH_SCRIPT_BLOCK,
