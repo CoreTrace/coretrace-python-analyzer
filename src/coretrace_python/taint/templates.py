@@ -1013,13 +1013,15 @@ _Reached = tuple[SymbolId, SourceSpan, str, frozenset[str], frozenset[str]]
 
 
 class _Walk(NamedTuple):
-    """What a walk of a template found, and whether a cycle of includes cut it short."""
+    """What a walk of a template found; whether a cycle of includes cut it short; and the
+    templates it went through."""
 
     found: list[_Reached]
     cut: bool
+    walked: frozenset[str]
 
 
-_NOTHING = _Walk([], cut=False)
+_NOTHING = _Walk([], cut=False, walked=frozenset())
 
 
 def _reaching(
@@ -1033,24 +1035,27 @@ def _reaching(
     """The filters rendering the template ``name`` applies, in it and in what it includes
     or extends, each with the template applying it and the names free in ``name`` whose
     values reach its value and its argument; the templates extending ``name`` on the way
-    define the ``overridden`` blocks. Also whether a cycle of includes, through a template
-    ``visiting``, cut the walk short.
+    define the ``overridden`` blocks. A template already ``visiting`` cuts the walk short.
 
-    Each template is walked once for each set of blocks overridden: ``reached`` keeps what
-    a walk found, its first occurrences in order, which mapped through a reference give
-    the first occurrences a walk path by path gives. A walk cut short by a cycle depends
-    on where the cycle was entered, and is not kept (#279)."""
+    Each template is walked once for each set of blocks overridden (#279): ``reached``
+    keeps what a walk found, its first occurrences in order, which mapped through a
+    reference give the first occurrences a walk path by path gives. A walk depends on
+    ``visiting`` only where a cycle cuts it, so one cut short is not kept, and one that
+    went through a template now on the way is not reused: walked from there, it would be
+    cut at that template."""
 
     paths = files.get(name, [])
     if len(paths) != 1 or paths[0] not in read:
         return _NOTHING
     if name in visiting:
-        return _Walk([], cut=True)
-    if (name, overridden) in reached:
-        return reached[name, overridden]
+        return _Walk([], cut=True, walked=frozenset())
+    kept = reached.get((name, overridden))
+    if kept is not None and visiting.isdisjoint(kept.walked):
+        return kept
     template = read[paths[0]]
     found: dict[_Reached, None] = {}
     cut = False
+    walked = {name}
     for application in template.applications:
         if template.rendered(application.blocks, overridden):
             found.setdefault((application.symbol, application.span, name, application.value, application.argument))
@@ -1064,9 +1069,10 @@ def _reaching(
         else:
             continue
         cut = cut or below.cut
+        walked |= below.walked
         for symbol, span, where, value, argument in below.found:
             found.setdefault((symbol, span, where, reference.maps(value), reference.maps(argument)))
-    walk = _Walk(list(found), cut)
+    walk = _Walk(list(found), cut, frozenset(walked))
     if not cut:
         reached[name, overridden] = walk
     return walk

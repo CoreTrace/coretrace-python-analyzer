@@ -4,7 +4,8 @@ once for each template and set of blocks the templates extending it override.
 They are the same as before, in the same order: which filters, where they stand, the
 template applying each, and the names of the render reaching its value and argument. The
 results are kept for one analysis only, so that projects analysed one after the other do
-not share them, and a result cut short by a cycle of includes is not reused.
+not share them. A result cut short by a cycle of includes is not reused, nor one that
+went through a template already on the way, where the walk would be cut.
 """
 
 from __future__ import annotations
@@ -150,3 +151,33 @@ def test_includes_doubled_at_every_level_are_walked_in_linear_time(tmp_path: Pat
 
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout) == {name: 1 for name in templates}
+
+
+# A child extending a parent that includes it back, inside the block the child overrides.
+# The walk of the parent includes the child, whose extends leads back to the parent: a
+# cycle, cut there. Whichever of the two is walked first, each gets the filters of main.
+def cycle_through_an_overridden_block(child: str, parent: str) -> dict[str, str]:
+    return {
+        child: "{% extends '" + parent + "' %}\n{% block body %}{{ v|upper }}{% endblock %}\n",
+        parent: "{{ v|striptags }}\n{% block body %}{% include '" + child + "' with v=other %}{% endblock %}\n",
+    }
+
+
+@pytest.mark.parametrize(
+    ("child", "parent"), [("a.html", "b.html"), ("b.html", "a.html")], ids=["child-walked-first", "parent-walked-first"]
+)
+def test_a_child_its_parent_includes_back_gets_the_same_filters_whichever_is_walked_first(
+    tmp_path: Path, child: str, parent: str
+) -> None:
+    root = write(tmp_path, cycle_through_an_overridden_block(child, parent))
+
+    assert described(root) == {
+        child: [
+            (f"{FILTERS}.upper", child, 2, 22, child, ("v",), ()),
+            (f"{FILTERS}.striptags", parent, 1, 6, parent, ("v",), ()),
+        ],
+        parent: [
+            (f"{FILTERS}.striptags", parent, 1, 6, parent, ("v",), ()),
+            (f"{FILTERS}.upper", child, 2, 22, child, ("other",), ()),
+        ],
+    }
