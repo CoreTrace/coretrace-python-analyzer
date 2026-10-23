@@ -64,6 +64,22 @@ def escaped(tmp_path: Path, templates: dict[str, str]) -> list[str]:
     return names
 
 
+UNREAD_TEMPLATES = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "from coretrace_python import engine\n"
+    "analysis = engine.analyze_project(Path(sys.argv[1]), [engine.BUNDLED_PLUGINS])\n"
+    "print(json.dumps(sorted(analysis.coverage.unread_templates)))\n"
+)
+
+
+def unread(tmp_path: Path, templates: dict[str, str]) -> list[str]:
+    completed = run([sys.executable, "-c", UNREAD_TEMPLATES, str(project(tmp_path, templates))])
+    assert completed.returncode == 0, completed.stderr
+    entries: list[str] = json.loads(completed.stdout)
+    return entries
+
+
 def xss(tmp_path: Path, templates: dict[str, str]) -> list[tuple[str, int]]:
     root = project(tmp_path, templates)
     completed = run([sys.executable, "-m", "coretrace_python", "--check", str(root), "--format", "json"])
@@ -158,15 +174,24 @@ def test_a_template_including_itself_inside_a_construct_is_not_established(
     assert escaped(tmp_path, templates) == []
 
 
-def test_a_page_beyond_eight_mebibytes_is_not_established(tmp_path: Path) -> None:
-    # level{n}.html holds 2 ** n characters once put together: level23.html is 8 MiB,
-    # level24.html beyond, and the page including it is put together no further.
-    templates = {"level0.html": "x"}
-    for level in range(1, 25):
+def doubling_includes() -> dict[str, str]:
+    # level{n}.html holds 2 ** n KiB once put together: level13.html is 8 MiB,
+    # level14.html beyond, and the page including it is put together no further.
+    templates = {"level0.html": "x" * 1024}
+    for level in range(1, 15):
         templates[f"level{level}.html"] = f"{{% include 'level{level - 1}.html' %}}" * 2
-    templates["page.html"] = "{% include 'level24.html' %}"
+    templates["page.html"] = "{% include 'level14.html' %}"
+    return templates
 
-    assert escaped(tmp_path, templates) == sorted(f"level{level}.html" for level in range(24))
+
+def test_a_page_beyond_eight_mebibytes_is_not_established(tmp_path: Path) -> None:
+    assert escaped(tmp_path, doubling_includes()) == sorted(f"level{level}.html" for level in range(14))
+
+
+def test_a_page_beyond_eight_mebibytes_is_listed_among_the_templates_not_read(tmp_path: Path) -> None:
+    assert unread(tmp_path, doubling_includes()) == [
+        "app/templates/level14.html, beyond 8 MiB once its blocks and includes are put together"
+    ]
 
 
 # Two files give part.html. Django renders the first its loaders find, which the analyzer
@@ -279,6 +304,18 @@ def test_pages_of_a_template_beyond_sixteen_mebibytes_together_are_not_establish
     templates = chain_of_names_two_files_have(6, root="x" * 300_000)
 
     assert escaped(tmp_path, templates) == [f"level{level}.html" for level in range(6)]
+
+
+@pytest.mark.parametrize(("levels", "root"), [(7, "x"), (6, "x" * 300_000)], ids=["more-than-64", "beyond-16-mib"])
+def test_a_template_with_too_many_pages_is_listed_among_the_templates_not_read(
+    tmp_path: Path, levels: int, root: str
+) -> None:
+    reason = "more than 64 pages, or 16 MiB in all, with each file the templates it extends may be"
+
+    assert unread(tmp_path, {**chain_of_names_two_files_have(levels, root), "page.html": "x"}) == [
+        f"app/templates/level{levels}.html, {reason}",
+        f"other/templates/level{levels}.html, {reason}",
+    ]
 
 
 

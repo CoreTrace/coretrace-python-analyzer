@@ -199,6 +199,21 @@ _ENGINES_SETTING = "TEMPLATES"
 
 
 def escaped_templates(root: Path) -> frozenset[str]:
+    """The names of the templates under ``root`` that escape every variable they render
+    (``template_escaping``)."""
+
+    return template_escaping(root).escaped
+
+
+class TemplateEscaping(NamedTuple):
+    """The names of the templates established to escape, and the pages the engine could
+    not put together to establish it, as entries of the templates it could not read."""
+
+    escaped: frozenset[str]
+    unread: tuple[str, ...] = ()
+
+
+def template_escaping(root: Path) -> TemplateEscaping:
     """The names of the templates under ``root`` that escape every variable they render,
     as ``render_to_string`` names them (their path below a ``templates`` directory). A
     template including one that ends inside a script or style block, a tag or an end tag
@@ -210,7 +225,7 @@ def escaped_templates(root: Path) -> frozenset[str]:
     found: dict[str, list[Path]] = {}
     for path in discover_files(root):
         if path.suffix == ".py" and _AUTOESCAPE_OFF.search(_read(path)):
-            return frozenset()
+            return TemplateEscaping(frozenset())
         for name in _names(path.relative_to(root).parts):
             found.setdefault(name, []).append(path)
     parsed = {path: _parse_file(path) for paths in found.values() for path in paths}
@@ -249,7 +264,11 @@ def escaped_templates(root: Path) -> frozenset[str]:
         kept = {name for name in escaped if requires[name] <= escaped}
         changed = kept != escaped
         escaped = kept
-    return frozenset(escaped)
+    unread = [
+        *(f"{path.relative_to(root).as_posix()}, {_TOO_LARGE}" for path in composition.too_large),
+        *(f"{path.relative_to(root).as_posix()}, {_TOO_MANY}" for path in composition.too_many),
+    ]
+    return TemplateEscaping(frozenset(escaped), tuple(sorted(unread)))
 
 
 def _names(parts: tuple[str, ...]) -> Iterator[str]:
@@ -445,6 +464,8 @@ _PAGE_LIMIT = 8 * 1024 * 1024
 # their size together: many small pages never reach the bound of one.
 _VARIANT_LIMIT = 64
 _VARIANTS_SIZE_LIMIT = 16 * 1024 * 1024
+_TOO_LARGE = "beyond 8 MiB once its blocks and includes are put together"
+_TOO_MANY = "more than 64 pages, or 16 MiB in all, with each file the templates it extends may be"
 
 
 class _Unrenderable(Exception):
