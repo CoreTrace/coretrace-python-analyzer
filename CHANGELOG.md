@@ -33,6 +33,27 @@
   `RuleDescription`, optional, so that third-party plugins describe their own rules;
   `Finding.related` lists `RelatedLocation`s (a span and a message). `Report.rules` carries the
   descriptions to the reporters.
+- Plugin API: `coretrace_python.interprocedural.starting_summaries` gives the summaries an
+  import cycle's members start from, and `coretrace_python.engine.MAX_PROJECT_ITERATIONS`
+  is removed, since the project's summaries are iterated until they settle (#261).
+- A summary lists its external calls in source order (#261): a finding naming the first
+  call of a callee's summary may name another of that callee, at the same line, as 4 of
+  saleor's 228 `orm-n-plus-one` findings do.
+
+### Analysis
+
+- `--check` ends on projects whose summaries never settled (#261). Around a call cycle of
+  three functions or more, a caller copied its callee's external calls in an order that
+  rotated forever, so ansible, fastapi, sentry and home-assistant never ended: those calls
+  are now kept in source order. Around an import cycle of three modules or more, the
+  project's iteration shifted by one module each time and stopped at its bound, which
+  could miss a sink reached through the cycle: its members now start from the summaries a
+  module starts from, and the iteration goes on until the project's summaries settle.
+- A lambda or comprehension in the annotation of a parameter or a variable no longer
+  stops the analysis of a directory with a `KeyError` (#262). An assignment expression in
+  an annotation binds its name as Python 3.11 to 3.13 do: in a function, the name is a
+  local whether the annotation is evaluated or not; at module level, it exists only once
+  the annotation is evaluated.
 
 ### Performance
 
