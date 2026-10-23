@@ -581,18 +581,17 @@ class _Composition:
 
     def _targets(self, chains: Iterable[Sequence[_Parsed]]) -> list[Path] | None:
         """The files the pages of ``chains`` include, those of a name one file has; None
-        when a name they include has none."""
+        when a name they include has none, or a page cannot be rendered."""
 
         targets: list[Path] = []
         try:
             for chain in chains:
-                for node in _rendered(chain):
-                    if isinstance(node, _Include):
-                        paths = self._found.get(node.name, ())
-                        if not paths:
-                            return None
-                        if len(paths) == 1:
-                            targets.append(paths[0])
+                for name in _includes(chain):
+                    paths = self._found.get(name, ())
+                    if not paths:
+                        return None
+                    if len(paths) == 1:
+                        targets.append(paths[0])
         except _Unrenderable:
             return None
         return targets
@@ -605,59 +604,122 @@ class _Composition:
         inserted: set[str] = set()
         together = 0
         for chain in chains:
-            parts: list[str] = []
-            size = 0
-            for node in _rendered(chain):
-                if isinstance(node, _Include):
-                    paths = self._found[node.name]
-                    recursive = len(paths) == 1 and paths[0] in waiting
-                    included = self._pages[paths[0]] if len(paths) == 1 and not recursive else None
-                    if included is not None and len(included.markups) == 1:
-                        inserted |= included.inserted
-                        node = included.markups[0]
-                    elif len(paths) == 1 and included is None and not recursive:
-                        return None
-                    else:
-                        inserted.add(node.name)
-                        node = _INSERTED
-                parts.append(node)
-                size += len(node)
-                together += len(node)
-                if size > _PAGE_LIMIT:
-                    self.too_large.add(path)
-                    return None
-                if together > _VARIANTS_SIZE_LIMIT:
-                    self.too_many.add(path)
-                    return None
-            markups.append("".join(parts))
+            markup = self._markup(path, chain, waiting, inserted)
+            if markup is None:
+                return None
+            together += len(markup)
+            if together > _VARIANTS_SIZE_LIMIT:
+                self.too_many.add(path)
+                return None
+            markups.append(markup)
         return _Page(tuple(markups), frozenset(inserted))
 
+    def _markup(self, path: Path, chain: Sequence[_Parsed], waiting: Container[Path], inserted: set[str]) -> str | None:
+        """The page of ``chain``, each definition put together once however many times
+        the page renders it, and each bounded as it grows: a block rendering its parent
+        twice at every level doubles the page, not the work."""
 
-def _rendered(chain: Sequence[_Parsed]) -> Iterator[str | _Include]:
-    """The markup and the includes of the page ``chain`` renders (a template, then what it
-    extends, up to the root), in order: the root's nodes, each block taking the most
-    derived definition, ``{{ block.super }}`` the next one up."""
+        made: dict[_Key, str] = {}
+        root = _root(chain)
+        # The definitions being put together, each with what it renders so far and its size.
+        stack: list[tuple[_Key, Iterator[_Node], list[str], list[int]]] = [(root, iter(_definition(chain, root)), [], [0])]
+        while stack:
+            key, nodes, parts, size = stack[-1]
+            node = next(nodes, None)
+            if node is None:
+                stack.pop()
+                made[key] = piece = "".join(parts)
+                if not stack:
+                    return piece
+            elif isinstance(node, str):
+                piece = node
+            elif isinstance(node, _Include):
+                included = self._include_markup(node.name, waiting, inserted)
+                if included is None:
+                    return None
+                piece = included
+            else:
+                inner = _resolved(chain, key, node)
+                if inner is None:
+                    continue
+                if inner not in made:
+                    stack.append((inner, iter(_definition(chain, inner)), [], [0]))
+                    continue
+                piece = made[inner]
+            _, _, parts, size = stack[-1]
+            parts.append(piece)
+            size[0] += len(piece)
+            if size[0] > _PAGE_LIMIT:
+                self.too_large.add(path)
+                return None
+        return None
 
-    # The nodes being rendered, each run with the level of ``chain`` they come from and
-    # the block they define.
-    stack: list[tuple[Iterator[_Node], int, str | None]] = [(iter(chain[-1].nodes), len(chain) - 1, None)]
+    def _include_markup(self, name: str, waiting: Container[Path], inserted: set[str]) -> str | None:
+        """What an include of ``name`` puts in a page: the page of its one file, or an
+        inserted markup; None when that page cannot be put together."""
+
+        paths = self._found[name]
+        recursive = len(paths) == 1 and paths[0] in waiting
+        included = self._pages[paths[0]] if len(paths) == 1 and not recursive else None
+        if included is not None and len(included.markups) == 1:
+            inserted |= included.inserted
+            return included.markups[0]
+        if len(paths) == 1 and included is None and not recursive:
+            return None
+        inserted.add(name)
+        return _INSERTED
+
+
+# A definition a page renders: a block's, in the template of ``chain`` at that level, or,
+# with no name, the root's nodes outside its blocks.
+_Key = tuple[str | None, int]
+
+
+def _root(chain: Sequence[_Parsed]) -> _Key:
+    return None, len(chain) - 1
+
+
+def _definition(chain: Sequence[_Parsed], key: _Key) -> tuple[_Node, ...]:
+    name, level = key
+    return chain[level].nodes if name is None else chain[level].blocks[name]
+
+
+def _resolved(chain: Sequence[_Parsed], key: _Key, node: _Block | _Super) -> _Key | None:
+    """The definition ``node`` renders, standing in the definition ``key``: for a block,
+    that of the most derived template defining it; for ``{{ block.super }}``, the next
+    one up, if any."""
+
+    name, level = key
+    if isinstance(node, _Block):
+        return node.name, next(index for index, parsed in enumerate(chain) if node.name in parsed.blocks)
+    if name is None:
+        return None
+    parent = next((index for index in range(level + 1, len(chain)) if name in chain[index].blocks), None)
+    return None if parent is None else (name, parent)
+
+
+def _includes(chain: Sequence[_Parsed]) -> list[str]:
+    """The names the page of ``chain`` includes, each definition it renders visited once
+    however many times it is rendered: a block holding itself, which Django cannot
+    render, raises ``_Unrenderable``."""
+
+    found: list[str] = []
+    visited = {_root(chain)}
+    stack: list[tuple[_Key, Iterator[_Node]]] = [(_root(chain), iter(_definition(chain, _root(chain))))]
     while stack:
-        nodes, level, block = stack[-1]
+        key, nodes = stack[-1]
         node = next(nodes, None)
         if node is None:
             stack.pop()
-        elif isinstance(node, (str, _Include)):
-            yield node
-        elif isinstance(node, _Block):
-            if any(open_block == node.name for _, _, open_block in stack):
-                raise _Unrenderable(node.name)
-            defining = next((index for index, parsed in enumerate(chain) if node.name in parsed.blocks), None)
-            content = node.nodes if defining is None else chain[defining].blocks[node.name]
-            stack.append((iter(content), level if defining is None else defining, node.name))
-        elif block is not None:
-            parent = next((index for index in range(level + 1, len(chain)) if block in chain[index].blocks), None)
-            if parent is not None:
-                stack.append((iter(chain[parent].blocks[block]), parent, block))
+        elif isinstance(node, _Include):
+            found.append(node.name)
+        elif not isinstance(node, str) and (inner := _resolved(chain, key, node)) is not None:
+            if any(inner == open_key for open_key, _ in stack):
+                raise _Unrenderable(inner[0])
+            if inner not in visited:
+                visited.add(inner)
+                stack.append((inner, iter(_definition(chain, inner))))
+    return found
 
 
 def _loaded(words: list[str]) -> list[str]:

@@ -205,6 +205,27 @@ def test_a_page_beyond_eight_mebibytes_is_not_established(tmp_path: Path) -> Non
     assert escaped(tmp_path, doubling_includes()) == sorted(f"level{level}.html" for level in range(14))
 
 
+
+def chain_doubling_block_super(levels: int, root: str) -> dict[str, str]:
+    # level{n}.html renders its parent's block twice: its page holds the root's block
+    # content 2 ** n times.
+    templates = {"level0.html": f"{{% block body %}}{root}{{% endblock %}}"}
+    for level in range(1, levels + 1):
+        templates[f"level{level}.html"] = (
+            f"{{% extends 'level{level - 1}.html' %}}{{% block body %}}{{{{ block.super }}}}{{{{ block.super }}}}{{% endblock %}}"
+        )
+    return templates
+
+
+def test_a_block_rendering_its_parent_twice_at_every_level_is_put_together_once(tmp_path: Path) -> None:
+    # The page stays empty however deep the chain: each definition is put together once.
+    assert escaped(tmp_path, chain_doubling_block_super(30, "")) == sorted(f"level{level}.html" for level in range(31))
+
+
+def test_a_block_rendering_its_parent_twice_stops_at_eight_mebibytes(tmp_path: Path) -> None:
+    # level13.html holds 8 MiB of the root's content, level14.html beyond.
+    assert escaped(tmp_path, chain_doubling_block_super(16, "x" * 1024)) == sorted(f"level{level}.html" for level in range(14))
+
 def test_a_page_beyond_eight_mebibytes_is_listed_among_the_templates_not_read(tmp_path: Path) -> None:
     assert unread(tmp_path, doubling_includes()) == [
         "app/templates/level14.html, beyond 8 MiB once its blocks and includes are put together"
