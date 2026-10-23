@@ -464,14 +464,16 @@ class _Composition:
     """The page each template file renders, put together as Django renders it (#273):
     its extends chain from the root, each block taking the definition of the most derived
     template defining it and ``{{ block.super }}`` the next definition up, each include
-    the page of the included template, or, for a name several files have or a template
-    rendering several pages, an inserted markup standing for each (``_INSERTED``). A
+    the page of the included template, or, for a name several files have, a template
+    rendering several pages or one on the way to itself, an inserted markup standing for
+    each (``_INSERTED``): a page inserted in HTML data reads as the markup it stands for
+    there, nested to any depth, provided that markup is accepted and ends in data. A
     name several files have in the chain gives a page for each, up to ``_VARIANT_LIMIT``
     and ``_VARIANTS_SIZE_LIMIT`` together, beyond which ``too_many`` lists the template.
     A child's text outside its blocks is not part of a page. A page that cannot be put
     together is not established: a template it needs is missing or refused by its own
-    syntax, it includes or extends itself, a block of it holds itself, or it grows
-    beyond ``_PAGE_LIMIT``, which ``too_large`` then lists."""
+    syntax, it extends itself, a block of it holds itself, or it grows beyond
+    ``_PAGE_LIMIT``, which ``too_large`` then lists."""
 
     def __init__(self, found: Mapping[str, Sequence[Path]], parsed: Mapping[Path, _Parsed]) -> None:
         self._found = found
@@ -505,15 +507,15 @@ class _Composition:
                 continue
             chains = self._chains(current)
             targets = None if chains is None else self._targets(chains)
-            if targets is None or any(target in waiting for target in targets):
+            if targets is None:
                 page = None
-            elif pending := [target for target in targets if target not in self._pages]:
+            elif pending := [target for target in targets if target not in self._pages and target not in waiting]:
                 waiting.add(current)
                 stack.extend(pending)
                 continue
             else:
                 assert chains is not None
-                page = self._render(current, chains)
+                page = self._render(current, chains, waiting)
             waiting.discard(current)
             stack.pop()
             if current == path:
@@ -565,7 +567,10 @@ class _Composition:
             return None
         return targets
 
-    def _render(self, path: Path, chains: Iterable[Sequence[_Parsed]]) -> _Page | None:
+    def _render(self, path: Path, chains: Iterable[Sequence[_Parsed]], waiting: Container[Path]) -> _Page | None:
+        """The pages ``chains`` render; an include of a page being put together, on the
+        way to itself, inserted (``_INSERTED``)."""
+
         markups: list[str] = []
         inserted: set[str] = set()
         together = 0
@@ -575,11 +580,12 @@ class _Composition:
             for node in _rendered(chain):
                 if isinstance(node, _Include):
                     paths = self._found[node.name]
-                    included = self._pages[paths[0]] if len(paths) == 1 else None
+                    recursive = len(paths) == 1 and paths[0] in waiting
+                    included = self._pages[paths[0]] if len(paths) == 1 and not recursive else None
                     if included is not None and len(included.markups) == 1:
                         inserted |= included.inserted
                         node = included.markups[0]
-                    elif len(paths) == 1 and included is None:
+                    elif len(paths) == 1 and included is None and not recursive:
                         return None
                     else:
                         inserted.add(node.name)

@@ -281,6 +281,23 @@ def test_pages_of_a_template_beyond_sixteen_mebibytes_together_are_not_establish
     assert escaped(tmp_path, templates) == [f"level{level}.html" for level in range(6)]
 
 
+
+def test_a_template_including_itself_in_html_data_is_established(tmp_path: Path) -> None:
+    templates = {
+        "page.html": "{% include 'tree.html' %}",
+        "tree.html": "<li>{{ name }}<ul>{% if more %}{% include 'tree.html' %}{% endif %}</ul></li>",
+    }
+
+    assert escaped(tmp_path, templates) == ["page.html", "tree.html"]
+
+
+def test_a_template_including_itself_must_end_in_html_data(tmp_path: Path) -> None:
+    # Rendered twice, the comment it leaves open runs to the "-->" in the next title, and
+    # the variable after it names a tag.
+    templates = {"self.html": '{% if more %}{% include \'self.html\' %}{% endif %}<a title="--><{{ name }}"><!--'}
+
+    assert escaped(tmp_path, templates) == []
+
 # Markup, a variable and a template tag, as the reader sees a page.
 PIECES = ["x", " ", "<p>", "</p>", "<script>", "</script>", '<a title="', '<a onclick="', '"', ">", "<!--", "-->", "<", "</", "<!", "<!-", "-"]
 
@@ -315,3 +332,60 @@ def test_text_accepted_in_place_of_the_marker_keeps_the_page_accepted() -> None:
             spliced = templates._read_markup(prefix + content + suffix)
             assert spliced.escapes, (prefix, content, suffix)
             assert spliced.settled or not marked.settled, (prefix, content, suffix)
+
+
+def test_a_text_inserting_itself_is_accepted_only_if_its_unfoldings_are() -> None:
+    """A text holding the marker where it inserts itself, accepted and ending in HTML
+    data, stays accepted unfolded: the marker replaced by the text's own unfolding, level
+    after level, down to the text without it. Checked on every text of up to two pieces
+    around the marker."""
+
+    from coretrace_python.taint import templates
+
+    pieces = [*PIECES, templates._OUTPUT, templates._TAG]
+    short = ["", *pieces, *("".join(pair) for pair in itertools.product(pieces, repeat=2))]
+    for before, after in itertools.product(short, repeat=2):
+        reading = templates._read_markup(before + templates._INSERTED + after)
+        if not (reading.escapes and reading.settled):
+            continue
+        unfolded = before + after
+        for _ in range(3):
+            assert templates._read_markup(unfolded).escapes, (before, after)
+            unfolded = before + unfolded + after
+
+
+# Template pieces around a self-include: unfolded, the include gives way to the template's
+# own text, level after level, until the condition around it, if any, no longer holds.
+TEMPLATE_PIECES = ["x", " ", "{{ name }}", "<", "<!--", "-->", '<a title="', '"', ">", "</a>", "<script>", "</script>", "{% if c %}", "{% endif %}"]
+
+
+def test_a_template_including_itself_is_established_only_if_its_unfoldings_are(tmp_path: Path) -> None:
+    """For generated templates including themselves, established means every unfolding
+    of the recursion, written out as templates including each other down to one that
+    includes nothing, is established too."""
+
+    from coretrace_python.taint.templates import escaped_templates
+
+    rng = random.Random(273)
+    root = tmp_path / "project"
+    directory = root / "app" / "templates"
+    directory.mkdir(parents=True)
+    count, depth = 3_000, 4
+    for index in range(count):
+        before = "".join(rng.choice(TEMPLATE_PIECES) for _ in range(rng.randint(0, 3)))
+        after = "".join(rng.choice(TEMPLATE_PIECES) for _ in range(rng.randint(0, 3)))
+        # Half of them include themselves under a condition, the others without one: a
+        # tag after the include would end a comment its markup leaves open.
+        opening, closing = ("{% if more %}", "{% endif %}") if index % 2 else ("", "")
+        written = {
+            f"t{index}.html": f"{{% include 't{index}.html' %}}",
+            f"t{index}-0.html": "",
+            **{f"t{index}-{level}.html": f"{{% include 't{index}-{level - 1}.html' %}}" for level in range(1, depth)},
+        }
+        for name, included in written.items():
+            (directory / name).write_text(f"{before}{opening}{included}{closing}{after}", encoding="utf-8")
+    established = escaped_templates(root)
+    recursive = [index for index in range(count) if f"t{index}.html" in established]
+    assert recursive
+    for index in recursive:
+        assert all(f"t{index}-{level}.html" in established for level in range(depth)), index
