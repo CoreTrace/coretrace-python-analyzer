@@ -180,6 +180,21 @@ def test_templates_each_including_every_other_are_collected_in_polynomial_time(t
     assert counted(write(tmp_path, templates)) == {name: 40 for name in names}
 
 
+def test_bindings_permuted_around_a_cycle_are_joined_at_each_filter(tmp_path: Path) -> None:
+    # Each combination of the 24 names would be its own fact; joined at each filter
+    # application, the chain's 7 filters are 7 calls.
+    rotated = " ".join(f"v{index}=v{(index + 1) % 24}" for index in range(24))
+    template = (
+        "{{ v0|default:v1|default:v2|default:v3|default:v4|default:v5|default:v6|upper }}\n"
+        "{% if go %}\n"
+        "{% include 't.html' with " + rotated + " go='' %}\n"
+        "{% include 't.html' with v0=v1 v1=v0 go='' %}\n"
+        "{% endif %}\n"
+    )
+
+    assert counted(write(tmp_path, {"app/templates/t.html": template})) == {"t.html": 7}
+
+
 NAMES = [f"t{index}.html" for index in range(4)]
 
 
