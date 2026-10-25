@@ -601,7 +601,10 @@ certain of it:
 - The filter's value is a context variable, directly or through `{% for %}` and
   `{% with %}`, the templates the template includes or extends by a constant name, the
   arguments of the filters before it, or the output of a `{% filter %}` block. A name a
-  tag binds shadows the context, and `{% include ... only %}` passes none of it.
+  tag binds shadows the context, and `{% include ... only %}` passes none of it. A cycle
+  of includes is followed as far as Django may render it: a template reached again on
+  the way applies its filters to what each include binds at every level, as a template
+  including itself with other bindings, or a recursive tree, does (#284).
 - The filter renders: a template extending another renders only its blocks, which
   replace the blocks of that name in what it extends, unless the block renders
   `{{ block.super }}`, which keeps the parent's content and the filters it applies.
