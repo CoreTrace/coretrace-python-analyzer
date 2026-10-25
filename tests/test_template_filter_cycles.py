@@ -10,6 +10,9 @@ what its references reach through their bindings. Each expectation below is what
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,6 +23,7 @@ from coretrace_python.findings import Severity
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint.templates import project_templates
 
+TIMEOUT = 60
 FILTERS = "python.django.template.defaultfilters"
 STRIPTAGS = f"{FILTERS}.striptags"
 ADVISORY = Advisory(
@@ -133,3 +137,46 @@ def test_a_recursive_tree_reaches_the_children_at_every_level(tmp_path: Path) ->
             (f"{FILTERS}.upper", "node.html", 1, 14, "node.html", ("node.children",), ()),
         ]
     }
+
+
+COUNT_FILTERS = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "from coretrace_python.taint.templates import project_templates\n"
+    "print(json.dumps({name: len(found) for name, found in project_templates(Path(sys.argv[1])).filters.items()}))\n"
+)
+
+
+def counted(root: Path) -> dict[str, int]:
+    """Each template's number of filters, counted in a subprocess bounded in time."""
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", COUNT_FILTERS, str(root)], capture_output=True, text=True, check=False, timeout=TIMEOUT
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"collecting the filters did not end within {TIMEOUT} s")
+    assert completed.returncode == 0, completed.stderr
+    counts: dict[str, int] = json.loads(completed.stdout)
+    return counts
+
+
+def test_a_cycle_through_includes_doubled_at_every_level_is_collected_in_linear_time(tmp_path: Path) -> None:
+    # Cut at each template on the way, every walk inside the cycle is cut, and each is
+    # walked again on every path: 20 levels took a minute.
+    templates = {"app/templates/level0.html": "{{ name|upper }}{% if more %}{% include 'level60.html' %}{% endif %}"}
+    for level in range(1, 61):
+        templates[f"app/templates/level{level}.html"] = f"{{% include 'level{level - 1}.html' %}}" * 2
+
+    assert counted(write(tmp_path, templates)) == {f"level{level}.html": 1 for level in range(61)}
+
+
+def test_templates_each_including_every_other_are_collected_in_polynomial_time(tmp_path: Path) -> None:
+    # Each template reaches the filter of every other one, through any of their orders.
+    names = [f"t{index}.html" for index in range(40)]
+    templates = {
+        f"app/templates/{name}": "{{ v|upper }}" + "".join(f"{{% if go %}}{{% include '{other}' %}}{{% endif %}}" for other in names if other != name)
+        for name in names
+    }
+
+    assert counted(write(tmp_path, templates)) == {name: 40 for name in names}
