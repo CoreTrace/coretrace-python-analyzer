@@ -1050,14 +1050,13 @@ def project_templates(root: Path) -> ProjectTemplates:
             reason = "not found" if library is None else "not read" if library.uncertain is None else "found in several files"
             unread.append(f"{relative}:{_position(text, load.offset)[0]} loads {load.library!r}, {reason}")
     calls = tuple(FilterCall(a.symbol, a.span) for template in read.values() for a in template.applications)
-    # The filters each template reaches, by template and blocks overridden, for this
-    # analysis only (#279).
-    reached: dict[tuple[str, frozenset[str]], _Walk] = {}
+    # What each template reaches rendered on its own, for this analysis only.
+    settled = _settled(files, read)
     filters = {
         name: tuple(
             dict.fromkeys(
                 TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
-                for symbol, span, where, value, argument in _reaching(name, files, read, frozenset(), frozenset(), reached).found
+                for symbol, span, where, value, argument in settled.get((name, frozenset()), ())
             )
         )
         for name in files
@@ -1068,72 +1067,167 @@ def project_templates(root: Path) -> ProjectTemplates:
 # A filter a template's render reaches: the function, where it is applied, the template
 # applying it, and the names free in the rendered template reaching its value and argument.
 _Reached = tuple[SymbolId, SourceSpan, str, frozenset[str], frozenset[str]]
+# A template, and the blocks the templates extending it override: what rendering the
+# template applies depends on both.
+_Pair = tuple[str, frozenset[str]]
 
 
-class _Walk(NamedTuple):
-    """What a walk of a template found; whether a cycle of includes cut it short; and the
-    templates it went through."""
+class _Render(NamedTuple):
+    """What rendering a pair applies itself, and the pairs its references render, each
+    with its reference."""
 
-    found: list[_Reached]
-    cut: bool
-    walked: frozenset[str]
-
-
-_NOTHING = _Walk([], cut=False, walked=frozenset())
+    applied: tuple[_Reached, ...]
+    references: tuple[tuple[_Pair, _Reference], ...]
 
 
-def _reaching(
-    name: str,
-    files: Mapping[str, list[Path]],
-    read: Mapping[Path, _Template],
-    visiting: frozenset[str],
-    overridden: frozenset[str],
-    reached: dict[tuple[str, frozenset[str]], _Walk],
-) -> _Walk:
-    """The filters rendering the template ``name`` applies, in it and in what it includes
-    or extends, each with the template applying it and the names free in ``name`` whose
-    values reach its value and its argument; the templates extending ``name`` on the way
-    define the ``overridden`` blocks. A template already ``visiting`` cuts the walk short.
+def _renders(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) -> dict[_Pair, _Render]:
+    """Every pair the render of a template reaches, each template rendered on its own. A
+    name several files have, or a file the engine could not read, renders nothing."""
 
-    Each template is walked once for each set of blocks overridden (#279): ``reached``
-    keeps what a walk found, its first occurrences in order, which mapped through a
-    reference give the first occurrences a walk path by path gives. A walk depends on
-    ``visiting`` only where a cycle cuts it, so one cut short is not kept, and one that
-    went through a template now on the way is not reused: walked from there, it would be
-    cut at that template."""
+    def pair(name: str, overridden: frozenset[str]) -> _Pair | None:
+        paths = files.get(name, [])
+        return (name, overridden) if len(paths) == 1 and paths[0] in read else None
 
-    paths = files.get(name, [])
-    if len(paths) != 1 or paths[0] not in read:
-        return _NOTHING
-    if name in visiting:
-        return _Walk([], cut=True, walked=frozenset())
-    kept = reached.get((name, overridden))
-    if kept is not None and visiting.isdisjoint(kept.walked):
-        return kept
-    template = read[paths[0]]
-    found: dict[_Reached, None] = {}
-    cut = False
-    walked = {name}
-    for application in template.applications:
-        if template.rendered(application.blocks, overridden):
-            found.setdefault((application.symbol, application.span, name, application.value, application.argument))
-    for reference in template.references:
-        if reference.name is None:
+    renders: dict[_Pair, _Render] = {}
+    pending = [root for name in files if (root := pair(name, frozenset())) is not None]
+    while pending:
+        current = pending.pop()
+        if current in renders:
             continue
-        if reference.extends:
-            below = _reaching(reference.name, files, read, visiting | {name}, overridden | template.replaced, reached)
-        elif template.rendered(reference.blocks, overridden):
-            below = _reaching(reference.name, files, read, visiting | {name}, frozenset(), reached)
-        else:
+        name, overridden = current
+        template = read[files[name][0]]
+        applied = tuple(
+            (a.symbol, a.span, name, a.value, a.argument) for a in template.applications if template.rendered(a.blocks, overridden)
+        )
+        references: list[tuple[_Pair, _Reference]] = []
+        for reference in template.references:
+            if reference.name is None:
+                continue
+            if reference.extends:
+                below = pair(reference.name, overridden | template.replaced)
+            elif template.rendered(reference.blocks, overridden):
+                below = pair(reference.name, frozenset())
+            else:
+                continue
+            if below is not None:
+                references.append((below, reference))
+                pending.append(below)
+        renders[current] = _Render(applied, tuple(references))
+    return renders
+
+
+def _components(renders: Mapping[_Pair, _Render]) -> list[list[_Pair]]:
+    """The strongly connected components of the renders, each after every component its
+    references reach: Tarjan's algorithm, without recursion."""
+
+    index: dict[_Pair, int] = {}
+    low: dict[_Pair, int] = {}
+    stack: list[_Pair] = []
+    on_stack: set[_Pair] = set()
+    components: list[list[_Pair]] = []
+    for root in renders:
+        if root in index:
             continue
-        cut = cut or below.cut
-        walked |= below.walked
-        for symbol, span, where, value, argument in below.found:
-            found.setdefault((symbol, span, where, reference.maps(value), reference.maps(argument)))
-    walk = _Walk(list(found), cut, frozenset(walked))
-    if not cut:
-        reached[name, overridden] = walk
-    return walk
+        # Each entry is a pair and the position of the next reference to follow.
+        work = [(root, 0)]
+        while work:
+            current, position = work.pop()
+            if position == 0:
+                index[current] = low[current] = len(index)
+                stack.append(current)
+                on_stack.add(current)
+            references = renders[current].references
+            for following in range(position, len(references)):
+                below = references[following][0]
+                if below not in index:
+                    work.append((current, following + 1))
+                    work.append((below, 0))
+                    break
+                if below in on_stack:
+                    low[current] = min(low[current], index[below])
+            else:
+                if low[current] == index[current]:
+                    component: list[_Pair] = []
+                    while not component or component[-1] != current:
+                        component.append(stack.pop())
+                        on_stack.discard(component[-1])
+                    components.append(component)
+                if work:
+                    parent = work[-1][0]
+                    low[parent] = min(low[parent], low[current])
+    return components
+
+
+def _mapped(found: Iterable[_Reached], reference: _Reference) -> Iterator[_Reached]:
+    """The filters a referenced template reaches, their names mapped through the reference."""
+
+    for symbol, span, where, value, argument in found:
+        yield symbol, span, where, reference.maps(value), reference.maps(argument)
+
+
+def _canonical(found: _Reached) -> tuple[str, int, int, str, list[str], list[str]]:
+    """The order of the filters a pair in a cycle reaches beyond what it applies."""
+
+    symbol, span, where, value, argument = found
+    return where, span.start_line, span.start_column, str(symbol), sorted(value), sorted(argument)
+
+
+def _settled(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) -> dict[_Pair, list[_Reached]]:
+    """The filters the render of each pair reaches, in order (#284).
+
+    What a pair reaches is the least set holding what it applies, and what each of its
+    references reaches mapped through the reference's bindings. Those sets are finite:
+    the filters a template applies, each with sets of the names free in the project's
+    templates. They are computed component by component, each after those its
+    references reach, which are then final. In a component, every set starts empty and
+    is recomputed from its references' sets, which only grow, so it only grows too; a
+    pair is recomputed when a set it reads grew, until none grows. No cycle is cut: a
+    template including itself with other bindings reaches what Django renders at its
+    next levels.
+
+    Once the sets are settled, a pair outside any cycle lists what it applies, then what
+    each reference reaches, in order, first occurrences only, as a walk of each path
+    would. A pair in a cycle has no such first occurrence, the cycle having no start: it
+    lists what it applies, then the rest by template, position, function and names. The
+    order thus depends only on the sets and the templates, never on the order of the
+    computation."""
+
+    renders = _renders(files, read)
+    reached: dict[_Pair, list[_Reached]] = {}
+    for component in _components(renders):
+        single = component[0]
+        if len(component) == 1 and all(below != single for below, _ in renders[single].references):
+            # Outside any cycle: what its references reach is final.
+            found = dict.fromkeys(renders[single].applied)
+            for below, reference in renders[single].references:
+                found.update(dict.fromkeys(_mapped(reached[below], reference)))
+            reached[single] = list(found)
+            continue
+        members = set(component)
+        readers: dict[_Pair, list[_Pair]] = {member: [] for member in component}
+        for member in component:
+            for below, _ in renders[member].references:
+                if below in members:
+                    readers[below].append(member)
+        sets: dict[_Pair, set[_Reached]] = {member: set() for member in component}
+        pending = deque(component)
+        queued = set(component)
+        while pending:
+            member = pending.popleft()
+            queued.discard(member)
+            grown = set(renders[member].applied)
+            for below, reference in renders[member].references:
+                grown.update(_mapped(sets[below] if below in members else reached[below], reference))
+            if len(grown) > len(sets[member]):
+                sets[member] = grown
+                for reader in readers[member]:
+                    if reader not in queued:
+                        pending.append(reader)
+                        queued.add(reader)
+        for member in component:
+            applied = renders[member].applied
+            reached[member] = [*applied, *sorted(sets[member].difference(applied), key=_canonical)]
+    return reached
 
 
 def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library]) -> _Template:

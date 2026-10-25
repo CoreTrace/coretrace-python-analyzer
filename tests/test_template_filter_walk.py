@@ -1,11 +1,13 @@
-"""Acceptance tests for issue #279: the filters a template's render reaches are collected
-once for each template and set of blocks the templates extending it override.
+"""Acceptance tests for issues #279 and #284: the filters a template's render reaches are
+collected for each template and set of blocks the templates extending it override, in
+time linear in the references, and a cycle of includes is not cut (#284).
 
-They are the same as before, in the same order: which filters, where they stand, the
-template applying each, and the names of the render reaching its value and argument. The
+Where no cycle is reached, they are the same as before, in the same order: which filters,
+where they stand, the template applying each, and the names of the render reaching its
+value and argument. Through a cycle, a template reached again contributes what it
+reaches, as Django renders it when the project's conditions let the cycle turn. The
 results are kept for one analysis only, so that projects analysed one after the other do
-not share them. A result cut short by a cycle of includes is not reused, nor one that
-went through a template already on the way, where the walk would be cut.
+not share them.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
@@ -161,8 +164,9 @@ def test_includes_doubled_at_every_level_are_walked_in_linear_time(tmp_path: Pat
 
 
 # A child extending a parent that includes it back, inside the block the child overrides.
-# The walk of the parent includes the child, whose extends leads back to the parent: a
-# cycle, cut there. Whichever of the two is walked first, each gets the filters of main.
+# Django renders the parent through the child with that block overridden, which renders
+# the child's block instead of the include: the parent's striptags receives other.
+# Whichever of the two is walked first, each gets the filters Django applies.
 def cycle_through_an_overridden_block(child: str, parent: str) -> dict[str, str]:
     return {
         child: "{% extends '" + parent + "' %}\n{% block body %}{{ v|upper }}{% endblock %}\n",
@@ -186,23 +190,42 @@ def test_a_child_its_parent_includes_back_gets_the_same_filters_whichever_is_wal
         parent: [
             (f"{FILTERS}.striptags", parent, 1, 6, parent, ("v",), ()),
             (f"{FILTERS}.upper", child, 2, 22, child, ("other",), ()),
+            (f"{FILTERS}.striptags", parent, 1, 6, parent, ("other",), ()),
         ],
     }
 
 
-def path_by_path(
+# The walk path by path lets each cycle turn 2, then 3 times, within this many steps.
+REPEATS = (2, 3)
+BUDGET = 20_000
+# Projects the walk does not settle within its budget: 10 with this seed.
+UNVERIFIED = 15
+
+
+class Unverified(Exception):
+    """The walk path by path exceeded its budget: it verifies nothing of the project."""
+
+
+def unrolled(
     name: str,
     files: dict[str, list[Path]],
     read: dict[Path, Any],
-    visiting: frozenset[str],
+    repeats: int,
+    budget: list[int],
+    visiting: tuple[tuple[str, frozenset[str]], ...] = (),
     overridden: frozenset[str] = frozenset(),
 ) -> Iterator[tuple[Any, ...]]:
-    """The walk of main, every path through includes and extends followed, a cycle cut at
-    a template already on the way: the reference the walk of the engine must equal."""
+    """Every path through includes and extends, where each template, with the blocks
+    overridden, may come back ``repeats`` times on the way: what Django renders when the
+    project's conditions let each cycle turn that many times."""
 
     paths = files.get(name, [])
-    if len(paths) != 1 or paths[0] not in read or name in visiting:
+    here = (name, overridden)
+    if len(paths) != 1 or paths[0] not in read or visiting.count(here) >= repeats:
         return
+    budget[0] -= 1
+    if budget[0] < 0:
+        raise Unverified
     template = read[paths[0]]
     for application in template.applications:
         if template.rendered(application.blocks, overridden):
@@ -211,17 +234,18 @@ def path_by_path(
         if reference.name is None:
             continue
         if reference.extends:
-            found = path_by_path(reference.name, files, read, visiting | {name}, overridden | template.replaced)
+            found = unrolled(reference.name, files, read, repeats, budget, (*visiting, here), overridden | template.replaced)
         elif template.rendered(reference.blocks, overridden):
-            found = path_by_path(reference.name, files, read, visiting | {name})
+            found = unrolled(reference.name, files, read, repeats, budget, (*visiting, here))
         else:
             continue
         for symbol, span, where, value, argument in found:
             yield symbol, span, where, reference.maps(value), reference.maps(argument)
 
 
-def reference_filters(root: Path) -> dict[str, list[TemplateFilter]]:
-    """The filters of each template, as project_templates gives them, from the walk of main."""
+def unrolled_filters(root: Path, repeats: int) -> dict[str, list[TemplateFilter]]:
+    """The filters of each template, as project_templates gives them, from the walk path by
+    path letting each cycle turn ``repeats`` times."""
 
     found = {path: tuple(templates._names(path.relative_to(root).parts)) for path in discover_files(root)}
     libraries = templates._libraries(found)
@@ -235,11 +259,29 @@ def reference_filters(root: Path) -> dict[str, list[TemplateFilter]]:
         name: list(
             dict.fromkeys(
                 TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
-                for symbol, span, where, value, argument in path_by_path(name, files, read, frozenset())
+                for symbol, span, where, value, argument in unrolled(name, files, read, repeats, [BUDGET])
             )
         )
         for name in files
     }
+
+
+def reaches_a_cycle(name: str, texts: dict[str, str]) -> bool:
+    """Whether a template ``name`` includes or extends, or ``name`` itself, reaches itself."""
+
+    edges = {template: set(re.findall(r"\{% (?:include|extends) '([^']+)'", text)) for template, text in texts.items()}
+
+    def reached(start: str) -> set[str]:
+        found: set[str] = set()
+        pending = list(edges.get(start, ()))
+        while pending:
+            current = pending.pop()
+            if current not in found:
+                found.add(current)
+                pending.extend(edges.get(current, ()))
+        return found
+
+    return any(template in reached(template) for template in reached(name) | {name})
 
 
 NAMES = [f"t{index}.html" for index in range(4)]
@@ -262,11 +304,15 @@ def generated(rng: random.Random, fresh: Iterator[str], depth: int = 0) -> str:
     return "".join(rng.choice(pieces)() for _ in range(rng.randint(1, 3)))
 
 
-def test_the_walk_gives_the_filters_of_main_on_inheritance_overridden_blocks_and_cycles(tmp_path: Path) -> None:
+def test_the_filters_are_those_of_every_path_with_each_cycle_turned_until_it_settles(tmp_path: Path) -> None:
     """Generated projects of four templates extending and including one another, cycles
-    among them, each walked by the engine and by the walk of main, path by path."""
+    among them, each walked by the engine and path by path, each cycle turned 2, then 3
+    times. Where both give the same sets, the walk has settled: the engine must give those
+    sets, and the same lists, order included, for the templates no cycle reaches. A project
+    the walk does not settle within its budget is not verified, and counted."""
 
     rng = random.Random(279)
+    unverified = 0
     for index in range(1_500):
         fresh = (f"n{number}" for number in itertools.count())
         texts = {}
@@ -274,6 +320,18 @@ def test_the_walk_gives_the_filters_of_main_on_inheritance_overridden_blocks_and
             extends = "{% extends '" + rng.choice(NAMES) + "' %}" if rng.random() < 0.5 else ""
             texts[name] = extends + generated(rng, fresh) + "\n"
         root = write(tmp_path / str(index), texts)
-        filters = project_templates(root).filters
+        filters = {name: list(found) for name, found in project_templates(root).filters.items()}
+        try:
+            fewer, more = (unrolled_filters(root, repeats) for repeats in REPEATS)
+        except Unverified:
+            unverified += 1
+            continue
+        if {name: set(found) for name, found in fewer.items()} != {name: set(found) for name, found in more.items()}:
+            unverified += 1
+            continue
 
-        assert {name: list(found) for name, found in filters.items()} == reference_filters(root), texts
+        assert {name: set(found) for name, found in filters.items()} == {name: set(found) for name, found in more.items()}, texts
+        for name, found in filters.items():
+            if not reaches_a_cycle(name, texts):
+                assert found == more[name], texts
+    assert unverified <= UNVERIFIED
