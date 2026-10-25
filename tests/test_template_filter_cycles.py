@@ -10,17 +10,24 @@ what its references reach through their bindings. Each expectation below is what
 
 from __future__ import annotations
 
+import itertools
 import json
+import random
 import subprocess
 import sys
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from coretrace_python import engine
 from coretrace_python.dependency import Advisory, AdvisoryEntryPoint, dump_advisories
 from coretrace_python.findings import Severity
+from coretrace_python.interprocedural import discover_files
 from coretrace_python.semantic.symbols import SymbolId
+from coretrace_python.source import SourceId
+from coretrace_python.taint import templates
 from coretrace_python.taint.templates import project_templates
 
 TIMEOUT = 60
@@ -180,3 +187,62 @@ def test_templates_each_including_every_other_are_collected_in_polynomial_time(t
     }
 
     assert counted(write(tmp_path, templates)) == {name: 40 for name in names}
+
+
+NAMES = [f"t{index}.html" for index in range(4)]
+
+
+def generated(rng: random.Random, fresh: Iterator[str], depth: int = 0) -> str:
+    """Markup applying filters, including other templates, inside blocks of two names and
+    outside them, each include binding the variable to a name of its own."""
+
+    pieces: list[Callable[[], str]] = [
+        lambda: "{{ v|upper }}",
+        lambda: "{{ v|striptags }}",
+        lambda: "{% include '" + rng.choice(NAMES) + "' %}",
+        lambda: "{% include '" + rng.choice(NAMES) + "' with v=" + next(fresh) + " %}",
+    ]
+    if depth < 2:
+        block = rng.choice(["body", "side"])
+        pieces.append(lambda: "{% block " + block + " %}" + generated(rng, fresh, depth + 1) + "{% endblock %}")
+    return "".join(rng.choice(pieces)() for _ in range(rng.randint(1, 3)))
+
+
+def scopes(root: Path) -> tuple[dict[str, list[Path]], dict[Path, Any]]:
+    """The template files of each name under ``root``, and what each file reads as."""
+
+    found = {path: tuple(templates._names(path.relative_to(root).parts)) for path in discover_files(root)}
+    libraries = templates._libraries(found)
+    paths = sorted(path for path, names in found.items() if names)
+    files: dict[str, list[Path]] = {}
+    for path in paths:
+        for name in found[path]:
+            files.setdefault(name, []).append(path)
+    read = {path: templates._read_scopes(text, SourceId(str(path)), libraries) for path in paths if (text := templates._text(path))}
+    return files, read
+
+
+def test_the_filters_are_a_fixpoint_whatever_order_the_templates_are_computed_in(tmp_path: Path) -> None:
+    """On generated projects of four templates extending and including one another, cycles
+    among them: what each template, with the blocks overridden, reaches is what it applies
+    with what its references reach mapped through them, and the lists are the same, order
+    included, whatever order the templates are inserted in."""
+
+    rng = random.Random(284)
+    for index in range(500):
+        fresh = (f"n{number}" for number in itertools.count())
+        texts = {}
+        for name in NAMES:
+            extends = "{% extends '" + rng.choice(NAMES) + "' %}" if rng.random() < 0.5 else ""
+            texts[f"app/templates/{name}"] = extends + generated(rng, fresh) + "\n"
+        files, read = scopes(write(tmp_path / str(index), texts))
+        renders = templates._renders(files, read)
+        settled = templates._settled(files, read)
+
+        for pair, render in renders.items():
+            reached = (set(templates._mapped(settled[below], reference)) for below, reference in render.references)
+            assert set(settled[pair]) == set(render.applied).union(*reached), texts
+        for shuffle in range(3):
+            names = list(files)
+            random.Random(shuffle).shuffle(names)
+            assert templates._settled({name: files[name] for name in names}, read) == settled, texts
