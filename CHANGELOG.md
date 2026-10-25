@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Templates
+
+- A cycle of includes no longer stops the collection of the filters a render reaches
+  (#284). A template reached again on the way contributes what it reaches, its names
+  mapped through each include, as Django renders it when the project's conditions let
+  the cycle turn: a template including itself with other bindings, a recursive tree, or
+  a parent including the child that extends it. A filter reached this way may be
+  reported as `exploitable-vulnerability` where it was not. Where no cycle is reached,
+  the filters and their order do not change.
+
+### Performance
+
+- Templates in a cycle of includes are no longer walked again on every path (#284): 20
+  levels of doubled includes closed into a cycle took 56 s, and 40 templates including
+  one another more than a minute; both now take less than a second.
+
 ## 0.24.0 (2026-10-23)
 
 ### Compatibility and migration
