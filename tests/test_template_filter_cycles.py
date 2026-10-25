@@ -15,7 +15,7 @@ import json
 import random
 import subprocess
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -123,14 +123,10 @@ def described(root: Path) -> dict[str, list[tuple[str, str, int, int, str, tuple
 
 def test_a_template_including_itself_with_other_bindings_reaches_them(tmp_path: Path) -> None:
     # Django applies upper to v, then, one level down, to n0; the condition ends there.
+    # In a cycle, the names reaching a filter application are joined into one call.
     root = write(tmp_path, {"app/templates/t.html": "{{ v|upper }}{% if go %}{% include 't.html' with v=n0 go='' %}{% endif %}\n"})
 
-    assert described(root) == {
-        "t.html": [
-            (f"{FILTERS}.upper", "t.html", 1, 6, "t.html", ("v",), ()),
-            (f"{FILTERS}.upper", "t.html", 1, 6, "t.html", ("n0",), ()),
-        ]
-    }
+    assert described(root) == {"t.html": [(f"{FILTERS}.upper", "t.html", 1, 6, "t.html", ("n0", "v"), ())]}
 
 
 def test_a_recursive_tree_reaches_the_children_at_every_level(tmp_path: Path) -> None:
@@ -138,12 +134,7 @@ def test_a_recursive_tree_reaches_the_children_at_every_level(tmp_path: Path) ->
     node = "{{ node.name|upper }}{% for child in node.children %}{% include 'node.html' with node=child %}{% endfor %}\n"
     root = write(tmp_path, {"app/templates/node.html": node})
 
-    assert described(root) == {
-        "node.html": [
-            (f"{FILTERS}.upper", "node.html", 1, 14, "node.html", ("node.name",), ()),
-            (f"{FILTERS}.upper", "node.html", 1, 14, "node.html", ("node.children",), ()),
-        ]
-    }
+    assert described(root) == {"node.html": [(f"{FILTERS}.upper", "node.html", 1, 14, "node.html", ("node.children", "node.name"), ())]}
 
 
 COUNT_FILTERS = (
@@ -222,11 +213,22 @@ def scopes(root: Path) -> tuple[dict[str, list[Path]], dict[Path, Any]]:
     return files, read
 
 
+def joined(found: Iterable[tuple[Any, ...]]) -> dict[tuple[Any, ...], tuple[frozenset[str], frozenset[str]]]:
+    """The names reaching the value and the argument of each filter application, joined."""
+
+    names: dict[tuple[Any, ...], tuple[frozenset[str], frozenset[str]]] = {}
+    for symbol, span, where, value, argument in found:
+        values, arguments = names.get((symbol, span, where), (frozenset(), frozenset()))
+        names[symbol, span, where] = values | value, arguments | argument
+    return names
+
+
 def test_the_filters_are_a_fixpoint_whatever_order_the_templates_are_computed_in(tmp_path: Path) -> None:
     """On generated projects of four templates extending and including one another, cycles
     among them: what each template, with the blocks overridden, reaches is what it applies
-    with what its references reach mapped through them, and the lists are the same, order
-    included, whatever order the templates are inserted in."""
+    with what its references reach mapped through them, exactly outside cycles and joined
+    by filter application in them, and the lists are the same, order included, whatever
+    order the templates are inserted in."""
 
     rng = random.Random(284)
     for index in range(500):
@@ -238,10 +240,20 @@ def test_the_filters_are_a_fixpoint_whatever_order_the_templates_are_computed_in
         files, read = scopes(write(tmp_path / str(index), texts))
         renders = templates._renders(files, read)
         settled = templates._settled(files, read)
+        cyclic = {
+            pair
+            for component in templates._components(renders)
+            for pair in component
+            if len(component) > 1 or any(below == pair for below, _ in renders[pair].references)
+        }
 
         for pair, render in renders.items():
-            reached = (set(templates._mapped(settled[below], reference)) for below, reference in render.references)
-            assert set(settled[pair]) == set(render.applied).union(*reached), texts
+            reached = [fact for below, reference in render.references for fact in templates._mapped(settled[below], reference)]
+            if pair in cyclic:
+                assert len(settled[pair]) == len(joined(settled[pair])), texts
+                assert joined(settled[pair]) == joined([*render.applied, *reached]), texts
+            else:
+                assert set(settled[pair]) == {*render.applied, *reached}, texts
         for shuffle in range(3):
             names = list(files)
             random.Random(shuffle).shuffle(names)

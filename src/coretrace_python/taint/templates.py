@@ -1172,24 +1172,49 @@ def _canonical(found: _Reached) -> tuple[str, int, int, str, list[str], list[str
     return where, span.start_line, span.start_column, str(symbol), sorted(value), sorted(argument)
 
 
+# A filter application: the function, where it is applied, and the template applying it.
+_Site = tuple[SymbolId, SourceSpan, str]
+
+
+def _joined(found: Iterable[_Reached], into: dict[_Site, tuple[frozenset[str], frozenset[str]]]) -> None:
+    """Join into ``into`` the names reaching the value and the argument of each filter
+    application ``found`` holds."""
+
+    for symbol, span, where, value, argument in found:
+        values, arguments = into.get((symbol, span, where), (frozenset(), frozenset()))
+        into[symbol, span, where] = values | value, arguments | argument
+
+
+def _facts(names: Mapping[_Site, tuple[frozenset[str], frozenset[str]]], sites: Iterable[_Site]) -> list[_Reached]:
+    """The filters at ``sites``, each with the names joined at its application."""
+
+    return [(symbol, span, where, *names[symbol, span, where]) for symbol, span, where in sites]
+
+
 def _settled(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) -> dict[_Pair, list[_Reached]]:
     """The filters the render of each pair reaches, in order (#284).
 
     What a pair reaches is the least set holding what it applies, and what each of its
-    references reaches mapped through the reference's bindings. Those sets are finite:
-    the filters a template applies, each with sets of the names free in the project's
-    templates. They are computed component by component, each after those its
-    references reach, which are then final. In a component, every set starts empty and
-    is recomputed from its references' sets, which only grow, so it only grows too; a
-    pair is recomputed when a set it reads grew, until none grows. No cycle is cut: a
-    template including itself with other bindings reaches what Django renders at its
-    next levels.
+    references reaches mapped through the reference's bindings. The sets are computed
+    component by component, each after those its references reach, which are then
+    final. No cycle is cut: a template including itself with other bindings reaches what
+    Django renders at its next levels.
 
-    Once the sets are settled, a pair outside any cycle lists what it applies, then what
+    In a cycle, the names reaching the value and the argument of each filter application
+    are joined: one fact per application, whatever the paths that bring each name. The
+    analysis reads those names position by position, joining what each brings, so the
+    join loses nothing, and it keeps the facts few: bindings permuted around a cycle
+    would otherwise make one fact of every combination of names. In a component, every
+    pair starts with no names and is recomputed from its references' facts; names only
+    join, and the applications and names of a project are finitely many, so the names of
+    an application grow at most once for each name. A pair is recomputed when a fact it
+    reads grew, until none grows.
+
+    Once the facts are settled, a pair outside any cycle lists what it applies, then what
     each reference reaches, in order, first occurrences only, as a walk of each path
     would. A pair in a cycle has no such first occurrence, the cycle having no start: it
     lists what it applies, then the rest by template, position, function and names. The
-    order thus depends only on the sets and the templates, never on the order of the
+    order thus depends only on the facts and the templates, never on the order of the
     computation."""
 
     renders = _renders(files, read)
@@ -1209,24 +1234,31 @@ def _settled(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) ->
             for below, _ in renders[member].references:
                 if below in members:
                     readers[below].append(member)
-        sets: dict[_Pair, set[_Reached]] = {member: set() for member in component}
+        names: dict[_Pair, dict[_Site, tuple[frozenset[str], frozenset[str]]]] = {member: {} for member in component}
+        sizes = dict.fromkeys(component, 0)
         pending = deque(component)
         queued = set(component)
         while pending:
             member = pending.popleft()
             queued.discard(member)
-            grown = set(renders[member].applied)
+            grown: dict[_Site, tuple[frozenset[str], frozenset[str]]] = {}
+            _joined(renders[member].applied, grown)
             for below, reference in renders[member].references:
-                grown.update(_mapped(sets[below] if below in members else reached[below], reference))
-            if len(grown) > len(sets[member]):
-                sets[member] = grown
+                below_found = _facts(names[below], names[below]) if below in members else reached[below]
+                _joined(_mapped(below_found, reference), grown)
+            # The names only join, so the count of applications and names only grows.
+            size = sum(1 + len(values) + len(arguments) for values, arguments in grown.values())
+            if size > sizes[member]:
+                names[member], sizes[member] = grown, size
                 for reader in readers[member]:
                     if reader not in queued:
                         pending.append(reader)
                         queued.add(reader)
         for member in component:
-            applied = renders[member].applied
-            reached[member] = [*applied, *sorted(sets[member].difference(applied), key=_canonical)]
+            applied = _facts(names[member], dict.fromkeys((s, span, w) for s, span, w, _, _ in renders[member].applied))
+            sites = {(s, span, w) for s, span, w, _, _ in applied}
+            rest = _facts(names[member], (site for site in names[member] if site not in sites))
+            reached[member] = [*applied, *sorted(rest, key=_canonical)]
     return reached
 
 

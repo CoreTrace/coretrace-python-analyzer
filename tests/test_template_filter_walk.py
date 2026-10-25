@@ -304,12 +304,25 @@ def generated(rng: random.Random, fresh: Iterator[str], depth: int = 0) -> str:
     return "".join(rng.choice(pieces)() for _ in range(rng.randint(1, 3)))
 
 
+def joined(found: list[TemplateFilter]) -> dict[tuple[Any, ...], tuple[set[str], set[str]]]:
+    """The names reaching the value and the argument of each filter application, joined
+    over the paths that bring them: what the analysis reads of a template's filters."""
+
+    names: dict[tuple[Any, ...], tuple[set[str], set[str]]] = {}
+    for found_filter in found:
+        values, arguments = names.setdefault((found_filter.symbol, found_filter.location, found_filter.template), (set(), set()))
+        values.update(found_filter.value)
+        arguments.update(found_filter.argument)
+    return names
+
+
 def test_the_filters_are_those_of_every_path_with_each_cycle_turned_until_it_settles(tmp_path: Path) -> None:
     """Generated projects of four templates extending and including one another, cycles
     among them, each walked by the engine and path by path, each cycle turned 2, then 3
-    times. Where both give the same sets, the walk has settled: the engine must give those
-    sets, and the same lists, order included, for the templates no cycle reaches. A project
-    the walk does not settle within its budget is not verified, and counted."""
+    times. Where both give the same names at each filter application, the walk has
+    settled: the engine must give those names, and the same lists, order included, for
+    the templates no cycle reaches. A project the walk does not settle within its budget
+    is not verified, and counted."""
 
     rng = random.Random(279)
     unverified = 0
@@ -326,11 +339,11 @@ def test_the_filters_are_those_of_every_path_with_each_cycle_turned_until_it_set
         except Unverified:
             unverified += 1
             continue
-        if {name: set(found) for name, found in fewer.items()} != {name: set(found) for name, found in more.items()}:
+        if {name: joined(found) for name, found in fewer.items()} != {name: joined(found) for name, found in more.items()}:
             unverified += 1
             continue
 
-        assert {name: set(found) for name, found in filters.items()} == {name: set(found) for name, found in more.items()}, texts
+        assert {name: joined(found) for name, found in filters.items()} == {name: joined(found) for name, found in more.items()}, texts
         for name, found in filters.items():
             if not reaches_a_cycle(name, texts):
                 assert found == more[name], texts
