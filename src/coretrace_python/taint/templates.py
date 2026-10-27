@@ -989,14 +989,16 @@ class _Library:
 @dataclass(frozen=True)
 class _Template:
     """What one template file applies and references, the ``blocks`` it defines, and
-    among them the ``extended`` ones, which render ``{{ block.super }}``, and the loads
-    under which it applies a filter the engine could not resolve."""
+    among them the ``extended`` ones, which render ``{{ block.super }}``, the loads under
+    which it applies a filter the engine could not resolve, and the block each block
+    stands in, None for one standing in none (#285)."""
 
     applications: tuple[_Application, ...]
     references: tuple[_Reference, ...]
     blocks: frozenset[str]
     extended: frozenset[str] = frozenset()
     unresolved: tuple[_Load, ...] = ()
+    enclosing: Mapping[str, str | None] = field(default_factory=dict)
 
     def rendered(self, blocks: tuple[str, ...], overridden: frozenset[str]) -> bool:
         """Whether what stands in ``blocks`` renders when a template extending this one
@@ -1275,6 +1277,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
     opened: list[str] = []
     defined: set[str] = set()
     extended: set[str] = set()
+    enclosing: dict[str, str | None] = {}
     scopes: list[dict[str, frozenset[str]]] = [{}]
     blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
     loaded: list[_Load] = []
@@ -1360,6 +1363,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
             else:
                 values.setdefault(word, reached)
         if name == "block" and len(words) > 1:
+            enclosing.setdefault(words[1], opened[-1] if opened else None)
             opened.append(words[1])
             defined.add(words[1])
         elif name == "endblock" and opened:
@@ -1388,7 +1392,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
             target = words[words.index("as", 1) + 1]
             scopes[-1][target] = values.get(words[1], frozenset()) if name == "regroup" else frozenset()
     return _Template(
-        tuple(applications), tuple(references), frozenset(defined), frozenset(extended), tuple(unresolved)
+        tuple(applications), tuple(references), frozenset(defined), frozenset(extended), tuple(unresolved), enclosing
     )
 
 
