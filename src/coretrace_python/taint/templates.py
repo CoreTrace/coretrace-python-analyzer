@@ -1099,11 +1099,12 @@ def _page(name: str, readable: Callable[[str | None], _Template | None]) -> _Ren
             break
         current = parent.name
     defining: dict[str, list[int]] = {}
+    held: dict[tuple[int, str | None], list[str]] = {}
     for level, (_, template) in enumerate(chain):
         for block in template.blocks:
             defining.setdefault(block, []).append(level)
-    root = chain[-1][1]
-    pending = [block for block in root.blocks if root.enclosing.get(block) is None] if known else list(defining)
+            held.setdefault((level, template.enclosing.get(block)), []).append(block)
+    pending = list(held.get((len(chain) - 1, None), ())) if known else list(defining)
     placed: set[str] = set()
     shown: set[tuple[int, str]] = set()
     while pending:
@@ -1113,9 +1114,8 @@ def _page(name: str, readable: Callable[[str | None], _Template | None]) -> _Ren
         placed.add(block)
         for level in defining.get(block, []):
             shown.add((level, block))
-            template = chain[level][1]
-            pending.extend(inner for inner in template.blocks if template.enclosing.get(inner) == block)
-            if block not in template.extended:
+            pending.extend(held.get((level, block), ()))
+            if block not in chain[level][1].extended:
                 break
 
     def renders(level: int, blocks: tuple[str, ...]) -> bool:

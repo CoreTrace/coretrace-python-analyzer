@@ -12,6 +12,9 @@ establish. Each expectation below is what Django 5.1.15 applies to the same temp
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,6 +25,7 @@ from coretrace_python.findings import Severity
 from coretrace_python.semantic.symbols import SymbolId
 from coretrace_python.taint.templates import project_templates
 
+TIMEOUT = 60
 FILTERS = "python.django.template.defaultfilters"
 STRIPTAGS = f"{FILTERS}.striptags"
 ADVISORY = Advisory(
@@ -207,3 +211,27 @@ def test_a_chain_lists_its_filters_in_the_order_of_a_walk_through_its_extends(tm
     )
 
     assert described(root, "page.html") == [("striptags", "b.html", 1, 6, ("v",)), ("upper", "a.html", 1, 6, ("v",))]
+
+
+COUNT_FILTERS = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "from coretrace_python.taint.templates import project_templates\n"
+    "print(json.dumps({name: len(found) for name, found in project_templates(Path(sys.argv[1])).filters.items()}))\n"
+)
+
+
+def test_the_blocks_of_a_template_are_placed_in_linear_time(tmp_path: Path) -> None:
+    # Looking up the blocks a placed block holds among all the template's blocks made
+    # placing 50,000 blocks take minutes. Only the last one applies a filter.
+    blocks = "".join(f"{{% block b{i} %}}{{% endblock %}}" for i in range(50_000))
+    root = write(tmp_path, {"page.html": blocks + "{% block last %}{{ v|upper }}{% endblock %}"})
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", COUNT_FILTERS, str(root)], capture_output=True, text=True, check=False, timeout=TIMEOUT
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"placing the blocks did not end within {TIMEOUT} s")
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {"page.html": 1}
