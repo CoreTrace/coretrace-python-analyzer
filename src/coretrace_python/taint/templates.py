@@ -53,7 +53,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_left
 from collections import deque
-from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -989,29 +989,16 @@ class _Library:
 @dataclass(frozen=True)
 class _Template:
     """What one template file applies and references, the ``blocks`` it defines, and
-    among them the ``extended`` ones, which render ``{{ block.super }}``, and the loads
-    under which it applies a filter the engine could not resolve."""
+    among them the ``extended`` ones, which render ``{{ block.super }}``, the loads under
+    which it applies a filter the engine could not resolve, and the block each block
+    stands in, None for one standing in none (#285)."""
 
     applications: tuple[_Application, ...]
     references: tuple[_Reference, ...]
     blocks: frozenset[str]
     extended: frozenset[str] = frozenset()
     unresolved: tuple[_Load, ...] = ()
-
-    def rendered(self, blocks: tuple[str, ...], overridden: frozenset[str]) -> bool:
-        """Whether what stands in ``blocks`` renders when a template extending this one
-        defines the ``overridden`` blocks: a template extending another renders only
-        its blocks, where they replace the blocks of that name in what it extends."""
-
-        extends = any(reference.extends for reference in self.references)
-        return not overridden.intersection(blocks) and (bool(blocks) or not extends)
-
-    @property
-    def replaced(self) -> frozenset[str]:
-        """The blocks this template replaces in what it extends: those it defines
-        without rendering ``{{ block.super }}``, which keeps the parent's content."""
-
-        return self.blocks - self.extended
+    enclosing: Mapping[str, str | None] = field(default_factory=dict)
 
 
 def project_templates(root: Path) -> ProjectTemplates:
@@ -1056,7 +1043,7 @@ def project_templates(root: Path) -> ProjectTemplates:
         name: tuple(
             dict.fromkeys(
                 TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
-                for symbol, span, where, value, argument in settled.get((name, frozenset()), ())
+                for symbol, span, where, value, argument in settled.get(name, ())
             )
         )
         for name in files
@@ -1067,68 +1054,115 @@ def project_templates(root: Path) -> ProjectTemplates:
 # A filter a template's render reaches: the function, where it is applied, the template
 # applying it, and the names free in the rendered template reaching its value and argument.
 _Reached = tuple[SymbolId, SourceSpan, str, frozenset[str], frozenset[str]]
-# A template, and the blocks the templates extending it override: what rendering the
-# template applies depends on both.
-_Pair = tuple[str, frozenset[str]]
 
 
 class _Render(NamedTuple):
-    """What rendering a pair applies itself, and the pairs its references render, each
+    """What rendering a template on its own applies, and the templates it includes, each
     with its reference."""
 
     applied: tuple[_Reached, ...]
-    references: tuple[tuple[_Pair, _Reference], ...]
+    references: tuple[tuple[str, _Reference], ...]
 
 
-def _renders(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) -> dict[_Pair, _Render]:
-    """Every pair the render of a template reaches, each template rendered on its own. A
-    name several files have, or a file the engine could not read, renders nothing."""
+def _page(name: str, readable: Callable[[str | None], _Template | None]) -> _Render:
+    """What rendering ``name`` on its own applies and includes, its extends chain put
+    together as Django puts it (#285).
 
-    def pair(name: str, overridden: frozenset[str]) -> _Pair | None:
-        paths = files.get(name, [])
-        return (name, overridden) if len(paths) == 1 and paths[0] in read else None
+    The chain runs from ``name`` up to its root, the template extending none. The root's
+    blocks standing in no other block are placed; a placed block renders its most derived
+    definition, then, while a definition renders ``{{ block.super }}``, the next one up;
+    the blocks a rendered definition holds are placed in turn. A filter or an include
+    renders when the definition of the innermost block it stands in renders; outside
+    every block, only in the root, Django ignoring a child's text outside its blocks.
 
-    renders: dict[_Pair, _Render] = {}
-    pending = [root for name in files if (root := pair(name, frozenset())) is not None]
+    When the chain reaches no known root, as through a parent named by an expression, a
+    name several files have, a file the engine cannot read, or an extends cycle Django
+    refuses, every block of the chain is placed: no filter is dropped on a placement the
+    engine cannot establish.
+
+    What the chain applies is listed from ``name`` up to the root, and what it includes
+    from the root down to ``name``: the order of a walk of each path through extends."""
+
+    chain: list[tuple[str, _Template]] = []
+    seen: set[str] = set()
+    known = True
+    current: str | None = name
+    while True:
+        template = readable(current)
+        if current is None or template is None or current in seen:
+            known = False
+            break
+        chain.append((current, template))
+        seen.add(current)
+        parent = next((reference for reference in template.references if reference.extends), None)
+        if parent is None:
+            break
+        current = parent.name
+    defining: dict[str, list[int]] = {}
+    held: dict[tuple[int, str | None], list[str]] = {}
+    for level, (_, template) in enumerate(chain):
+        for block in template.blocks:
+            defining.setdefault(block, []).append(level)
+            held.setdefault((level, template.enclosing.get(block)), []).append(block)
+    pending = list(held.get((len(chain) - 1, None), ())) if known else list(defining)
+    placed: set[str] = set()
+    shown: set[tuple[int, str]] = set()
     while pending:
-        current = pending.pop()
-        if current in renders:
+        block = pending.pop()
+        if block in placed:
             continue
-        name, overridden = current
-        template = read[files[name][0]]
-        applied = tuple(
-            (a.symbol, a.span, name, a.value, a.argument) for a in template.applications if template.rendered(a.blocks, overridden)
-        )
-        references: list[tuple[_Pair, _Reference]] = []
-        for reference in template.references:
-            if reference.name is None:
-                continue
-            if reference.extends:
-                below = pair(reference.name, overridden | template.replaced)
-            elif template.rendered(reference.blocks, overridden):
-                below = pair(reference.name, frozenset())
-            else:
-                continue
-            if below is not None:
-                references.append((below, reference))
-                pending.append(below)
-        renders[current] = _Render(applied, tuple(references))
-    return renders
+        placed.add(block)
+        for level in defining.get(block, []):
+            shown.add((level, block))
+            pending.extend(held.get((level, block), ()))
+            if block not in chain[level][1].extended:
+                break
+
+    def renders(level: int, blocks: tuple[str, ...]) -> bool:
+        return (level, blocks[-1]) in shown if blocks else known and level == len(chain) - 1
+
+    applied = tuple(
+        (application.symbol, application.span, template_name, application.value, application.argument)
+        for level, (template_name, template) in enumerate(chain)
+        for application in template.applications
+        if renders(level, application.blocks)
+    )
+    references = tuple(
+        (reference.name, reference)
+        for level in reversed(range(len(chain)))
+        for reference in chain[level][1].references
+        if not reference.extends
+        and reference.name is not None
+        and readable(reference.name) is not None
+        and renders(level, reference.blocks)
+    )
+    return _Render(applied, references)
 
 
-def _components(renders: Mapping[_Pair, _Render]) -> list[list[_Pair]]:
+def _renders(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) -> dict[str, _Render]:
+    """What rendering each template on its own applies and includes. A name several files
+    have, or a file the engine could not read, renders nothing."""
+
+    def readable(name: str | None) -> _Template | None:
+        paths = files.get(name or "", [])
+        return read[paths[0]] if len(paths) == 1 and paths[0] in read else None
+
+    return {name: _page(name, readable) for name in files if readable(name) is not None}
+
+
+def _components(renders: Mapping[str, _Render]) -> list[list[str]]:
     """The strongly connected components of the renders, each after every component its
     references reach: Tarjan's algorithm, without recursion."""
 
-    index: dict[_Pair, int] = {}
-    low: dict[_Pair, int] = {}
-    stack: list[_Pair] = []
-    on_stack: set[_Pair] = set()
-    components: list[list[_Pair]] = []
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    components: list[list[str]] = []
     for root in renders:
         if root in index:
             continue
-        # Each entry is a pair and the position of the next reference to follow.
+        # Each entry is a template and the position of the next reference to follow.
         work = [(root, 0)]
         while work:
             current, position = work.pop()
@@ -1147,7 +1181,7 @@ def _components(renders: Mapping[_Pair, _Render]) -> list[list[_Pair]]:
                     low[current] = min(low[current], index[below])
             else:
                 if low[current] == index[current]:
-                    component: list[_Pair] = []
+                    component: list[str] = []
                     while not component or component[-1] != current:
                         component.append(stack.pop())
                         on_stack.discard(component[-1])
@@ -1166,7 +1200,7 @@ def _mapped(found: Iterable[_Reached], reference: _Reference) -> Iterator[_Reach
 
 
 def _canonical(found: _Reached) -> tuple[str, int, int, str, list[str], list[str]]:
-    """The order of the filters a pair in a cycle reaches beyond what it applies."""
+    """The order of the filters a template in a cycle reaches beyond what it applies."""
 
     symbol, span, where, value, argument = found
     return where, span.start_line, span.start_column, str(symbol), sorted(value), sorted(argument)
@@ -1191,11 +1225,12 @@ def _facts(names: Mapping[_Site, tuple[frozenset[str], frozenset[str]]], sites: 
     return [(symbol, span, where, *names[symbol, span, where]) for symbol, span, where in sites]
 
 
-def _settled(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) -> dict[_Pair, list[_Reached]]:
-    """The filters the render of each pair reaches, in order (#284).
+def _settled(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) -> dict[str, list[_Reached]]:
+    """The filters the render of each template reaches, in order (#284).
 
-    What a pair reaches is the least set holding what it applies, and what each of its
-    references reaches mapped through the reference's bindings. The sets are computed
+    What a template reaches is the least set holding what it applies, its extends chain
+    put together (#285), and what each template it includes reaches, mapped through the
+    reference's bindings. The sets are computed
     component by component, each after those its references reach, which are then
     final. No cycle is cut: a template including itself with other bindings reaches what
     Django renders at its next levels.
@@ -1205,20 +1240,20 @@ def _settled(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) ->
     analysis reads those names position by position, joining what each brings, so the
     join loses nothing, and it keeps the facts few: bindings permuted around a cycle
     would otherwise make one fact of every combination of names. In a component, every
-    pair starts with no names and is recomputed from its references' facts; names only
-    join, and the applications and names of a project are finitely many, so the names of
-    an application grow at most once for each name. A pair is recomputed when a fact it
-    reads grew, until none grows.
+    template starts with no names and is recomputed from its references' facts; names
+    only join, and the applications and names of a project are finitely many, so the
+    names of an application grow at most once for each name. A template is recomputed
+    when a fact it reads grew, until none grows.
 
-    Once the facts are settled, a pair outside any cycle lists what it applies, then what
-    each reference reaches, in order, first occurrences only, as a walk of each path
-    would. A pair in a cycle has no such first occurrence, the cycle having no start: it
-    lists what it applies, then the rest by template, position, function and names. The
-    order thus depends only on the facts and the templates, never on the order of the
-    computation."""
+    Once the facts are settled, a template outside any cycle lists what it applies,
+    then what each reference reaches, in order, first occurrences only, as a walk of
+    each path would. A template in a cycle has no such first occurrence, the cycle
+    having no start: it lists what it applies, then the rest by template, position,
+    function and names. The order thus depends only on the facts and the templates,
+    never on the order of the computation."""
 
     renders = _renders(files, read)
-    reached: dict[_Pair, list[_Reached]] = {}
+    reached: dict[str, list[_Reached]] = {}
     for component in _components(renders):
         single = component[0]
         if len(component) == 1 and all(below != single for below, _ in renders[single].references):
@@ -1229,12 +1264,12 @@ def _settled(files: Mapping[str, list[Path]], read: Mapping[Path, _Template]) ->
             reached[single] = list(found)
             continue
         members = set(component)
-        readers: dict[_Pair, list[_Pair]] = {member: [] for member in component}
+        readers: dict[str, list[str]] = {member: [] for member in component}
         for member in component:
             for below, _ in renders[member].references:
                 if below in members:
                     readers[below].append(member)
-        names: dict[_Pair, dict[_Site, tuple[frozenset[str], frozenset[str]]]] = {member: {} for member in component}
+        names: dict[str, dict[_Site, tuple[frozenset[str], frozenset[str]]]] = {member: {} for member in component}
         sizes = dict.fromkeys(component, 0)
         pending = deque(component)
         queued = set(component)
@@ -1275,6 +1310,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
     opened: list[str] = []
     defined: set[str] = set()
     extended: set[str] = set()
+    enclosing: dict[str, str | None] = {}
     scopes: list[dict[str, frozenset[str]]] = [{}]
     blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
     loaded: list[_Load] = []
@@ -1360,6 +1396,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
             else:
                 values.setdefault(word, reached)
         if name == "block" and len(words) > 1:
+            enclosing.setdefault(words[1], opened[-1] if opened else None)
             opened.append(words[1])
             defined.add(words[1])
         elif name == "endblock" and opened:
@@ -1388,7 +1425,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
             target = words[words.index("as", 1) + 1]
             scopes[-1][target] = values.get(words[1], frozenset()) if name == "regroup" else frozenset()
     return _Template(
-        tuple(applications), tuple(references), frozenset(defined), frozenset(extended), tuple(unresolved)
+        tuple(applications), tuple(references), frozenset(defined), frozenset(extended), tuple(unresolved), enclosing
     )
 
 

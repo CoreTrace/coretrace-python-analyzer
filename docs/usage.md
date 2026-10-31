@@ -605,9 +605,14 @@ certain of it:
   of includes is followed as far as Django may render it: a template reached again on
   the way applies its filters to what each include binds at every level, as a template
   including itself with other bindings, or a recursive tree, does (#284).
-- The filter renders: a template extending another renders only its blocks, which
-  replace the blocks of that name in what it extends, unless the block renders
-  `{{ block.super }}`, which keeps the parent's content and the filters it applies.
+- The filter renders: a template extending another renders only its blocks, and only
+  where its chain of parents places them (#285). The root's blocks are placed; a placed
+  block renders its most derived definition, and through `{{ block.super }}` the next
+  ones up, which keep the parent's content and the filters it applies; the blocks a
+  rendered definition holds are placed in turn. A block no template of the chain
+  places never renders, nor does a block whose only placeholder a child replaces. When
+  the chain cannot be followed to a root (a parent named by an expression, not found or
+  in several files, or an extends cycle), every block of the chain counts as placed.
 - One file has the template's name; of two files of the same name, which one renders
   depends on the loaders.
 

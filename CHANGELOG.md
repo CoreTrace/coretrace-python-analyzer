@@ -11,6 +11,13 @@
   a parent including the child that extends it. A filter reached this way may be
   reported as `exploitable-vulnerability` where it was not. Where no cycle is reached,
   the filters and their order do not change.
+- A template's render is put together over its extends chain as Django places its
+  blocks (#285). A filter in a block no template of the chain places, or in a block
+  whose only placeholder a child replaces, is no longer reached, and an advisory naming
+  it is no longer `exploitable-vulnerability` through it. A block a child redefines with
+  `{{ block.super }}` inside a block it replaces now renders the parent's definition and
+  what it includes. Where the chain cannot be followed to a root, every block counts as
+  placed, as before.
 
 ### Performance
 

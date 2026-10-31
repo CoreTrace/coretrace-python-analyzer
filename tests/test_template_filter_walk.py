@@ -198,48 +198,126 @@ def test_a_child_its_parent_includes_back_gets_the_same_filters_whichever_is_wal
 # The walk path by path lets each cycle turn 2, then 3 times, within this many steps.
 REPEATS = (2, 3)
 BUDGET = 20_000
-# Projects the walk does not settle within its budget: 10 with this seed.
-UNVERIFIED = 15
+# Projects the walk does not settle within its budget: 18 with this seed.
+UNVERIFIED = 20
 
 
 class Unverified(Exception):
     """The walk path by path exceeded its budget: it verifies nothing of the project."""
 
 
+# A block tag opening or closing, read from the template's text apart from the engine.
+BLOCK_TAG = re.compile(r"\{%\s*(?:block\s+(\w+)|endblock)\b[^%]*%\}")
+
+
+def enclosing(text: str) -> dict[str, str | None]:
+    """Each block of ``text``, with the block it stands in."""
+
+    found: dict[str, str | None] = {}
+    opened: list[str] = []
+    for match in BLOCK_TAG.finditer(text):
+        if match.group(1):
+            found.setdefault(match.group(1), opened[-1] if opened else None)
+            opened.append(match.group(1))
+        elif opened:
+            opened.pop()
+    return found
+
+
+def rendered_page(
+    name: str, files: dict[str, list[Path]], read: dict[Path, Any]
+) -> tuple[list[tuple[Any, ...]], list[Any]] | None:
+    """What rendering the template ``name`` on its own applies, and the includes it
+    renders, its extends chain put together as Django puts it (#285): the root's blocks
+    standing in no other block are placed, a placed block renders its most derived
+    definition and, through {{ block.super }}, the next ones up, and a rendered
+    definition places the blocks it holds. With no known root, every block is placed."""
+
+    def readable(template_name: str | None) -> Any:
+        paths = files.get(template_name or "", [])
+        return read[paths[0]] if len(paths) == 1 and paths[0] in read else None
+
+    nested: dict[str, dict[str, str | None]] = {}
+
+    def nesting(template_name: str) -> dict[str, str | None]:
+        if template_name not in nested:
+            nested[template_name] = enclosing(files[template_name][0].read_text(encoding="utf-8"))
+        return nested[template_name]
+
+    if readable(name) is None:
+        return None
+    chain: list[tuple[str, Any]] = []
+    known = True
+    current: str | None = name
+    while True:
+        template = readable(current)
+        if template is None or any(current == seen for seen, _ in chain):
+            known = False
+            break
+        chain.append((str(current), template))
+        parent = next((reference for reference in template.references if reference.extends), None)
+        if parent is None:
+            break
+        current = parent.name
+    rendering: set[tuple[int, str]] = set()
+
+    def place(block: str) -> None:
+        for level, (_, template) in enumerate(chain):
+            if block not in template.blocks:
+                continue
+            if (level, block) in rendering:
+                return
+            rendering.add((level, block))
+            for inner, outer in nesting(chain[level][0]).items():
+                if outer == block:
+                    place(inner)
+            if block not in template.extended:
+                return
+
+    for block in [b for b, outer in nesting(chain[-1][0]).items() if outer is None] if known else sorted({b for _, t in chain for b in t.blocks}):
+        place(block)
+
+    def renders(level: int, blocks: tuple[str, ...]) -> bool:
+        return (level, blocks[-1]) in rendering if blocks else known and level == len(chain) - 1
+
+    applied = [
+        (application.symbol, application.span, template_name, application.value, application.argument)
+        for level, (template_name, template) in enumerate(chain)
+        for application in template.applications
+        if renders(level, application.blocks)
+    ]
+    includes = [
+        reference
+        for level in reversed(range(len(chain)))
+        for reference in chain[level][1].references
+        if not reference.extends and reference.name is not None and renders(level, reference.blocks)
+    ]
+    return applied, includes
+
+
 def unrolled(
     name: str,
-    files: dict[str, list[Path]],
-    read: dict[Path, Any],
+    pages: dict[str, tuple[list[tuple[Any, ...]], list[Any]] | None],
     repeats: int,
     budget: list[int],
-    visiting: tuple[tuple[str, frozenset[str]], ...] = (),
-    overridden: frozenset[str] = frozenset(),
+    visiting: tuple[str, ...] = (),
 ) -> Iterator[tuple[Any, ...]]:
-    """Every path through includes and extends, where each template, with the blocks
-    overridden, may come back ``repeats`` times on the way: what Django renders when the
-    project's conditions let each cycle turn that many times."""
+    """Every path through includes, each template rendered over its extends chain as
+    ``pages`` gives it, where each template may come back ``repeats`` times on the way:
+    what Django renders when the project's conditions let each cycle turn that many times."""
 
-    paths = files.get(name, [])
-    here = (name, overridden)
-    if len(paths) != 1 or paths[0] not in read or visiting.count(here) >= repeats:
+    if visiting.count(name) >= repeats:
+        return
+    page = pages.get(name)
+    if page is None:
         return
     budget[0] -= 1
     if budget[0] < 0:
         raise Unverified
-    template = read[paths[0]]
-    for application in template.applications:
-        if template.rendered(application.blocks, overridden):
-            yield application.symbol, application.span, name, application.value, application.argument
-    for reference in template.references:
-        if reference.name is None:
-            continue
-        if reference.extends:
-            found = unrolled(reference.name, files, read, repeats, budget, (*visiting, here), overridden | template.replaced)
-        elif template.rendered(reference.blocks, overridden):
-            found = unrolled(reference.name, files, read, repeats, budget, (*visiting, here))
-        else:
-            continue
-        for symbol, span, where, value, argument in found:
+    applied, includes = page
+    yield from applied
+    for reference in includes:
+        for symbol, span, where, value, argument in unrolled(reference.name, pages, repeats, budget, (*visiting, name)):
             yield symbol, span, where, reference.maps(value), reference.maps(argument)
 
 
@@ -255,11 +333,12 @@ def unrolled_filters(root: Path, repeats: int) -> dict[str, list[TemplateFilter]
         for name in found[path]:
             files.setdefault(name, []).append(path)
     read = {path: templates._read_scopes(text, SourceId(str(path)), libraries) for path in paths if (text := templates._text(path))}
+    pages = {name: rendered_page(name, files, read) for name in files}
     return {
         name: list(
             dict.fromkeys(
                 TemplateFilter(symbol, span, where, tuple(sorted(value)), tuple(sorted(argument)))
-                for symbol, span, where, value, argument in unrolled(name, files, read, repeats, [BUDGET])
+                for symbol, span, where, value, argument in unrolled(name, pages, repeats, [BUDGET])
             )
         )
         for name in files
