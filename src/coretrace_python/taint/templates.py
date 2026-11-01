@@ -79,7 +79,7 @@ from coretrace_python.semantic.scopes import (
     analyze_scopes,
 )
 from coretrace_python.semantic.symbols import SymbolId, analyze_symbols
-from coretrace_python.source import SourceId, SourceManager, SourceSpan
+from coretrace_python.source import LineIndex, SourceId, SourceManager, SourceSpan
 from coretrace_python.taint.models import ModelTable
 
 TEMPLATES_DIRECTORY = "templates"
@@ -935,13 +935,13 @@ class _Application:
 
 @dataclass(frozen=True)
 class _Reference:
-    """A template another one includes, or ``extends``, at ``offset`` in its ``blocks``:
+    """A template another one includes, or ``extends``, at ``span`` in its ``blocks``:
     by ``name``, None when an expression names it. The referenced template's free names
     are ``bindings``, then, unless ``only``, what the ``scope`` binds there, then the
     referencing template's."""
 
     name: str | None
-    offset: int
+    span: SourceSpan
     bindings: Mapping[str, frozenset[str]] = field(default_factory=dict)
     only: bool = False
     scope: Mapping[str, frozenset[str]] = field(default_factory=dict)
@@ -961,12 +961,12 @@ class _Reference:
 
 @dataclass(frozen=True)
 class _Load:
-    """A ``{% load %}`` of ``library`` at ``offset``, of the ``names`` it selects
+    """A ``{% load %}`` of ``library`` at ``span``, of the ``names`` it selects
     (``{% load a b from lib %}``), None for the whole library."""
 
     library: str
     names: frozenset[str] | None
-    offset: int
+    span: SourceSpan
 
 
 @dataclass(frozen=True)
@@ -1027,7 +1027,7 @@ def project_templates(root: Path) -> ProjectTemplates:
             continue
         read[path] = _read_scopes(text, SourceId(str(path)), libraries)
         for reference in read[path].references:
-            where = f"{relative}:{_position(text, reference.offset)[0]}"
+            where = f"{relative}:{reference.span.start_line}"
             if reference.name is None:
                 unread.append(f"{where} names a template by an expression")
             elif reference.name not in files:
@@ -1035,7 +1035,7 @@ def project_templates(root: Path) -> ProjectTemplates:
         for load in read[path].unresolved:
             library = libraries.get(load.library)
             reason = "not found" if library is None else "not read" if library.uncertain is None else "found in several files"
-            unread.append(f"{relative}:{_position(text, load.offset)[0]} loads {load.library!r}, {reason}")
+            unread.append(f"{relative}:{load.span.start_line} loads {load.library!r}, {reason}")
     calls = tuple(FilterCall(a.symbol, a.span) for template in read.values() for a in template.applications)
     # What each template reaches rendered on its own, for this analysis only.
     settled = _settled(files, read)
@@ -1315,6 +1315,11 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
     blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
     loaded: list[_Load] = []
     unresolved: dict[_Load, None] = {}
+    lines = LineIndex(text)
+
+    def span(offset: int) -> SourceSpan:
+        line, column = lines.position(offset)
+        return SourceSpan(source, line, column)
 
     def free(names: frozenset[str]) -> frozenset[str]:
         found: set[str] = set()
@@ -1354,9 +1359,7 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
             if isinstance(symbol, _Load):
                 unresolved[symbol] = None
             elif symbol is not None:
-                line, column = _position(text, offset)
-                span = SourceSpan(source, line, column)
-                applications.append(_Application(symbol, span, value, free(argument), tuple(opened)))
+                applications.append(_Application(symbol, span(offset), value, free(argument), tuple(opened)))
             value |= free(argument)
         return value
 
@@ -1414,13 +1417,13 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
         elif name in ("include", "extends"):
             named = _constant(words[1]) if len(words) > 1 else None
             if name == "extends":
-                references.append(_Reference(named, offset, extends=True))
+                references.append(_Reference(named, span(offset), extends=True))
             else:
                 context = {k: v for scope in scopes for k, v in scope.items()}
-                references.append(_Reference(named, offset, bindings, "only" in words, context, tuple(opened)))
+                references.append(_Reference(named, span(offset), bindings, "only" in words, context, tuple(opened)))
         elif name == "load":
             selected = frozenset(words[1 : words.index("from")]) if "from" in words else None
-            loaded.extend(_Load(library, selected, offset) for library in _loaded(words[1:]))
+            loaded.extend(_Load(library, selected, span(offset)) for library in _loaded(words[1:]))
         elif "as" in words[1:-1]:
             target = words[words.index("as", 1) + 1]
             scopes[-1][target] = values.get(words[1], frozenset()) if name == "regroup" else frozenset()
@@ -1702,12 +1705,6 @@ def _expressions(text: str) -> Iterator[tuple[int, str, bool]]:
             yield match.start(1), variable, False
         elif tag is not None:
             yield match.start(2), tag, True
-
-
-def _position(text: str, offset: int) -> tuple[int, int]:
-    """The one-based line and column of ``offset`` in ``text``."""
-
-    return text.count("\n", 0, offset) + 1, offset - text.rfind("\n", 0, offset)
 
 
 class EscapedTemplates(Analysis[frozenset[str]]):

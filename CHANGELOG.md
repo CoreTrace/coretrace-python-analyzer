@@ -24,6 +24,9 @@
 - Templates in a cycle of includes are no longer walked again on every path (#284): 20
   levels of doubled includes closed into a cycle took 56 s, and 40 templates including
   one another more than a minute; both now take less than a second.
+- The positions in a template are no longer counted from its start, for each filter,
+  include, extends and load (#288): a template of 2 MB applying 160,000 filters took
+  50 s to analyse, and now takes 3 s.
 
 ## 0.24.0 (2026-10-23)
 

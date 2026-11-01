@@ -16,9 +16,8 @@ import hashlib
 import json
 import re
 import tomllib
-from bisect import bisect_right
 
-from coretrace_python.source.manager import LINE_BREAK, lines_of
+from coretrace_python.source.manager import LineIndex, lines_of
 from coretrace_python.source.model import FileLocation, SourceId
 
 Pointer = tuple[str | int, ...]
@@ -54,22 +53,6 @@ def pointer_text(path: Pointer) -> str:
     return "".join("/" + str(part).replace("~", "~0").replace("/", "~1") for part in path)
 
 
-class _Lines:
-    def __init__(self, text: str) -> None:
-        self._starts = [0, *(match.end() for match in LINE_BREAK.finditer(text))]
-
-    def position(self, offset: int) -> tuple[int, int]:
-        """The one-based line and column of ``offset``."""
-
-        line = bisect_right(self._starts, offset)
-        return line, offset - self._starts[line - 1] + 1
-
-    def offset(self, line: int, column: int) -> int:
-        """The offset of the one-based ``line`` and ``column``."""
-
-        return self._starts[line - 1] + column - 1
-
-
 def _same(found: object, value: object) -> bool:
     return type(found) is type(value) and found == value
 
@@ -87,7 +70,7 @@ class JsonPositions:
                 raise ValueError("trailing text")
         except (ValueError, IndexError, RecursionError):
             self._values = {}
-        self._lines = _Lines(text)
+        self._lines = LineIndex(text)
 
     def locate(self, path: Pointer, value: object) -> tuple[int, int] | None:
         """The line and column ``value`` starts at under ``path``, or None when the text
@@ -183,7 +166,7 @@ class TomlPositions:
         self._lines = lines_of(text)
         # The text with one line feed per line break, where arrays are read, once each.
         self._text = "\n".join(self._lines)
-        self._offsets = _Lines(self._text)
+        self._offsets = LineIndex(self._text)
         self._arrays: dict[int, list[tuple[int, int]]] = {}
         state = _LexState()
         for number, line in enumerate(self._lines, start=1):

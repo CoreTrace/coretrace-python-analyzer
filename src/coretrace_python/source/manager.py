@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from pathlib import Path
 
 from coretrace_python.source.model import ImportName, SourceFile, SourceId
@@ -84,6 +85,26 @@ def lines_of(text: str) -> list[str]:
     if lines[-1] == "":
         lines.pop()
     return lines
+
+
+class LineIndex:
+    """The line and column of each offset of a text, lines counted as ``lines_of``
+    counts them. The start of each line is found once; the line of an offset is then
+    found by bisection, in time logarithmic in the lines."""
+
+    def __init__(self, text: str) -> None:
+        self._starts = [0, *(match.end() for match in LINE_BREAK.finditer(text))]
+
+    def position(self, offset: int) -> tuple[int, int]:
+        """The one-based line and column of ``offset``."""
+
+        line = bisect_right(self._starts, offset)
+        return line, offset - self._starts[line - 1] + 1
+
+    def offset(self, line: int, column: int) -> int:
+        """The offset of the one-based ``line`` and ``column``."""
+
+        return self._starts[line - 1] + column - 1
 
 
 class SourceManager:
