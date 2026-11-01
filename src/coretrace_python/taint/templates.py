@@ -79,7 +79,7 @@ from coretrace_python.semantic.scopes import (
     analyze_scopes,
 )
 from coretrace_python.semantic.symbols import SymbolId, analyze_symbols
-from coretrace_python.source import SourceId, SourceManager, SourceSpan
+from coretrace_python.source import LineIndex, SourceId, SourceManager, SourceSpan
 from coretrace_python.taint.models import ModelTable
 
 TEMPLATES_DIRECTORY = "templates"
@@ -1315,9 +1315,10 @@ def _read_scopes(text: str, source: SourceId, libraries: Mapping[str, _Library])
     blocks: list[tuple[list[tuple[str, int, frozenset[str]]], set[str]]] = []
     loaded: list[_Load] = []
     unresolved: dict[_Load, None] = {}
+    lines = LineIndex(text)
 
     def span(offset: int) -> SourceSpan:
-        line, column = _position(text, offset)
+        line, column = lines.position(offset)
         return SourceSpan(source, line, column)
 
     def free(names: frozenset[str]) -> frozenset[str]:
@@ -1704,12 +1705,6 @@ def _expressions(text: str) -> Iterator[tuple[int, str, bool]]:
             yield match.start(1), variable, False
         elif tag is not None:
             yield match.start(2), tag, True
-
-
-def _position(text: str, offset: int) -> tuple[int, int]:
-    """The one-based line and column of ``offset`` in ``text``."""
-
-    return text.count("\n", 0, offset) + 1, offset - text.rfind("\n", 0, offset)
 
 
 class EscapedTemplates(Analysis[frozenset[str]]):
