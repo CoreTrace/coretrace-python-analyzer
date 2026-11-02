@@ -37,6 +37,11 @@
   include, extends and load (#288): a template of 2 MB applying 160,000 filters took
   50 s to analyse, and now takes 3 s.
 
+### Documentation
+
+- `docs/usage.md` documents how a cycle of includes is followed (#284) and where the
+  chain of extends places a template's blocks (#285).
+
 ## 0.24.0 (2026-10-23)
 
 ### Compatibility and migration
