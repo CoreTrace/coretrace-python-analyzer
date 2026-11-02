@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.25.0 (2026-11-01)
+
+### Compatibility and migration
+
+- The filters a template's render reaches change, and with them the advisories reported
+  as `exploitable-vulnerability` through a filter, which may appear or disappear: a
+  render now follows a cycle of includes as far as Django may render it (#284), and
+  places a template's blocks where its chain of extends places them (#285).
+- Plugin API, additive: `coretrace_python.source.LineIndex` gives the line and column of
+  each offset of a text, lines counted as `lines_of` counts them (#288).
 
 ### Templates
 
@@ -27,6 +36,11 @@
 - The positions in a template are no longer counted from its start, for each filter,
   include, extends and load (#288): a template of 2 MB applying 160,000 filters took
   50 s to analyse, and now takes 3 s.
+
+### Documentation
+
+- `docs/usage.md` documents how a cycle of includes is followed (#284) and where the
+  chain of extends places a template's blocks (#285).
 
 ## 0.24.0 (2026-10-23)
 
