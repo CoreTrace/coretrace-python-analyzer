@@ -28,6 +28,12 @@
   include, extends and load (#288): a template of 2 MB applying 160,000 filters took
   50 s to analyse, and now takes 3 s.
 
+### Documentation
+
+- `NOTICE`, which the wheel ships, names the project `coretrace-python-analyzer`,
+  credits Hugo Payet and the CoreTrace contributors instead of CoreTrace, and links
+  the repository.
+
 ## 0.24.0 (2026-10-23)
 
 ### Compatibility and migration
